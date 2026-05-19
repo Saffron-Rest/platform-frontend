@@ -24,7 +24,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
     if (!isQuickGuideDismissed(user.role, user.id)) {
-      const t = window.setTimeout(() => setOpen(true), 600);
+      const t = window.setTimeout(() => setOpen(true), 1200);
       return () => window.clearTimeout(t);
     }
   }, [user?.id, user?.role]);
