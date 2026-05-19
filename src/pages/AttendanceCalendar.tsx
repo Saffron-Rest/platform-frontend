@@ -31,6 +31,7 @@ function rosterFromShifts(byDate: Record<string, ScheduleRow[]>): User[] {
         seen.set(row.userId, {
           id: row.userId,
           name: row.name,
+          username: row.email?.split("@")[0] ?? row.userId,
           email: row.email,
           role: "CASHIER",
           active: true,

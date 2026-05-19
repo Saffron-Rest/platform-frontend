@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type { PayType, Role, User } from "../../types";
-import { roleLabel } from "../../lib/roles";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Alert } from "../../components/ui/Alert";
@@ -38,6 +37,7 @@ function todayIso() {
 
 const emptyNew = {
   name: "",
+  username: "",
   email: "",
   password: "",
   startDate: todayIso(),
@@ -57,6 +57,7 @@ export function AdminTeam() {
   const [editing, setEditing] = useState<User | null>(null);
   const [editForm, setEditForm] = useState({
     name: "",
+    username: "",
     email: "",
     password: "",
     startDate: todayIso(),
@@ -78,36 +79,39 @@ export function AdminTeam() {
     loadUsers();
   }, []);
 
-  const cashiers = useMemo(() => {
-    const list = users.filter((u) => u.role === "CASHIER");
+  const teamMembers = useMemo(() => {
+    const role: Role = section === "cashiers" ? "CASHIER" : "MANAGER";
+    const list = users.filter((u) => u.role === role);
     if (filter === "active") return list.filter((u) => u.active !== false);
     if (filter === "inactive") return list.filter((u) => u.active === false);
     return list;
-  }, [users, filter]);
+  }, [users, filter, section]);
 
-  const createCashier = async (e: FormEvent) => {
+  const createTeamMember = async (e: FormEvent) => {
     e.preventDefault();
     setMsg("");
     setErr("");
     setSaving(true);
     try {
-      const payAmount = newUser.payAmount ? Number(newUser.payAmount) : undefined;
-      await api("/users", {
-        method: "POST",
-        body: JSON.stringify({
-          name: newUser.name,
-          email: newUser.email,
-          password: newUser.password,
-          role: "CASHIER",
-          startDate: newUser.startDate,
-          payType: newUser.payType,
-          payAmount,
-          hourlyRate: payAmount,
-        }),
-      });
+      const role: Role = section === "cashiers" ? "CASHIER" : "MANAGER";
+      const body: Record<string, unknown> = {
+        name: newUser.name,
+        username: newUser.username.trim(),
+        password: newUser.password,
+        role,
+        startDate: newUser.startDate,
+      };
+      if (newUser.email.trim()) body.email = newUser.email.trim();
+      if (section === "cashiers") {
+        const payAmount = newUser.payAmount ? Number(newUser.payAmount) : undefined;
+        body.payType = newUser.payType;
+        body.payAmount = payAmount;
+        body.hourlyRate = payAmount;
+      }
+      await api("/users", { method: "POST", body: JSON.stringify(body) });
       setNewUser(emptyNew);
       setShowCreate(false);
-      setMsg("Cashier created");
+      setMsg(`${section === "cashiers" ? "Cashier" : "Manager"} created`);
       await loadUsers();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to create");
@@ -120,7 +124,8 @@ export function AdminTeam() {
     setEditing(u);
     setEditForm({
       name: u.name,
-      email: u.email,
+      username: u.username,
+      email: u.email ?? "",
       password: "",
       payType: u.payType ?? "HOURLY",
       payAmount:
@@ -146,13 +151,15 @@ export function AdminTeam() {
       const amount = editForm.payAmount === "" ? 0 : Number(editForm.payAmount);
       const body: Record<string, unknown> = {
         name: editForm.name,
-        email: editForm.email,
+        username: editForm.username.trim(),
         active: editForm.active,
         startDate: editForm.startDate,
         payType: editForm.payType,
         payAmount: amount,
         hourlyRate: amount,
       };
+      if (editForm.email.trim()) body.email = editForm.email.trim();
+      else body.email = null;
       if (editForm.password.trim()) body.password = editForm.password;
       await api(`/users/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       setMsg(`${editForm.name} updated`);
@@ -242,10 +249,23 @@ export function AdminTeam() {
                 />
               </label>
               <label className="field-label">
-                Email
+                Username
+                <input
+                  type="text"
+                  required
+                  autoCapitalize="none"
+                  pattern="[a-zA-Z0-9._-]+"
+                  title="Letters, numbers, dots, underscores, hyphens"
+                  value={newUser.username}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  className="field-input"
+                  placeholder="jane.doe"
+                />
+              </label>
+              <label className="field-label">
+                Email <span className="text-[var(--color-muted)] font-normal">(optional)</span>
                 <input
                   type="email"
-                  required
                   value={newUser.email}
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                   className="field-input"
@@ -307,7 +327,10 @@ export function AdminTeam() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold truncate">{u.name}</p>
-                  <p className="text-sm text-[var(--color-muted)] truncate">{u.email}</p>
+                  <p className="text-sm text-[var(--color-muted)] truncate">@{u.username}</p>
+                  {u.email && (
+                    <p className="text-xs text-[var(--color-muted)] truncate">{u.email}</p>
+                  )}
                   {u.startDate && (
                     <p className="text-xs text-[var(--color-muted)] mt-0.5">
                       Started {formatStartDate(u.startDate)}
@@ -401,10 +424,21 @@ export function AdminTeam() {
                 />
               </label>
               <label className="field-label">
-                Email
+                Username
+                <input
+                  type="text"
+                  required
+                  autoCapitalize="none"
+                  pattern="[a-zA-Z0-9._-]+"
+                  value={editForm.username}
+                  onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                  className="field-input"
+                />
+              </label>
+              <label className="field-label">
+                Email <span className="text-[var(--color-muted)] font-normal">(optional)</span>
                 <input
                   type="email"
-                  required
                   value={editForm.email}
                   onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                   className="field-input"

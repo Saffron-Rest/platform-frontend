@@ -85,7 +85,7 @@ export function CashiersPanel() {
     setEditing(u);
     setEditForm({
       name: u.name,
-      email: u.email,
+      email: u.email ?? "",
       password: "",
       payType: u.payType ?? "HOURLY",
       payAmount:

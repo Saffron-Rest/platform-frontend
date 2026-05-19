@@ -44,9 +44,11 @@ export type ScheduleRow = WorkSchedule & {
 
 export type User = {
   id: string;
-  email: string;
+  username: string;
+  email?: string | null;
   name: string;
   role: Role;
+  mustChangePassword?: boolean;
   active?: boolean;
   /** Employment start date (YYYY-MM-DD). */
   startDate?: string | null;
