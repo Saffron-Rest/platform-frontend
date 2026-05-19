@@ -95,6 +95,61 @@ export async function loadExpenses(entryId: string) {
   return raw.map(mapExpense);
 }
 
+export type LedgerExpense = ExpenseLine & {
+  effectiveDate?: string;
+  standalone?: boolean;
+  entryId?: string;
+  entryDate?: string;
+};
+
+function mapLedgerExpense(raw: Record<string, unknown>): LedgerExpense {
+  const base = mapExpense(raw);
+  return {
+    ...base,
+    effectiveDate: raw.effectiveDate != null ? String(raw.effectiveDate) : undefined,
+    standalone: Boolean(raw.standalone),
+    entryId: raw.entryId != null ? String(raw.entryId) : undefined,
+    entryDate: raw.entryDate != null ? String(raw.entryDate) : undefined,
+  };
+}
+
+export async function listAllExpenses(from: string, to: string) {
+  const raw = await api<Record<string, unknown>[]>(
+    `/expenses?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  );
+  return raw.map(mapLedgerExpense);
+}
+
+export type StandaloneExpensePayload = {
+  effectiveDate: string;
+  category: string;
+  description: string;
+  amount: number;
+  paymentSource: string;
+};
+
+export async function createStandaloneExpense(payload: StandaloneExpensePayload, invoice?: File) {
+  if (invoice) {
+    const fd = new FormData();
+    fd.append("data", new Blob([JSON.stringify(payload)], { type: "application/json" }));
+    fd.append("invoice", invoice);
+    const raw = await api<Record<string, unknown>>("/expenses/standalone", {
+      method: "POST",
+      body: fd,
+    });
+    return mapLedgerExpense(raw);
+  }
+  const raw = await api<Record<string, unknown>>("/expenses/standalone/json", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return mapLedgerExpense(raw);
+}
+
+export async function deleteStandaloneExpense(id: string) {
+  await api(`/expenses/standalone/${id}`, { method: "DELETE" });
+}
+
 export async function deleteExpenseInvoice(expenseId: string, fileId: string) {
   const raw = await api<Record<string, unknown>>(
     `/expenses/${expenseId}/invoices/${fileId}`,

@@ -90,15 +90,19 @@ export function TreasurySummaryCards({ className = "", compact = false }: Props)
           </p>
           {!compact && (
             <p className="text-xs text-sky-800/70 mt-1">
-              Initial {fmt(treasury.settings.initialCardBalance)} · settled sales{" "}
-              {fmt(treasury.cardFromEntries)} · salaries {fmt(treasury.salaryPaidFromCard)}
+              Initial {fmt(treasury.settings.initialCardBalance)} · from reports{" "}
+              {fmt(treasury.cardFromShiftReports ?? treasury.cardFromEntries)}
+              {(treasury.cardFromManualDelivery ?? 0) > 0 && (
+                <> · manual delivery {fmt(treasury.cardFromManualDelivery!)}</>
+              )}{" "}
+              · salaries {fmt(treasury.salaryPaidFromCard)}
             </p>
           )}
         </Card>
       </div>
       {compact && (
         <p className="text-xs text-[var(--color-muted)]">
-          From initial balances + locked shift reports (delivery at settlement rates) − salary payouts.
+          Card includes settled delivery from reports + manual delivery income (Finance) − salary payouts.
         </p>
       )}
     </div>

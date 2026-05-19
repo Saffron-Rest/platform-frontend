@@ -20,6 +20,7 @@ import { AdminPayouts } from "./pages/admin/AdminPayouts";
 import { AdminRestaurantHours } from "./pages/admin/AdminRestaurantHours";
 import { AdminSettings } from "./pages/admin/AdminSettings";
 import { AdminAudit } from "./pages/admin/AdminAudit";
+import { FinanceLedger } from "./pages/FinanceLedger";
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
               <Route path="/profit-loss" element={<ProfitLoss />} />
               <Route path="/history" element={<Navigate to="/reports" replace />} />
               <Route path="/audit" element={<AdminAudit />} />
+              <Route path="/finance" element={<FinanceLedger />} />
             </Route>
             <Route path="/admin" element={<AdminGuard />}>
               <Route element={<AdminLayout />}>

@@ -147,6 +147,8 @@ export type TreasuryOverview = {
   cardBalance: number;
   cashFromEntries: number;
   cardFromEntries: number;
+  cardFromShiftReports?: number;
+  cardFromManualDelivery?: number;
   salaryPaidFromCash: number;
   salaryPaidFromCard: number;
   currency: string;
@@ -184,6 +186,18 @@ export type ExpenseLine = {
   invoice?: ExpenseInvoice;
   pendingFile?: File;
   pendingFiles?: File[];
+};
+
+export type ManualDeliveryIncome = {
+  id: string;
+  effectiveDate: string;
+  platform: string;
+  platformLabel: string;
+  grossAmount: number;
+  settledToCard: number;
+  settledOverridden?: boolean;
+  notes?: string;
+  createdAt?: string;
 };
 
 export type DailyEntry = {
@@ -224,6 +238,10 @@ export type DailyEntry = {
   expenseCardTotal?: number;
   payoutsTotal?: number;
   cardBalance?: number;
+  /** Delivery platforms credited to card for this shift (treasury settlement). */
+  deliveryToCard?: number;
+  /** Manual delivery income for this date (restaurant-wide, managers only). */
+  manualDeliveryToCard?: number;
   closingBalance: number;
   actualCashCounted: number;
   difference: number;
