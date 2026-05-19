@@ -47,7 +47,10 @@ export function totalExpenses(d: EntryFormData, expenses: ExpenseLine[]) {
   return totalPayouts(d) + totalExpenseLines(expenses);
 }
 
-/** Book expected drawer: opening + cash sales − refunds − cash expenses − payouts. */
+/**
+ * Expected cash in drawer:
+ * opening + cash sales − cash refunds − cash-paid expenses − payouts from drawer.
+ */
 export function bookExpectedCash(d: EntryFormData, expenses: ExpenseLine[]) {
   return (
     d.openingBalance +
@@ -58,12 +61,8 @@ export function bookExpectedCash(d: EntryFormData, expenses: ExpenseLine[]) {
   );
 }
 
-/** Expected cash: actual counted − cash expenses when counted, else book expected. */
+/** Same as {@link bookExpectedCash} — stored on the report as closingBalance. */
 export function closingBalance(d: EntryFormData, expenses: ExpenseLine[]) {
-  const actual = num(d.actualCashCounted);
-  if (actual > 0) {
-    return actual - expenseTotalBySource(expenses, "CASH");
-  }
   return bookExpectedCash(d, expenses);
 }
 

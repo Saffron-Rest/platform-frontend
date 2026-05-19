@@ -197,9 +197,8 @@ export function EntryForm({
             <p className="text-white/70 text-xs uppercase tracking-wide">Expected cash</p>
             <p className="text-2xl font-bold tabular-nums mt-1">{fmt(closing)}</p>
             <p className="text-white/50 text-[11px] mt-2 leading-snug">
-              {data.actualCashCounted > 0
-                ? `Actual counted − cash expenses (${fmt(cashExpenses)})`
-                : `Enter actual cash below. Before count: opening + cash sales − refunds − cash expenses − payouts`}
+              Cash at start + cash sales ({fmt(data.cashSales)}) − cash refunds ({fmt(data.cashRefunds)})
+              − cash expenses ({fmt(cashExpenses)}) − payouts from drawer ({fmt(totalPayouts(data))})
             </p>
           </div>
           <div className="rounded-xl bg-white/5 p-3 border border-white/10">

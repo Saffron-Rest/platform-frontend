@@ -147,7 +147,7 @@ export function AdminHistory({ embedded }: Props = {}) {
       { label: "Returns", value: t.returns },
       { label: "Expenses", value: t.expenses },
       { label: "Payouts", value: t.payouts },
-      { label: "Expected cash", value: t.expectedCash, sub: "Actual counted − cash expenses (per shift)" },
+      { label: "Expected cash", value: t.expectedCash, sub: "Opening + cash sales − cash out (per shift)" },
       { label: "Actual counted", value: t.actualCash, sub: "Sum of all shift counts" },
       { label: "Card balance", value: t.cardBalance },
       {
