@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import { AuditRecentList } from "../../components/audit/AuditRecentList";
+import { TreasurySettingsCard } from "../../components/admin/TreasurySettingsCard";
 import type { AuditLogLike } from "../../lib/auditDisplay";
 import type { Platforms } from "../../types";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -43,8 +44,10 @@ export function AdminSettings() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Settings" subtitle="Platforms, alerts, and audit log" />
+      <PageHeader title="Settings" subtitle="Treasury, platforms, alerts, and audit log" />
       {msg && <Alert variant="success">{msg}</Alert>}
+
+      <TreasurySettingsCard />
 
       <Card className="space-y-3">
         <h3 className="font-semibold">Delivery platforms</h3>

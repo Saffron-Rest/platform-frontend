@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { fmt } from "../lib/calc";
 import { useAuth } from "../context/AuthContext";
 import { canOperate, isCashier } from "../lib/roles";
+import { TreasurySummaryCards } from "../components/admin/TreasurySummaryCards";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -114,6 +115,10 @@ export function Dashboard() {
           </div>
         }
       />
+
+      {canOperate(user?.role) && (
+        <TreasurySummaryCards className="mb-6" />
+      )}
 
       {isCashier(user?.role) && schedule && (
         <Alert variant={schedule.working ? "info" : "warning"} className="mb-4">

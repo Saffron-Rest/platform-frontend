@@ -14,6 +14,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
 import { Alert } from "../components/ui/Alert";
 import { AdminHistory } from "./AdminHistory";
+import { TreasurySummaryCards } from "../components/admin/TreasurySummaryCards";
 
 const todayIso = todayLocalIso;
 
@@ -132,6 +133,7 @@ export function ShiftReports() {
             </Button>
           }
         />
+        <TreasurySummaryCards className="mb-6" compact />
         <AdminHistory embedded />
       </div>
     );
@@ -152,6 +154,8 @@ export function ShiftReports() {
           </Button>
         }
       />
+
+      <TreasurySummaryCards className="mb-6" compact />
 
       <Card className="mb-6 !p-5 border-2 border-[var(--color-saffron)]/35 bg-gradient-to-br from-[var(--color-saffron)]/10 to-white">
         <h2 className="font-semibold text-lg text-[var(--color-ink)]">Create or open a report</h2>

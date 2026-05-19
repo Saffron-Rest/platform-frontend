@@ -58,6 +58,15 @@ export type User = {
   hourlyRate?: number | null;
 };
 
+export type PayRateHistoryEntry = {
+  id: string;
+  payType: PayType;
+  payAmount: number;
+  effectiveFrom: string;
+  notes?: string;
+  createdAt?: string;
+};
+
 export type PayrollShiftRow = {
   date: string;
   hours: number;
@@ -102,6 +111,37 @@ export type PayrollReport = {
   grandTotalHours: number;
   grandTotalPay: number;
   rules: { payType: string; text: string }[];
+};
+
+export type TreasurySettings = {
+  initialCashBalance: number;
+  initialCardBalance: number;
+  cardSalesSettlementRate: number;
+  platformSettlementRates: Record<string, number>;
+};
+
+export type TreasuryOverview = {
+  settings: TreasurySettings;
+  cashBalance: number;
+  cardBalance: number;
+  cashFromEntries: number;
+  cardFromEntries: number;
+  salaryPaidFromCash: number;
+  salaryPaidFromCard: number;
+  currency: string;
+};
+
+export type SalaryPaymentRecord = {
+  id: string;
+  userId: string;
+  employeeName: string;
+  amount: number;
+  paidDate: string;
+  source: PaymentSource;
+  periodFrom?: string;
+  periodTo?: string;
+  notes?: string;
+  createdAt: string;
 };
 
 export type ExpenseInvoice = {

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { PayrollReport } from "../types";
+import type {
+  PaymentSource,
+  PayrollEmployee,
+  PayrollReport,
+  SalaryPaymentRecord,
+} from "../types";
 import { fmt } from "../lib/calc";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -18,11 +23,122 @@ function monthLabel(year: number, month: number) {
   return new Date(year, month, 1).toLocaleString("pl-PL", { month: "long", year: "numeric" });
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function PaySalaryForm({
+  employee,
+  periodFrom,
+  periodTo,
+  onPaid,
+}: {
+  employee: PayrollEmployee;
+  periodFrom: string;
+  periodTo: string;
+  onPaid: () => void;
+}) {
+  const [amount, setAmount] = useState(String(employee.totalPay));
+  const [source, setSource] = useState<PaymentSource>("CASH");
+  const [paidDate, setPaidDate] = useState(todayIso());
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    setErr("");
+    setSaving(true);
+    try {
+      await api("/treasury/salary-payments", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: employee.userId,
+          amount: Number(amount),
+          paidDate,
+          source,
+          periodFrom,
+          periodTo,
+          notes: notes.trim() || null,
+        }),
+      });
+      onPaid();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Payment failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (employee.totalPay <= 0) {
+    return (
+      <p className="text-sm text-[var(--color-muted)] py-2">No pay due for this period.</p>
+    );
+  }
+
+  return (
+    <div className="mt-3 p-3 rounded-xl bg-white border border-black/10 space-y-3">
+      <p className="text-sm font-semibold">Record salary payment</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="field-label">
+          Amount (PLN)
+          <input
+            type="number"
+            min={0.01}
+            step={0.01}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="field-input"
+          />
+        </label>
+        <label className="field-label">
+          Paid on
+          <input
+            type="date"
+            value={paidDate}
+            onChange={(e) => setPaidDate(e.target.value)}
+            className="field-input"
+          />
+        </label>
+      </div>
+      <div className="flex gap-2">
+        {(["CASH", "CARD"] as PaymentSource[]).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSource(s)}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
+              source === s
+                ? "bg-[var(--color-saffron)] text-white border-[var(--color-saffron)]"
+                : "bg-white border-black/10"
+            }`}
+          >
+            From {s === "CASH" ? "cash" : "card"}
+          </button>
+        ))}
+      </div>
+      <label className="field-label">
+        Note (optional)
+        <input
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className="field-input"
+          placeholder="e.g. May payroll"
+        />
+      </label>
+      {err && <Alert variant="error">{err}</Alert>}
+      <Button type="button" fullWidth disabled={saving} onClick={submit}>
+        {saving ? "Recording…" : `Pay ${fmt(Number(amount))} from ${source.toLowerCase()}`}
+      </Button>
+    </div>
+  );
+}
+
 export function SalariesPanel() {
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
   const [report, setReport] = useState<PayrollReport | null>(null);
+  const [payments, setPayments] = useState<SalaryPaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -34,8 +150,12 @@ export function SalariesPanel() {
     setLoading(true);
     setError("");
     try {
-      const data = await api<PayrollReport>(`/salaries?from=${from}&to=${to}`);
-      setReport(data);
+      const [payroll, paid] = await Promise.all([
+        api<PayrollReport>(`/salaries?from=${from}&to=${to}`),
+        api<SalaryPaymentRecord[]>(`/treasury/salary-payments?from=${from}&to=${to}`),
+      ]);
+      setReport(payroll);
+      setPayments(paid);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load salaries");
     } finally {
@@ -58,29 +178,11 @@ export function SalariesPanel() {
       <Card className="space-y-2 text-sm text-[var(--color-muted)]">
         <h3 className="font-semibold text-[var(--color-ink)]">How pay is calculated</h3>
         <p>
-          Till-close shifts use that weekday&apos;s closing time from{" "}
-          <Link to="/admin/hours" className="text-[var(--color-saffron)] font-medium">
-            Restaurant hours
+          Delivery sales only partly increase card balance — set rates in{" "}
+          <Link to="/admin/settings" className="text-[var(--color-saffron)] font-medium">
+            Settings → Treasury
           </Link>
-          .
-        </p>
-        <ul className="space-y-1.5 list-disc pl-4">
-          <li>
-            <strong>Hourly</strong> — hours worked × rate (varies by day).
-          </li>
-          <li>
-            <strong>Daily</strong> — day rate × (shift hours ÷ open hours that day).
-          </li>
-          <li>
-            <strong>Monthly</strong> — monthly salary × (days worked ÷ days in period).
-          </li>
-        </ul>
-        <p className="text-xs pt-1">
-          Pay rates are set per cashier in{" "}
-          <Link to="/admin/team" className="text-[var(--color-saffron)] font-medium">
-            Team
-          </Link>
-          .
+          . Record each payout below and choose cash or card.
         </p>
       </Card>
 
@@ -117,6 +219,26 @@ export function SalariesPanel() {
               <p className="text-xl font-semibold tabular-nums">{report.grandTotalHours.toFixed(1)} h</p>
             </div>
           </div>
+
+          {payments.length > 0 && (
+            <Card className="space-y-2">
+              <h3 className="font-semibold text-sm">Payments this month</h3>
+              <ul className="space-y-1 text-sm">
+                {payments.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex justify-between gap-2 py-1.5 border-b border-black/5 last:border-0"
+                  >
+                    <span>
+                      {p.paidDate} · {p.employeeName} ·{" "}
+                      <span className="text-[var(--color-muted)]">{p.source.toLowerCase()}</span>
+                    </span>
+                    <span className="font-medium tabular-nums">{fmt(p.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <ul className="space-y-3">
             {report.employees.map((e) => (
@@ -165,6 +287,12 @@ export function SalariesPanel() {
                     ) : (
                       <p className="text-sm text-[var(--color-muted)]">No attendance this period.</p>
                     )}
+                    <PaySalaryForm
+                      employee={e}
+                      periodFrom={from}
+                      periodTo={to}
+                      onPaid={() => setRefreshKey((k) => k + 1)}
+                    />
                   </div>
                 )}
               </li>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
-import type { PayType, Role, User } from "../../types";
+import type { PayRateHistoryEntry, PayType, Role, User } from "../../types";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Alert } from "../../components/ui/Alert";
@@ -63,8 +63,12 @@ export function AdminTeam() {
     startDate: todayIso(),
     payType: "HOURLY" as PayType,
     payAmount: "",
+    payEffectiveFrom: todayIso(),
+    payChangeNote: "",
     active: true,
   });
+  const [originalPay, setOriginalPay] = useState<{ payType: PayType; payAmount: string } | null>(null);
+  const [payHistory, setPayHistory] = useState<PayRateHistoryEntry[]>([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -122,24 +126,39 @@ export function AdminTeam() {
 
   const openEdit = (u: User) => {
     setEditing(u);
+    const payAmountStr =
+      u.payAmount != null
+        ? String(u.payAmount)
+        : u.hourlyRate != null
+          ? String(u.hourlyRate)
+          : "";
+    setOriginalPay({ payType: u.payType ?? "HOURLY", payAmount: payAmountStr });
     setEditForm({
       name: u.name,
       username: u.username,
       email: u.email ?? "",
       password: "",
       payType: u.payType ?? "HOURLY",
-      payAmount:
-        u.payAmount != null
-          ? String(u.payAmount)
-          : u.hourlyRate != null
-            ? String(u.hourlyRate)
-            : "",
+      payAmount: payAmountStr,
+      payEffectiveFrom: todayIso(),
+      payChangeNote: "",
       startDate: u.startDate ?? todayIso(),
       active: u.active !== false,
     });
+    setPayHistory([]);
+    if (u.role === "CASHIER") {
+      api<PayRateHistoryEntry[]>(`/users/${u.id}/pay-rates`)
+        .then(setPayHistory)
+        .catch(() => setPayHistory([]));
+    }
     setMsg("");
     setErr("");
   };
+
+  const payChangedInEdit =
+    editing?.role === "CASHIER" &&
+    originalPay != null &&
+    (editForm.payType !== originalPay.payType || editForm.payAmount !== originalPay.payAmount);
 
   const saveEdit = async (e: FormEvent) => {
     e.preventDefault();
@@ -161,6 +180,10 @@ export function AdminTeam() {
       if (editForm.email.trim()) body.email = editForm.email.trim();
       else body.email = null;
       if (editForm.password.trim()) body.password = editForm.password;
+      if (payChangedInEdit) {
+        body.payEffectiveFrom = editForm.payEffectiveFrom;
+        if (editForm.payChangeNote.trim()) body.payChangeNote = editForm.payChangeNote.trim();
+      }
       await api(`/users/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       setMsg(`${editForm.name} updated`);
       setEditing(null);
@@ -467,12 +490,68 @@ export function AdminTeam() {
               </label>
 
               {editing.role === "CASHIER" && (
-                <PayFields
-                  payType={editForm.payType}
-                  payAmount={editForm.payAmount}
-                  onType={(payType) => setEditForm({ ...editForm, payType })}
-                  onAmount={(payAmount) => setEditForm({ ...editForm, payAmount })}
-                />
+                <>
+                  <PayFields
+                    payType={editForm.payType}
+                    payAmount={editForm.payAmount}
+                    onType={(payType) => setEditForm({ ...editForm, payType })}
+                    onAmount={(payAmount) => setEditForm({ ...editForm, payAmount })}
+                  />
+                  {payChangedInEdit && (
+                    <div className="space-y-3 p-3 rounded-xl border border-[var(--color-saffron)]/30 bg-[var(--color-saffron)]/5">
+                      <p className="text-sm font-medium text-[var(--color-ink)]">
+                        Pay change — applies from this date onward
+                      </p>
+                      <label className="field-label">
+                        Effective from
+                        <input
+                          type="date"
+                          required
+                          value={editForm.payEffectiveFrom}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, payEffectiveFrom: e.target.value })
+                          }
+                          className="field-input"
+                        />
+                      </label>
+                      <label className="field-label">
+                        Note <span className="font-normal text-[var(--color-muted)]">(optional)</span>
+                        <input
+                          type="text"
+                          value={editForm.payChangeNote}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, payChangeNote: e.target.value })
+                          }
+                          className="field-input"
+                          placeholder="e.g. raise, seasonal adjustment"
+                        />
+                      </label>
+                      <p className="text-xs text-[var(--color-muted)]">
+                        Shifts before this date keep the previous rate in Salaries. Past payroll is not
+                        recalculated retroactively.
+                      </p>
+                    </div>
+                  )}
+                  {payHistory.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                        Pay history
+                      </p>
+                      <ul className="text-sm space-y-1 max-h-36 overflow-y-auto rounded-lg bg-[var(--color-cream)] p-2">
+                        {payHistory.map((h) => (
+                          <li key={h.id} className="flex justify-between gap-2">
+                            <span>
+                              {payLabel(h.payType)} · {h.payAmount} {amountSuffix(h.payType)}
+                            </span>
+                            <span className="text-[var(--color-muted)] shrink-0">
+                              from {formatStartDate(h.effectiveFrom)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
 
               <label className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-cream)]">

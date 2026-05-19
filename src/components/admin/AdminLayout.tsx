@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { TreasurySummaryCards } from "./TreasurySummaryCards";
 
 const tabs = [
   { to: "/admin/team", label: "Team", desc: "Managers, cashiers & pay" },
@@ -47,6 +48,8 @@ export function AdminLayout() {
           );
         })}
       </nav>
+
+      <TreasurySummaryCards className="mb-6" compact />
 
       <Outlet />
     </div>
