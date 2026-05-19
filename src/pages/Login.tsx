@@ -6,12 +6,13 @@ import { Alert } from "../components/ui/Alert";
 
 export function Login() {
   const { user, login, loading } = useAuth();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   if (loading) return null;
+  if (user?.mustChangePassword) return <Navigate to="/change-password" replace />;
   if (user) return <Navigate to="/" replace />;
 
   const handleSubmit = async (e: FormEvent) => {
@@ -19,7 +20,7 @@ export function Login() {
     setError("");
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(username, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -43,15 +44,16 @@ export function Login() {
         >
           {error && <Alert variant="error">{error}</Alert>}
           <label className="field-label">
-            Email
+            Username
             <input
-              type="email"
+              type="text"
               required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              autoCapitalize="none"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="field-input text-lg"
-              placeholder="you@restaurant.com"
+              placeholder="your.username"
             />
           </label>
           <label className="field-label">
@@ -69,16 +71,6 @@ export function Login() {
             {submitting ? "Signing in…" : "Sign in"}
           </Button>
         </form>
-
-        <p className="mt-8 text-xs text-[var(--color-muted)] text-center leading-relaxed">
-          Demo accounts
-          <br />
-          <span className="font-mono text-[11px]">admin@saffron.local</span> / admin123
-          <br />
-          <span className="font-mono text-[11px]">manager@saffron.local</span> / manager123
-          <br />
-          <span className="font-mono text-[11px]">cashier@saffron.local</span> / cashier123
-        </p>
       </div>
     </div>
   );
