@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -13,9 +12,9 @@ import type { Role } from "../../types";
 import {
   dismissQuickGuide,
   tourStepsForRole,
-  type TourStep,
 } from "../../lib/onboarding";
 import { isNavTargetInMoreMenu, routeMatchesPath } from "../../lib/tourNav";
+import { tourDockReservePx, TOUR_SCROLL_TOP_MARGIN } from "../../lib/tourLayout";
 import { TOUR_CENTER } from "../../lib/tourTargets";
 import { roleLabel } from "../../lib/roles";
 import { Button } from "../ui/Button";
@@ -29,13 +28,10 @@ type Props = {
 
 type Rect = { top: number; left: number; width: number; height: number };
 
-const PAD = 12;
-const GAP = 20;
-const MAX_WAIT_MS = 6000;
-const TOOLTIP_MAX_W = 420;
-const TOOLTIP_MIN_H = 180;
-const STEP_LEAVE_MS = 220;
-const NAV_SETTLE_MS = 380;
+const PAD = 10;
+const MAX_WAIT_MS = 5000;
+const STEP_LEAVE_MS = 180;
+const NAV_SETTLE_MS = 400;
 
 function findTarget(selector: string): HTMLElement | null {
   const el = document.querySelector(`[data-tour="${selector}"]`) as HTMLElement | null;
@@ -86,12 +82,25 @@ function waitForTarget(
   requestAnimationFrame(tick);
 }
 
+function scrollTargetIntoView(el: HTMLElement, isMobile: boolean) {
+  const reserve = tourDockReservePx(isMobile);
+  const prevBottom = el.style.scrollMarginBottom;
+  const prevTop = el.style.scrollMarginTop;
+  el.style.scrollMarginBottom = `${reserve}px`;
+  el.style.scrollMarginTop = `${TOUR_SCROLL_TOP_MARGIN}px`;
+  el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  return () => {
+    el.style.scrollMarginBottom = prevBottom;
+    el.style.scrollMarginTop = prevTop;
+  };
+}
+
 function useIsMobile() {
   const [mobile, setMobile] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < 640
+    () => typeof window !== "undefined" && window.innerWidth < 768
   );
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 639px)");
+    const mq = window.matchMedia("(max-width: 767px)");
     const fn = () => setMobile(mq.matches);
     mq.addEventListener("change", fn);
     return () => mq.removeEventListener("change", fn);
@@ -103,8 +112,9 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
   const steps = useMemo(() => tourStepsForRole(role), [role]);
   const navigate = useNavigate();
   const location = useLocation();
-  const tooltipRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const focusedRef = useRef<HTMLElement | null>(null);
+  const scrollCleanupRef = useRef<(() => void) | null>(null);
   const aliveRef = useRef(true);
   const settleTimerRef = useRef<number | null>(null);
   const isMobile = useIsMobile();
@@ -115,13 +125,13 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
   const [holeRect, setHoleRect] = useState<Rect | null>(null);
   const [waiting, setWaiting] = useState(false);
   const [navPending, setNavPending] = useState(false);
-  const [tooltipHeight, setTooltipHeight] = useState(TOOLTIP_MIN_H);
   const [mounted, setMounted] = useState(false);
   const [contentVisible, setContentVisible] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const step = steps[stepIndex];
   const isCenter = step?.target === TOUR_CENTER;
+  const isDocked = !isCenter;
   const isLast = steps.length > 0 && stepIndex === steps.length - 1;
   const isIntro = stepIndex === 0 && isCenter;
   const progressPct = steps.length ? ((stepIndex + 1) / steps.length) * 100 : 0;
@@ -138,6 +148,8 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
   }, []);
 
   const clearFocusRing = useCallback(() => {
+    scrollCleanupRef.current?.();
+    scrollCleanupRef.current = null;
     const el = focusedRef.current;
     if (el?.isConnected) {
       el.classList.remove("tour-target-focus");
@@ -219,7 +231,10 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
       if (signal.cancelled || !aliveRef.current) return;
       if (rect) {
         const el = findTarget(step.target);
-        el?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+        if (el) {
+          scrollCleanupRef.current?.();
+          scrollCleanupRef.current = scrollTargetIntoView(el, isMobile);
+        }
         if (settleTimerRef.current != null) {
           window.clearTimeout(settleTimerRef.current);
         }
@@ -252,12 +267,6 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
   }, [step, stepIndex, navPending, isCenter, applyHole, role, isMobile, onOpenMoreMenu]);
 
   useLayoutEffect(() => {
-    const el = tooltipRef.current;
-    if (!el) return;
-    setTooltipHeight(el.offsetHeight || TOOLTIP_MIN_H);
-  }, [stepIndex, waiting, step?.title, step?.body, step?.tips?.length, contentVisible]);
-
-  useLayoutEffect(() => {
     clearFocusRing();
     if (!step || isCenter || waiting) return;
     const el = findTarget(step.target);
@@ -282,128 +291,101 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
     return null;
   }
 
-  const tooltipStyle = computeTooltipStyle(
-    holeRect,
-    step.placement ?? "auto",
-    tooltipHeight,
-    isCenter,
-    isMobile
-  );
-
-  // Allow advancing once navigation finished; don't block on missing highlight
   const canAdvance = !busy && !navPending;
 
+  const cardClass = [
+    "tour-card",
+    isCenter ? "tour-card--center" : "tour-card--dock",
+    mounted && contentVisible ? "tour-card--visible" : "tour-card--hidden",
+  ].join(" ");
+
   const ui = (
-    <div className={`fixed inset-0 z-[200] tour-root ${mounted ? "tour-root-visible" : ""}`}
+    <div className={`tour-root ${mounted ? "tour-root--visible" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="tour-title"
     >
       {isCenter || !holeRect ? (
-        <div className="tour-shade tour-shade-full" aria-hidden />
+        <div className="tour-shade tour-shade--full" aria-hidden />
       ) : (
-        <TourShadePanels hole={holeRect} />
+        <TourShadePanels hole={holeRect} docked={isDocked} isMobile={isMobile} />
       )}
 
-      {holeRect && !waiting && !isCenter && (
-        <span
-          className="tour-spotlight-label"
+      {holeRect && !waiting && isDocked && (
+        <div
+          className="tour-spotlight-ring"
           style={{
-            top: Math.max(12, holeRect.top - 36),
-            left: holeRect.left + holeRect.width / 2,
-            transform: "translateX(-50%)",
+            top: holeRect.top,
+            left: holeRect.left,
+            width: holeRect.width,
+            height: holeRect.height,
           }}
-        >
-          ↑ Look here
-        </span>
+          aria-hidden
+        />
       )}
 
-      {(waiting || navPending) && !isCenter && (
-        <div className="tour-status-banner" role="status">
-          <span className="tour-status-spinner" aria-hidden />
-          {navPending ? "Going to the next screen…" : "Finding this section…"}
+      {(waiting || navPending) && isDocked && (
+        <div className="tour-status" role="status">
+          <span className="tour-status__spinner" aria-hidden />
+          {navPending ? "Opening screen…" : "Locating section…"}
         </div>
       )}
 
       <div
-        ref={tooltipRef}
-        className={[
-          "tour-card",
-          isCenter ? "tour-card-center" : isMobile ? "tour-card-sheet" : "tour-card-floating",
-          mounted && contentVisible ? "tour-card-visible" : "tour-card-hidden",
-        ].join(" ")}
-        style={tooltipStyle}
+        ref={cardRef}
+        className={cardClass}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <header className="tour-card-header">
-          <div className="tour-card-header-top">
-            <div className="min-w-0">
-              {step.category && <p className="tour-category">{step.category}</p>}
-              <p className="tour-meta">
-                {stepIndex + 1} / {steps.length} · {roleLabel(role)}
+        <div className="tour-card__handle" aria-hidden />
+
+        <header className="tour-card__header">
+          <div className="tour-card__header-row">
+            <div className="min-w-0 flex-1">
+              {step.category && <p className="tour-card__category">{step.category}</p>}
+              <p className="tour-card__meta">
+                Step {stepIndex + 1} of {steps.length} · {roleLabel(role)}
               </p>
             </div>
-            <button type="button" onClick={finish} className="tour-close" aria-label="Close tour">
+            <button type="button" onClick={finish} className="tour-card__close" aria-label="Close tour">
               ×
             </button>
           </div>
-          <div className="tour-progress-track" aria-hidden>
-            <div className="tour-progress-fill" style={{ width: `${progressPct}%` }} />
+          <div className="tour-card__progress" aria-hidden>
+            <div className="tour-card__progress-fill" style={{ width: `${progressPct}%` }} />
           </div>
-          {!isMobile && steps.length <= 24 && (
-            <div className="tour-dots" aria-label={`Step ${stepIndex + 1} of ${steps.length}`}>
-              {steps.map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={busy}
-                  className={[
-                    "tour-dot",
-                    i === stepIndex ? "tour-dot-active" : i < stepIndex ? "tour-dot-done" : "",
-                  ].join(" ")}
-                  aria-label={`Step ${i + 1}`}
-                  aria-current={i === stepIndex ? "step" : undefined}
-                  onClick={() => goToStep(i)}
-                />
-              ))}
-            </div>
-          )}
         </header>
 
-        <div className="tour-card-body" key={stepIndex}>
+        <div className="tour-card__body" key={stepIndex}>
           {isIntro && (
-            <div className="tour-welcome-badge" aria-hidden>
+            <div className="tour-card__badge" aria-hidden>
               <span className="text-2xl">✦</span>
             </div>
           )}
-          <h2 id="tour-title" className="tour-title">
+          <h2 id="tour-title" className="tour-card__title">
             {step.title}
           </h2>
-          <p className="tour-body">{step.body}</p>
+          <p className="tour-card__text">{step.body}</p>
 
           {step.tips && step.tips.length > 0 && (
-            <ul className="tour-tips">
+            <ul className="tour-card__tips">
               {step.tips.map((tip, i) => (
-                <li key={`${stepIndex}-${i}-${tip.slice(0, 24)}`}>{tip}</li>
+                <li key={`${stepIndex}-${i}`}>{tip}</li>
               ))}
             </ul>
           )}
 
-          {!waiting && !isCenter && !targetRect && (
-            <div className="tour-miss-hint">
-              <strong>Highlight not visible?</strong>
-              <span>
-                {isMobile
-                  ? "Open More in the bottom bar if this item is in the menu, then tap Continue."
-                  : "Try the left sidebar, then tap Continue again."}
-              </span>
-            </div>
+          {isDocked && !waiting && !targetRect && (
+            <p className="tour-card__hint">
+              {isMobile
+                ? "Tip: open More in the bottom bar if this menu item is hidden there."
+                : "Tip: check the left sidebar — the highlighted area may be in the menu."}
+            </p>
           )}
         </div>
 
-        <footer className="tour-card-footer">
-          <label className="tour-checkbox">
+        <footer className="tour-card__footer">
+          <label className="tour-card__remember">
             <input
               type="checkbox"
               checked={remember}
@@ -411,10 +393,10 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
             />
             <span>Don&apos;t show on login</span>
           </label>
-          <div className="tour-actions">
+          <div className="tour-card__actions">
             <Button
               variant="ghost"
-              className="!py-2.5 !px-4"
+              className="!py-2.5 !px-4 shrink-0"
               onClick={() => (stepIndex === 0 ? finish() : goToStep(stepIndex - 1))}
               disabled={busy && stepIndex > 0}
             >
@@ -422,14 +404,14 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
             </Button>
             {!isLast ? (
               <Button
-                className="flex-1 !py-2.5 tour-btn-next"
+                className="flex-1 !py-2.5 min-w-0"
                 onClick={() => goToStep(stepIndex + 1)}
                 disabled={!canAdvance}
               >
                 Continue
               </Button>
             ) : (
-              <Button className="flex-1 !py-2.5 tour-btn-next" onClick={finish} disabled={!canAdvance}>
+              <Button className="flex-1 !py-2.5 min-w-0" onClick={finish} disabled={!canAdvance}>
                 Done
               </Button>
             )}
@@ -443,77 +425,26 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
   return createPortal(ui, document.body);
 }
 
-function computeTooltipStyle(
-  hole: Rect | null,
-  placement: TourStep["placement"],
-  tooltipHeight: number,
-  isCenter: boolean,
-  isMobile: boolean
-): CSSProperties {
-  const base: CSSProperties = { position: "fixed" };
-
-  if (isMobile) {
-    return {
-      ...base,
-      left: 0,
-      right: 0,
-      bottom: "calc(var(--nav-height) + env(safe-area-inset-bottom, 0px))",
-      width: "100%",
-      maxHeight: "min(58vh, 460px)",
-    };
-  }
-
-  if (isCenter || !hole) {
-    return {
-      ...base,
-      left: "50%",
-      top: "50%",
-      transform: "translate(-50%, -50%)",
-      width: `min(calc(100vw - 2rem), ${TOOLTIP_MAX_W}px)`,
-    };
-  }
-
+function TourShadePanels({
+  hole,
+  docked,
+  isMobile,
+}: {
+  hole: Rect;
+  docked: boolean;
+  isMobile: boolean;
+}) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const tw = Math.min(vw - 32, TOOLTIP_MAX_W);
-  const th = Math.min(tooltipHeight, vh - 48);
-  const prefer = placement === "auto" ? guessPlacement(hole, th) : placement;
-
-  let top = hole.top + hole.height + GAP;
-  let left = hole.left + hole.width / 2 - tw / 2;
-
-  if (prefer === "top") top = hole.top - GAP - th;
-  else if (prefer === "left") {
-    left = hole.left - GAP - tw;
-    top = hole.top + hole.height / 2 - th / 2;
-  } else if (prefer === "right") {
-    left = hole.left + hole.width + GAP;
-    top = hole.top + hole.height / 2 - th / 2;
-  }
-
-  left = Math.max(16, Math.min(left, vw - tw - 16));
-  // Keep card fully on screen (footer + buttons always reachable)
-  top = Math.max(16, Math.min(top, vh - th - 24));
-
-  return { ...base, top, left, width: tw };
-}
-
-function guessPlacement(hole: Rect, tooltipHeight: number): "top" | "bottom" {
-  const spaceBelow = window.innerHeight - (hole.top + hole.height);
-  const spaceAbove = hole.top;
-  if (spaceBelow >= tooltipHeight + GAP) return "bottom";
-  if (spaceAbove >= tooltipHeight + GAP) return "top";
-  return hole.top > window.innerHeight * 0.42 ? "top" : "bottom";
-}
-
-function TourShadePanels({ hole }: { hole: Rect }) {
-  const vw = window.innerWidth;
   const t = hole.top;
   const l = hole.left;
   const r = hole.left + hole.width;
   const b = hole.top + hole.height;
 
-  const panelStyle: CSSProperties = { transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)" };
+  const dockClearance = docked ? tourDockReservePx(isMobile) : 0;
+  const bottomShadeTop = Math.min(b, vh - dockClearance);
+
+  const panelStyle = { transition: "top 0.35s ease, left 0.35s ease, width 0.35s ease, height 0.35s ease" };
 
   return (
     <div className="tour-shade-panels" aria-hidden>
@@ -526,7 +457,10 @@ function TourShadePanels({ hole }: { hole: Rect }) {
         className="tour-shade"
         style={{ ...panelStyle, top: t, left: r, width: Math.max(0, vw - r), height: hole.height }}
       />
-      <div className="tour-shade" style={{ ...panelStyle, top: b, left: 0, right: 0, bottom: 0 }} />
+      <div
+        className="tour-shade"
+        style={{ ...panelStyle, top: bottomShadeTop, left: 0, right: 0, bottom: 0 }}
+      />
     </div>
   );
 }
