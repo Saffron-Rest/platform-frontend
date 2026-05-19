@@ -37,6 +37,7 @@ import { fmt } from "../lib/calc";
 import { reportDateRelativeLabel } from "../lib/reportDates";
 import { ReportContextBanner } from "../components/report/ReportContextBanner";
 import { ReportValidationPanel } from "../components/report/ReportValidationPanel";
+import { ReportActionBar } from "../components/report/ReportActionBar";
 
 import { todayLocalIso } from "../lib/dates";
 
@@ -572,7 +573,7 @@ export function EntryPage() {
             <ReportValidationPanel issues={validationIssues} ready={canSubmit} />
           )}
 
-          {!readOnly && (
+          {(!readOnly || locked) && (
             <ReportSummaryBar
               opening={summary.opening}
               sales={summary.sales}
@@ -635,27 +636,14 @@ export function EntryPage() {
           )}
 
           {!readOnly && (
-            <div className="action-bar md:static md:mt-6">
-              <div className="bg-white/95 md:bg-transparent backdrop-blur-md md:backdrop-blur-none rounded-2xl md:rounded-none border border-black/5 md:border-0 p-3 md:p-0 shadow-lg md:shadow-none flex flex-col gap-2">
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onClick={save}
-                  disabled={saving}
-                  className="py-3.5 text-base"
-                >
-                  {saving ? "Saving…" : isNew ? "Save draft" : "Save changes"}
-                </Button>
-                <Button
-                  fullWidth
-                  onClick={submit}
-                  disabled={saving || !canSubmit}
-                  className="py-3.5 text-base"
-                >
-                  {saving ? "Submitting…" : "Submit & lock"}
-                </Button>
-              </div>
-            </div>
+            <ReportActionBar
+              saving={saving}
+              isNew={isNew}
+              canSubmit={canSubmit}
+              difference={summary.difference}
+              onSave={save}
+              onSubmit={submit}
+            />
           )}
         </>
       )}

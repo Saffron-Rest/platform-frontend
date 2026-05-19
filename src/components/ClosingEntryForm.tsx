@@ -35,7 +35,10 @@ export function ClosingEntryForm({
         </p>
       </div>
 
-      <section className="bg-white rounded-2xl p-4 shadow-sm border border-black/5">
+      <section
+        id="report-section-opening"
+        className="report-section-anchor bg-white rounded-2xl p-4 shadow-sm border border-black/5"
+      >
         <h3 className="font-semibold text-base mb-3 text-[var(--color-saffron-dark)]">Opening</h3>
         <OpeningBalanceField
           value={data.openingBalance}
@@ -46,7 +49,10 @@ export function ClosingEntryForm({
         />
       </section>
 
-      <section className="bg-[var(--color-ink)] text-white rounded-2xl p-5 shadow-md">
+      <section
+        id="report-section-closing"
+        className="report-section-anchor bg-[var(--color-ink)] text-white rounded-2xl p-5 shadow-md"
+      >
         <h3 className="font-semibold text-lg mb-1">Closing count</h3>
         <p className="text-white/60 text-sm mb-4">Count all cash in the drawer before you leave.</p>
         <MoneyInput

@@ -43,7 +43,10 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }:
     line.invoices ?? (line.invoice ? [line.invoice] : []);
 
   return (
-    <section className="bg-white rounded-2xl p-4 shadow-sm border border-black/5 mb-4">
+    <section
+      id="report-section-expenses"
+      className="report-section-anchor bg-white rounded-2xl p-4 shadow-sm border border-black/5 mb-4"
+    >
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-lg text-[var(--color-saffron-dark)]">Expenses</h3>
         <span className="text-sm text-[var(--color-muted)]">

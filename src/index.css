@@ -113,4 +113,14 @@ input[type="number"] {
   .tab-pill-idle {
     @apply bg-white text-[var(--color-muted)] border border-black/[0.08] hover:border-black/15;
   }
+
+  .report-section-anchor {
+    scroll-margin-top: 5.5rem;
+  }
+
+  @media (min-width: 768px) {
+    .report-section-anchor {
+      scroll-margin-top: 1rem;
+    }
+  }
 }

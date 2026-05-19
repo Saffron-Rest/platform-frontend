@@ -33,6 +33,61 @@ function weekStartIso() {
 
 type Tab = "list" | "summary";
 
+function ReportListCard({ report }: { report: DailyEntry }) {
+  const sales = totalSalesFromEntry(report);
+  const submitted = report.status === "LOCKED";
+  const short = report.difference < -0.01;
+
+  return (
+    <Link
+      to={entryEditorUrl(report.date, report.cashierId)}
+      className={`block rounded-2xl border bg-white p-4 hover:shadow-md transition group ${
+        submitted
+          ? "border-black/8 hover:border-[var(--color-success)]/35"
+          : "border-[var(--color-saffron)]/25 hover:border-[var(--color-saffron)]/50"
+      }`}
+    >
+      <div className="flex gap-3">
+        <div
+          className={`w-1 shrink-0 rounded-full self-stretch min-h-[3rem] ${
+            submitted ? "bg-[var(--color-success)]/50" : "bg-[var(--color-saffron)]"
+          }`}
+          aria-hidden
+        />
+        <div className="flex-1 min-w-0 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold text-[var(--color-ink)] group-hover:text-[var(--color-saffron-dark)]">
+              {report.cashier?.name ?? "Cashier"}
+            </p>
+            <div className="mt-2">
+              <Badge variant={entryStatusBadge(report.status)}>
+                {submitted ? "Submitted" : "Draft"}
+              </Badge>
+            </div>
+            <p className="text-xs text-[var(--color-muted)] mt-2">
+              Sales {fmt(sales)}
+              {report.closingOnly && " · closing shift"}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Difference</p>
+            <p
+              className={`text-xl font-bold tabular-nums ${
+                short ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"
+              }`}
+            >
+              {fmt(report.difference)}
+            </p>
+            <p className="text-xs text-[var(--color-saffron)] font-medium mt-1 opacity-0 group-hover:opacity-100 transition">
+              Open →
+            </p>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 export function ShiftReports() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -86,7 +141,7 @@ export function ShiftReports() {
   }, [from, to, filterCashierId, filterStatus, tab]);
 
   useEffect(() => {
-    loadList();
+    void loadList();
   }, [loadList]);
 
   const sortedReports = useMemo(
@@ -97,6 +152,33 @@ export function ShiftReports() {
         return (a.cashier?.name ?? "").localeCompare(b.cashier?.name ?? "");
       }),
     [reports]
+  );
+
+  const groupedByDate = useMemo(() => {
+    const map = new Map<string, DailyEntry[]>();
+    for (const r of sortedReports) {
+      const list = map.get(r.date) ?? [];
+      list.push(r);
+      map.set(r.date, list);
+    }
+    return [...map.entries()].sort(([a], [b]) => b.localeCompare(a));
+  }, [sortedReports]);
+
+  const stats = useMemo(() => {
+    const draft = reports.filter((r) => r.status !== "LOCKED").length;
+    const submitted = reports.filter((r) => r.status === "LOCKED").length;
+    const sales = reports.reduce((s, r) => s + totalSalesFromEntry(r), 0);
+    return { draft, submitted, sales, total: reports.length };
+  }, [reports]);
+
+  const todayIsoVal = todayIso();
+  const todayReports = useMemo(
+    () => sortedReports.filter((r) => r.date === todayIsoVal),
+    [sortedReports, todayIsoVal]
+  );
+  const groupedExcludingToday = useMemo(
+    () => groupedByDate.filter(([date]) => date !== todayIsoVal),
+    [groupedByDate, todayIsoVal]
   );
 
   const applyPreset = (key: "today" | "week" | "month") => {
@@ -123,45 +205,41 @@ export function ShiftReports() {
 
   if (tab === "summary") {
     return (
-      <div>
-        <PageHeader
-          title="Shift reports"
-          subtitle="Totals grouped by day"
-          action={
-            <Button variant="secondary" className="!py-2.5 !px-4 text-sm" onClick={() => setTab("list")}>
-              ← Report list
-            </Button>
-          }
-        />
-        <TreasurySummaryCards className="mb-6" compact />
+      <div className="space-y-6">
+        <PageHeader title="Shift reports" subtitle="Totals grouped by day" />
+        <div className="flex gap-2 flex-wrap">
+          <button type="button" onClick={() => setTab("list")} className="tab-pill tab-pill-active">
+            ← Back to list
+          </button>
+        </div>
+        <TreasurySummaryCards compact />
         <AdminHistory embedded />
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="Shift reports"
         subtitle="Find, create, and edit cashier daily reports"
-        action={
-          <Button
-            variant="secondary"
-            className="!py-2.5 !px-4 text-sm"
-            onClick={() => setTab("summary")}
-          >
-            Summary by day
-          </Button>
-        }
       />
 
-      <TreasurySummaryCards className="mb-6" compact />
+      <div className="flex gap-2 flex-wrap">
+        <button type="button" onClick={() => setTab("list")} className="tab-pill tab-pill-active">
+          All reports
+        </button>
+        <button type="button" onClick={() => setTab("summary")} className="tab-pill tab-pill-idle">
+          Summary by day
+        </button>
+      </div>
 
-      <Card className="mb-6 !p-5 border-2 border-[var(--color-saffron)]/35 bg-gradient-to-br from-[var(--color-saffron)]/10 to-white">
-        <h2 className="font-semibold text-lg text-[var(--color-ink)]">Create or open a report</h2>
+      <TreasurySummaryCards compact />
+
+      <Card className="!p-5 border-2 border-[var(--color-saffron)]/35 bg-gradient-to-br from-[var(--color-saffron)]/10 to-white">
+        <h2 className="font-semibold text-lg text-[var(--color-ink)]">Open a report</h2>
         <p className="text-sm text-[var(--color-muted)] mt-1 mb-4">
-          Choose the <strong>business date</strong> and <strong>cashier</strong>. Opens the full report
-          form — create a new draft or edit an existing one.
+          Pick the business date and cashier. You will get the full form — new draft or existing report.
         </p>
         <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <label className="field-label">
@@ -193,9 +271,42 @@ export function ShiftReports() {
             Open report
           </Button>
         </div>
+        <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[var(--color-saffron)]/20">
+          <Button
+            variant="secondary"
+            className="!py-2 !px-3 text-sm"
+            onClick={() => {
+              setNewDate(todayIso());
+              applyPreset("today");
+            }}
+          >
+            Jump to today
+          </Button>
+        </div>
       </Card>
 
-      <Card className="mb-4 space-y-4">
+      {!loading && stats.total > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatChip label="Reports" value={String(stats.total)} />
+          <StatChip label="Drafts" value={String(stats.draft)} warn={stats.draft > 0} />
+          <StatChip label="Submitted" value={String(stats.submitted)} />
+          <StatChip label="Sales in range" value={fmt(stats.sales)} />
+        </div>
+      )}
+
+      {todayReports.length > 0 && from <= todayIsoVal && to >= todayIsoVal && (
+        <section>
+          <h2 className="section-title mb-3">Today</h2>
+          <div className="space-y-2">
+            {todayReports.map((r) => (
+              <ReportListCard key={r.id} report={r} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <Card className="space-y-4">
+        <h2 className="font-semibold text-[var(--color-ink)]">Browse reports</h2>
         <div className="flex flex-wrap gap-2">
           {(
             [
@@ -264,15 +375,10 @@ export function ShiftReports() {
             </select>
           </label>
         </div>
-        <Button variant="dark" fullWidth onClick={loadList} disabled={loading}>
-          {loading ? "Loading…" : "Refresh list"}
-        </Button>
       </Card>
 
       {error && (
-        <Alert variant="error" className="mb-4">
-          {error}
-        </Alert>
+        <Alert variant="error">{error}</Alert>
       )}
 
       {loading ? (
@@ -280,7 +386,7 @@ export function ShiftReports() {
       ) : sortedReports.length === 0 ? (
         <EmptyState
           title="No reports in this range"
-          description="Try a wider date range, or use “Open report” above to create one for a specific day."
+          description="Try a wider date range, or use “Open report” above to create one."
           action={
             <Button variant="secondary" onClick={openNewReport}>
               Create report
@@ -288,56 +394,43 @@ export function ShiftReports() {
           }
         />
       ) : (
-        <div className="space-y-2 pb-8">
-          <p className="text-sm text-[var(--color-muted)] mb-3">
-            <strong className="text-[var(--color-ink)]">{sortedReports.length}</strong> report
-            {sortedReports.length === 1 ? "" : "s"} · newest first
-          </p>
-          {sortedReports.map((r) => {
-            const sales = totalSalesFromEntry(r);
-            return (
-              <Link
-                key={r.id}
-                to={entryEditorUrl(r.date, r.cashierId)}
-                className="block rounded-2xl border border-black/8 bg-white p-4 hover:border-[var(--color-saffron)]/40 hover:shadow-md transition"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-[var(--color-ink)]">
-                      {r.cashier?.name ?? "Cashier"}
-                    </p>
-                    <p className="text-sm text-[var(--color-muted)] mt-0.5">
-                      {formatReportDateShort(r.date)}
-                      <span className="mx-1.5">·</span>
-                      <span className="text-[var(--color-saffron-dark)] font-medium">
-                        {reportDateRelativeLabel(r.date)}
-                      </span>
-                    </p>
-                    <div className="mt-2">
-                      <Badge variant={entryStatusBadge(r.status)}>
-                        {r.status === "LOCKED" ? "Submitted" : "Draft"}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide">
-                      Cash difference
-                    </p>
-                    <p
-                      className={`text-xl font-bold tabular-nums ${
-                        r.difference < -0.01 ? "text-[var(--color-danger)]" : "text-[var(--color-ink)]"
-                      }`}
-                    >
-                      {fmt(r.difference)}
-                    </p>
-                    <p className="text-xs text-[var(--color-muted)] mt-1">Sales {fmt(sales)}</p>
-                  </div>
+        <section className="space-y-6 pb-8">
+          {groupedExcludingToday.map(([date, dayReports]) => (
+              <div key={date}>
+                <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                  <h2 className="font-semibold text-[var(--color-ink)]">
+                    {formatReportDateShort(date)}
+                  </h2>
+                  <span className="text-sm text-[var(--color-saffron-dark)] font-medium">
+                    {reportDateRelativeLabel(date)}
+                    <span className="text-[var(--color-muted)] font-normal mx-1.5">·</span>
+                    {dayReports.length} report{dayReports.length === 1 ? "" : "s"}
+                  </span>
                 </div>
-              </Link>
-            );
-          })}
-        </div>
+                <div className="space-y-2">
+                  {dayReports.map((r) => (
+                    <ReportListCard key={r.id} report={r} />
+                  ))}
+                </div>
+              </div>
+            ))}
+        </section>
       )}
+    </div>
+  );
+}
+
+function StatChip({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2.5 ${
+        warn ? "border-amber-200 bg-amber-50" : "border-black/6 bg-white"
+      }`}
+    >
+      <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+      <p className={`text-lg font-bold tabular-nums mt-0.5 ${warn ? "text-amber-900" : "text-[var(--color-ink)]"}`}>
+        {value}
+      </p>
     </div>
   );
 }

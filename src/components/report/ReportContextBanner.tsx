@@ -1,5 +1,6 @@
 import type { User } from "../../types";
 import { formatReportDateLong, reportDateRelativeLabel } from "../../lib/reportDates";
+import { shiftIsoDate } from "../../lib/shiftDate";
 import { Badge, entryStatusBadge } from "../ui/Badge";
 
 type Props = {
@@ -30,6 +31,8 @@ export function ReportContextBanner({
   const relative = reportDateRelativeLabel(date);
   const statusUpper = status?.toUpperCase();
   const showStatus = statusUpper && statusUpper !== "NEW";
+  const canGoNext = !maxDate || date < maxDate;
+  const canGoPrev = true;
 
   return (
     <div
@@ -87,13 +90,33 @@ export function ReportContextBanner({
           </label>
           <label className="field-label">
             Business date
-            <input
-              type="date"
-              value={date}
-              max={maxDate}
-              onChange={(e) => onDateChange(e.target.value)}
-              className="field-input bg-white"
-            />
+            <div className="flex gap-2 mt-1.5">
+              <button
+                type="button"
+                disabled={!canGoPrev}
+                onClick={() => onDateChange(shiftIsoDate(date, -1))}
+                className="shrink-0 px-3 py-3 rounded-xl border border-black/10 bg-white text-lg font-medium hover:bg-[var(--color-cream)] disabled:opacity-40"
+                aria-label="Previous day"
+              >
+                ←
+              </button>
+              <input
+                type="date"
+                value={date}
+                max={maxDate}
+                onChange={(e) => onDateChange(e.target.value)}
+                className="field-input bg-white flex-1 !mt-0 min-w-0"
+              />
+              <button
+                type="button"
+                disabled={!canGoNext}
+                onClick={() => onDateChange(shiftIsoDate(date, 1))}
+                className="shrink-0 px-3 py-3 rounded-xl border border-black/10 bg-white text-lg font-medium hover:bg-[var(--color-cream)] disabled:opacity-40"
+                aria-label="Next day"
+              >
+                →
+              </button>
+            </div>
           </label>
         </div>
       )}

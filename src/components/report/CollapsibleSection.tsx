@@ -5,6 +5,9 @@ type Props = {
   summary?: string;
   defaultOpen?: boolean;
   accent?: boolean;
+  /** Anchor id for stepper scroll (e.g. opening, sales, closing) */
+  sectionId?: string;
+  done?: boolean;
   children: ReactNode;
 };
 
@@ -13,13 +16,16 @@ export function CollapsibleSection({
   summary,
   defaultOpen = true,
   accent,
+  sectionId,
+  done,
   children,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
     <section
-      className={`rounded-2xl border mb-4 overflow-hidden ${
+      id={sectionId ? `report-section-${sectionId}` : undefined}
+      className={`report-section-anchor rounded-2xl border mb-4 overflow-hidden ${
         accent
           ? "bg-[var(--color-ink)] text-white border-transparent"
           : "bg-white border-black/5 shadow-sm"
@@ -35,10 +41,20 @@ export function CollapsibleSection({
       >
         <div className="min-w-0">
           <h3
-            className={`font-semibold text-base ${
+            className={`font-semibold text-base flex items-center gap-2 ${
               accent ? "text-white" : "text-[var(--color-saffron-dark)]"
             }`}
           >
+            {done && (
+              <span
+                className={`inline-flex w-5 h-5 items-center justify-center rounded-full text-xs ${
+                  accent ? "bg-emerald-400/30 text-emerald-100" : "bg-emerald-100 text-[var(--color-success)]"
+                }`}
+                aria-hidden
+              >
+                ✓
+              </span>
+            )}
             {title}
           </h3>
           {summary && !open && (

@@ -13,6 +13,7 @@ import {
   totalSales,
 } from "../lib/calc";
 import { treasuryCardNet, totalDeliverySettledToCard } from "../lib/treasuryCalc";
+import { num } from "../lib/numbers";
 import { DeliverySettlementFields } from "./report/DeliverySettlementFields";
 
 type Props = {
@@ -59,6 +60,8 @@ export function EntryForm({
   return (
     <div>
       <CollapsibleSection
+        sectionId="opening"
+        done={num(data.openingBalance) > 0}
         title="Opening"
         summary={openingHint ? `Suggested ${fmt(data.openingBalance)}` : undefined}
         defaultOpen
@@ -72,7 +75,13 @@ export function EntryForm({
         />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Sales" summary={`Total ${fmt(salesTotal)}`} defaultOpen>
+      <CollapsibleSection
+        sectionId="sales"
+        done={salesTotal > 0}
+        title="Sales"
+        summary={`Total ${fmt(salesTotal)}`}
+        defaultOpen
+      >
         <MoneyInput
           label="Cash sales"
           value={data.cashSales}
@@ -175,7 +184,10 @@ export function EntryForm({
         invoicesEditable={invoicesEditable}
       />
 
-      <section className="bg-[var(--color-ink)] text-white rounded-2xl p-5 mb-4 shadow-md">
+      <section
+        id="report-section-closing"
+        className="report-section-anchor bg-[var(--color-ink)] text-white rounded-2xl p-5 mb-4 shadow-md"
+      >
         <h3 className="font-semibold text-lg mb-1">Closing — count the drawer</h3>
         <p className="text-white/60 text-sm mb-4">
           Count physical cash and enter it below. Difference updates as you type.
