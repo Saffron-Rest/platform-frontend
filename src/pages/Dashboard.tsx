@@ -98,7 +98,7 @@ export function Dashboard() {
             onClick={openQuickGuide}
             data-tour="tour-help"
           >
-            Quick guide
+            Guided tour
           </Button>
         }
       />

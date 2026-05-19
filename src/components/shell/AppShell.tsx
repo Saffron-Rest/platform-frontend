@@ -72,7 +72,7 @@ function AppShellInner() {
             data-tour="tour-help"
             className="w-full text-sm py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition font-semibold text-white/90"
           >
-            Quick guide
+            Guided tour
           </button>
           <button
             type="button"
