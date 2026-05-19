@@ -29,48 +29,60 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center px-6 py-12 bg-[var(--color-cream)]">
-      <div className="max-w-md mx-auto w-full">
-        <div className="mb-8">
-          <h1 className="font-[family-name:var(--font-display)] text-4xl md:text-5xl text-[var(--color-saffron-dark)]">
+    <div className="min-h-screen flex flex-col md:flex-row">
+      <div className="hidden md:flex md:w-[42%] lg:w-[38%] bg-[var(--color-ink)] text-white p-10 flex-col justify-between">
+        <div>
+          <h1 className="font-[family-name:var(--font-display)] text-4xl lg:text-5xl tracking-tight">
             Saffron
           </h1>
-          <p className="text-[var(--color-muted)] mt-2">Daily cash flow for your restaurant</p>
+          <p className="text-white/60 mt-3 text-lg max-w-xs leading-relaxed">
+            Daily cash flow, shift reports, payroll, and treasury — in one place.
+          </p>
         </div>
+        <p className="text-white/40 text-sm">Restaurant operations made simple</p>
+      </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white rounded-2xl p-6 md:p-8 shadow-lg shadow-black/5 border border-black/5 space-y-5"
-        >
-          {error && <Alert variant="error">{error}</Alert>}
-          <label className="field-label">
-            Username
-            <input
-              type="text"
-              required
-              autoComplete="username"
-              autoCapitalize="none"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="field-input text-lg"
-              placeholder="your.username"
-            />
-          </label>
-          <label className="field-label">
-            Password
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="field-input text-lg"
-            />
-          </label>
-          <Button type="submit" fullWidth disabled={submitting} className="py-4 text-lg">
-            {submitting ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
+      <div className="flex-1 flex flex-col justify-center px-6 py-12 bg-[var(--color-cream)]">
+        <div className="max-w-md mx-auto w-full">
+          <div className="md:hidden mb-8">
+            <h1 className="font-[family-name:var(--font-display)] text-4xl text-[var(--color-saffron-dark)]">
+              Saffron
+            </h1>
+            <p className="text-[var(--color-muted)] mt-2">Sign in to continue</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="surface-card p-6 md:p-8 space-y-5">
+            <h2 className="hidden md:block text-xl font-bold">Sign in</h2>
+            {error && <Alert variant="error">{error}</Alert>}
+            <label className="field-label">
+              Username
+              <input
+                type="text"
+                required
+                autoComplete="username"
+                autoCapitalize="none"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="field-input"
+                placeholder="your.username"
+              />
+            </label>
+            <label className="field-label">
+              Password
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="field-input"
+              />
+            </label>
+            <Button type="submit" fullWidth disabled={submitting} className="py-3.5">
+              {submitting ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );

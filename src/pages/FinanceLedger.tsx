@@ -191,8 +191,8 @@ export function FinanceLedger() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Finance ledger"
-        subtitle="Manual delivery income, post-close expenses, and all receipts in one place"
+        title="Finance"
+        subtitle="Delivery income outside shift reports, post-close purchases, and all invoices"
       />
 
       <Card className="space-y-3">
@@ -227,9 +227,7 @@ export function FinanceLedger() {
             key={key}
             type="button"
             onClick={() => setTab(key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium ${
-              tab === key ? "bg-[var(--color-saffron)] text-white" : "bg-black/5 hover:bg-black/10"
-            }`}
+            className={`tab-pill text-sm ${tab === key ? "tab-pill-active" : "tab-pill-idle"}`}
           >
             {label}
           </button>

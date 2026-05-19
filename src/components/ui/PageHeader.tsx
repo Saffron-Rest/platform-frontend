@@ -18,7 +18,7 @@ export function PageHeader({
 }) {
   return (
     <header className="mb-6 md:mb-8">
-      {back && <div className="mb-3">{back}</motionless>}
+      {back && <div className="mb-3">{back}</div>}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

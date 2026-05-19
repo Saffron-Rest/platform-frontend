@@ -9,9 +9,5 @@ type Props = {
 const pad = { sm: "p-3", md: "p-4", lg: "p-5" };
 
 export function Card({ children, className = "", padding = "md" }: Props) {
-  return (
-    <div className={`bg-white rounded-2xl border border-black/[0.06] shadow-sm ${pad[padding]} ${className}`}>
-      {children}
-    </div>
-  );
+  return <div className={`surface-card ${pad[padding]} ${className}`}>{children}</div>;
 }
