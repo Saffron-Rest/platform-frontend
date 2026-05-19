@@ -1,0 +1,17 @@
+# Production frontend — nginx on port 80, proxies /api to saffron-backend.
+name: saffron-frontend
+
+services:
+  web:
+    image: ${FRONTEND_IMAGE:?set FRONTEND_IMAGE}
+    container_name: saffron-frontend
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    networks:
+      - saffron_net
+
+networks:
+  saffron_net:
+    name: saffron_net
+    external: true

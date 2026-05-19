@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --color-saffron: #c45c26;
+  --color-saffron-dark: #9a4520;
+  --color-cream: #faf6f0;
+  --color-ink: #1a1614;
+  --color-muted: #6b635c;
+  --color-success: #2d6a4f;
+  --color-danger: #9b2226;
+  --color-card: #ffffff;
+  --nav-height: 4.5rem;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-cream);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .field-input {
+    @apply w-full mt-1 px-3 py-2.5 rounded-xl border border-black/10 bg-white text-base;
+    @apply focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]/40 focus:border-[var(--color-saffron)];
+    @apply disabled:opacity-60 disabled:bg-gray-50;
+  }
+
+  .field-label {
+    @apply block text-sm font-medium text-[var(--color-muted)];
+  }
+
+  .page-main {
+    padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 1rem);
+  }
+
+  @media (min-width: 768px) {
+    .page-main {
+      padding-bottom: 2rem;
+    }
+  }
+
+  .action-bar {
+    @apply fixed left-0 right-0 z-40 p-4 flex flex-col gap-2;
+    bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, var(--color-cream) 70%, transparent);
+  }
+
+  @media (min-width: 768px) {
+    .action-bar {
+      @apply static z-auto p-0 mt-4 bg-transparent;
+    }
+  }
+}
