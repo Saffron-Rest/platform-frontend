@@ -61,7 +61,7 @@ jobs:
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     environment:
       name: production
-      url: http://${{ secrets.VPS_HOST }}
+      url: http://76.13.130.67
     steps:
       - uses: actions/checkout@v4
 
