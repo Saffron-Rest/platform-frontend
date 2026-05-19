@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 const tabs = [
-  { to: "/admin/team", label: "Team", desc: "Cashiers & pay" },
+  { to: "/admin/team", label: "Team", desc: "Managers, cashiers & pay" },
   { to: "/admin/attendance", label: "Attendance", desc: "Schedule" },
   { to: "/admin/salaries", label: "Salaries", desc: "Payroll" },
   { to: "/admin/hours", label: "Hours", desc: "Open times" },

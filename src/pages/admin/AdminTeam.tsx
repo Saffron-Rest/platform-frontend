@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
-import type { PayType, User } from "../../types";
+import type { PayType, Role, User } from "../../types";
+import { roleLabel } from "../../lib/roles";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Alert } from "../../components/ui/Alert";
@@ -45,9 +46,11 @@ const emptyNew = {
 };
 
 type Filter = "all" | "active" | "inactive";
+type TeamSection = "cashiers" | "managers";
 
 export function AdminTeam() {
   const [users, setUsers] = useState<User[]>([]);
+  const [section, setSection] = useState<TeamSection>("cashiers");
   const [filter, setFilter] = useState<Filter>("active");
   const [showCreate, setShowCreate] = useState(false);
   const [newUser, setNewUser] = useState(emptyNew);
@@ -179,13 +182,31 @@ export function AdminTeam() {
     <div className="space-y-4">
       <PageHeader
         title="Team"
-        subtitle="Create cashiers, set pay type & amount, activate or deactivate"
+        subtitle="Create managers and cashiers, set pay for cashiers, activate or deactivate"
         action={
           <Button onClick={() => setShowCreate((v) => !v)}>
-            {showCreate ? "Cancel" : "+ Add cashier"}
+            {showCreate ? "Cancel" : section === "cashiers" ? "+ Add cashier" : "+ Add manager"}
           </Button>
         }
       />
+
+      <div className="flex gap-2 p-1 rounded-xl bg-[var(--color-cream)] w-fit">
+        {(["cashiers", "managers"] as TeamSection[]).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => {
+              setSection(s);
+              setShowCreate(false);
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium capitalize ${
+              section === s ? "bg-white shadow-sm text-[var(--color-ink)]" : "text-[var(--color-muted)]"
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
 
       {loadError && <Alert variant="error">{loadError}</Alert>}
       {msg && <Alert variant="success">{msg}</Alert>}
@@ -208,8 +229,8 @@ export function AdminTeam() {
 
       {showCreate && (
         <Card>
-          <form onSubmit={createCashier} className="space-y-4">
-            <h3 className="font-semibold">New cashier</h3>
+          <form onSubmit={createTeamMember} className="space-y-4">
+            <h3 className="font-semibold">New {section === "cashiers" ? "cashier" : "manager"}</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="field-label sm:col-span-2">
                 Name
@@ -252,29 +273,31 @@ export function AdminTeam() {
                 />
               </label>
             </div>
-            <PayFields
-              payType={newUser.payType}
-              payAmount={newUser.payAmount}
-              onType={(payType) => setNewUser({ ...newUser, payType })}
-              onAmount={(payAmount) => setNewUser({ ...newUser, payAmount })}
-            />
+            {section === "cashiers" && (
+              <PayFields
+                payType={newUser.payType}
+                payAmount={newUser.payAmount}
+                onType={(payType) => setNewUser({ ...newUser, payType })}
+                onAmount={(payAmount) => setNewUser({ ...newUser, payAmount })}
+              />
+            )}
             <Button type="submit" fullWidth disabled={saving}>
-              {saving ? "Creating…" : "Create cashier"}
+              {saving ? "Creating…" : `Create ${section === "cashiers" ? "cashier" : "manager"}`}
             </Button>
           </form>
         </Card>
       )}
 
-      {cashiers.length === 0 ? (
+      {teamMembers.length === 0 ? (
         <Card className="text-center py-10 text-[var(--color-muted)]">
-          <p>No cashiers in this view.</p>
+          <p>No {section} in this view.</p>
           <Button className="mt-4" onClick={() => setShowCreate(true)}>
-            Add first cashier
+            Add first {section === "cashiers" ? "cashier" : "manager"}
           </Button>
         </Card>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2">
-          {cashiers.map((u) => (
+          {teamMembers.map((u) => (
             <li
               key={u.id}
               className={`bg-white rounded-2xl border border-black/5 p-4 flex flex-col gap-3 ${
@@ -297,15 +320,22 @@ export function AdminTeam() {
                   <Badge variant="neutral">Active</Badge>
                 )}
               </div>
-              <p className="text-sm bg-[var(--color-cream)] rounded-lg px-3 py-2">
-                <span className="font-medium">{payLabel(u.payType ?? "HOURLY")}</span>
-                {(u.payAmount ?? u.hourlyRate) != null && (u.payAmount ?? u.hourlyRate)! > 0 && (
-                  <span className="text-[var(--color-muted)]">
-                    {" "}
-                    · {u.payAmount ?? u.hourlyRate} {amountSuffix(u.payType ?? "HOURLY")}
-                  </span>
-                )}
-              </p>
+              {u.role === "CASHIER" && (
+                <p className="text-sm bg-[var(--color-cream)] rounded-lg px-3 py-2">
+                  <span className="font-medium">{payLabel(u.payType ?? "HOURLY")}</span>
+                  {(u.payAmount ?? u.hourlyRate) != null && (u.payAmount ?? u.hourlyRate)! > 0 && (
+                    <span className="text-[var(--color-muted)]">
+                      {" "}
+                      · {u.payAmount ?? u.hourlyRate} {amountSuffix(u.payType ?? "HOURLY")}
+                    </span>
+                  )}
+                </p>
+              )}
+              {u.role === "MANAGER" && (
+                <p className="text-sm bg-[var(--color-cream)] rounded-lg px-3 py-2 text-[var(--color-muted)]">
+                  Manager — full access to reports and operations
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 mt-auto">
                 <Button variant="secondary" className="flex-1 !py-2 !text-sm" onClick={() => openEdit(u)}>
                   Edit
@@ -402,12 +432,14 @@ export function AdminTeam() {
                 />
               </label>
 
-              <PayFields
-                payType={editForm.payType}
-                payAmount={editForm.payAmount}
-                onType={(payType) => setEditForm({ ...editForm, payType })}
-                onAmount={(payAmount) => setEditForm({ ...editForm, payAmount })}
-              />
+              {editing.role === "CASHIER" && (
+                <PayFields
+                  payType={editForm.payType}
+                  payAmount={editForm.payAmount}
+                  onType={(payType) => setEditForm({ ...editForm, payType })}
+                  onAmount={(payAmount) => setEditForm({ ...editForm, payAmount })}
+                />
+              )}
 
               <label className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-cream)]">
                 <input
