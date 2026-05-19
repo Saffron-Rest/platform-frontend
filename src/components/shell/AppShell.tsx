@@ -11,9 +11,11 @@ import { Spinner } from "../ui/Spinner";
 import { SidebarNav } from "./SidebarNav";
 import { BottomNav } from "./BottomNav";
 import { MoreMenu } from "./MoreMenu";
+import { OnboardingProvider, useOnboarding } from "../../context/OnboardingContext";
 
-export function AppShell() {
+function AppShellInner() {
   const { user, loading, logout } = useAuth();
+  const { openQuickGuide } = useOnboarding();
   const loc = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -63,7 +65,14 @@ export function AppShell() {
           </div>
         </div>
         <SidebarNav groups={groups} pathname={loc.pathname} />
-        <div className="p-4 border-t border-white/10">
+        <div className="p-4 border-t border-white/10 space-y-2">
+          <button
+            type="button"
+            onClick={openQuickGuide}
+            className="w-full text-sm py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition font-semibold text-white/90"
+          >
+            Quick guide
+          </button>
           <button
             type="button"
             onClick={logout}
@@ -81,13 +90,22 @@ export function AppShell() {
               <h1 className="font-[family-name:var(--font-display)] text-xl tracking-tight">Saffron</h1>
               <p className="text-white/55 text-xs truncate">{user.name}</p>
             </Link>
-            <button
-              type="button"
-              onClick={logout}
-              className="shrink-0 text-xs font-semibold px-3 py-2 rounded-full bg-white/10 hover:bg-white/15"
-            >
-              Log out
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={openQuickGuide}
+                className="text-xs font-semibold px-3 py-2 rounded-full bg-white/5 hover:bg-white/10"
+              >
+                Guide
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="text-xs font-semibold px-3 py-2 rounded-full bg-white/10 hover:bg-white/15"
+              >
+                Log out
+              </button>
+            </div>
           </div>
         </header>
 
@@ -113,5 +131,13 @@ export function AppShell() {
         )}
       </div>
     </div>
+  );
+}
+
+export function AppShell() {
+  return (
+    <OnboardingProvider>
+      <AppShellInner />
+    </OnboardingProvider>
   );
 }

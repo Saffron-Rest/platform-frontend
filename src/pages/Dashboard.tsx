@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { fmt } from "../lib/calc";
 import { useAuth } from "../context/AuthContext";
+import { useOnboarding } from "../context/OnboardingContext";
+import { Button } from "../components/ui/Button";
 import { canOperate, isCashier } from "../lib/roles";
 import { navGroupsForRole, allNavLinks } from "../lib/navigation";
 import { TreasurySummaryCards } from "../components/admin/TreasurySummaryCards";
@@ -40,6 +42,7 @@ function monthStartIso() {
 
 export function Dashboard() {
   const { user } = useAuth();
+  const { openQuickGuide } = useOnboarding();
   const [data, setData] = useState<DashboardData | null>(null);
   const [monthTotals, setMonthTotals] = useState<MonthTotals | null>(null);
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
@@ -87,6 +90,11 @@ export function Dashboard() {
           canOperate(user?.role)
             ? `${data.date} · Sales today ${fmt(data.totalSales)}`
             : `${data.date} · Your shift`
+        }
+        action={
+          <Button variant="secondary" className="!py-2 !px-4 text-sm" onClick={openQuickGuide}>
+            Quick guide
+          </Button>
         }
       />
 
