@@ -16,7 +16,11 @@ push to main →  1 · Test (npm build)
 |--------|----------|
 | `VPS_HOST` | Yes — `76.13.130.67` |
 | `VPS_USER` | Yes — `root` |
-| `VPS_SSH_KEY` | Yes |
+| `SSH_PRIVATE_KEY` | Yes — full private key (`VPS_SSH_KEY` also works) |
+
+Add under **Settings → Secrets and variables → Actions → Repository secrets** (not only Environment).
+
+Copy key: `cat ~/.ssh/id_ed25519` — must include `-----BEGIN` / `-----END` lines.
 | `GHCR_TOKEN` | If package is private |
 | `HTTP_PORT` | Optional — default `80` |
 
