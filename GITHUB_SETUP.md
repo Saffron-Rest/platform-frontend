@@ -17,8 +17,17 @@ push to main →  1 · Test (npm build)
 | `VPS_HOST` | Yes — `76.13.130.67` |
 | `VPS_USER` | Yes — `root` |
 | `SSH_PRIVATE_KEY` | Yes — full private key (`VPS_SSH_KEY` also works) |
+| `SSH_PASSPHRASE` | Only if your private key has a passphrase |
 
 Add under **Settings → Secrets and variables → Actions → Repository secrets** (not only Environment).
+
+**Passphrase-protected key?** Either add `SSH_PASSPHRASE` with the key password, or (recommended for CI) create a deploy-only key with **no** passphrase:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/saffron_github_deploy -N "" -C "saffron-github-deploy"
+cat ~/.ssh/saffron_github_deploy.pub   # add in Hostinger → VPS → SSH keys
+cat ~/.ssh/saffron_github_deploy       # paste into GitHub secret SSH_PRIVATE_KEY
+```
 
 Copy key: `cat ~/.ssh/id_ed25519` — must include `-----BEGIN` / `-----END` lines.
 | `GHCR_TOKEN` | If package is private |

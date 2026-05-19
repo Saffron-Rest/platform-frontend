@@ -87,6 +87,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY || secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           source: deploy/
           target: /docker/saffron-frontend/
 
@@ -101,6 +102,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY || secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           envs: FRONTEND_IMAGE,HTTP_PORT,REGISTRY_USER,REGISTRY_PASSWORD
           script: |
             chmod +x /docker/saffron-frontend/deploy.sh
