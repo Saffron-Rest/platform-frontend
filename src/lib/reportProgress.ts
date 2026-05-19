@@ -1,5 +1,11 @@
 import type { EntryFormData, ExpenseLine } from "../types";
-import { cashDifference, closingBalance, totalExpenseLines, totalSales } from "./calc";
+import {
+  cashDifference,
+  closingBalance,
+  expenseTotalBySource,
+  totalExpenseLines,
+  totalSales,
+} from "./calc";
 import { fmt } from "./calc";
 import { num } from "./numbers";
 
@@ -184,10 +190,11 @@ export function reportSummary(form: EntryFormData, expenses: ExpenseLine[], clos
   const opening = num(form.openingBalance);
   const actual = num(form.actualCashCounted);
   if (closingOnly) {
+    const cashExp = expenseTotalBySource(expenses, "CASH");
     return {
       opening,
       sales: 0,
-      expected: opening,
+      expected: actual > 0 ? actual - cashExp : opening,
       actual,
       difference: actual - opening,
     };

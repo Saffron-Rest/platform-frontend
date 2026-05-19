@@ -34,9 +34,7 @@ export function ReportSummaryBar({
           </div>
         )}
         <div className="px-2 py-1.5 rounded-xl bg-white/80 md:bg-[var(--color-cream)]/50">
-          <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">
-            {closingOnly ? "Expected" : "Drawer"}
-          </p>
+          <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Expected</p>
           <p className="text-sm font-bold tabular-nums">{fmt(expected)}</p>
         </div>
         <div

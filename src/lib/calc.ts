@@ -47,8 +47,8 @@ export function totalExpenses(d: EntryFormData, expenses: ExpenseLine[]) {
   return totalPayouts(d) + totalExpenseLines(expenses);
 }
 
-/** Expected cash in drawer (platform sales excluded). */
-export function closingBalance(d: EntryFormData, expenses: ExpenseLine[]) {
+/** Book expected drawer: opening + cash sales − refunds − cash expenses − payouts. */
+export function bookExpectedCash(d: EntryFormData, expenses: ExpenseLine[]) {
   return (
     d.openingBalance +
     d.cashSales -
@@ -58,13 +58,22 @@ export function closingBalance(d: EntryFormData, expenses: ExpenseLine[]) {
   );
 }
 
+/** Expected cash: actual counted − cash expenses when counted, else book expected. */
+export function closingBalance(d: EntryFormData, expenses: ExpenseLine[]) {
+  const actual = num(d.actualCashCounted);
+  if (actual > 0) {
+    return actual - expenseTotalBySource(expenses, "CASH");
+  }
+  return bookExpectedCash(d, expenses);
+}
+
 /** Card account net: card sales − card refunds − card-paid expenses. */
 export function cardBalance(d: EntryFormData, expenses: ExpenseLine[]) {
   return d.cardSales - d.cardRefunds - expenseTotalBySource(expenses, "CARD");
 }
 
 export function cashDifference(d: EntryFormData, expenses: ExpenseLine[]) {
-  return d.actualCashCounted - closingBalance(d, expenses);
+  return num(d.actualCashCounted) - bookExpectedCash(d, expenses);
 }
 
 export function fmt(n: number) {

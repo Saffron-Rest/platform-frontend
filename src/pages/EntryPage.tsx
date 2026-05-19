@@ -22,7 +22,6 @@ import { useAuth } from "../context/AuthContext";
 import { canOperate } from "../lib/roles";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Alert } from "../components/ui/Alert";
-import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Spinner } from "../components/ui/Spinner";
 import { ReportStepper } from "../components/report/ReportStepper";
@@ -75,7 +74,7 @@ export function EntryPage() {
 
   const locked = entry?.status === "LOCKED";
   const closingOnly = entry?.closingOnly ?? shiftType === "CLOSING";
-  const readOnly = locked;
+  const readOnly = locked && !canManageReports;
   const scheduledOff = schedule != null && !schedule.working;
   const isNew = !entry;
 
@@ -467,7 +466,7 @@ export function EntryPage() {
             ? isNew
               ? "New shift report"
               : locked
-                ? "Submitted report"
+                ? "Edit submitted report"
                 : "Edit shift report"
             : isNew
               ? "New report"
@@ -519,9 +518,10 @@ export function EntryPage() {
       )}
 
       {locked && canManageReports && (
-        <Alert variant="warning" className="mb-4">
-          <strong>Submitted and locked.</strong> Unlock so {selectedCashier?.name ?? "the cashier"} can
-          fix totals in the cashier app, then submit again when the drawer balances.
+        <Alert variant="info" className="mb-4">
+          <strong>Submitted and locked.</strong> You can edit and save changes here. Use{" "}
+          <em>Unlock for cashier</em> only if {selectedCashier?.name ?? "they"} need to edit in the
+          cashier app.
           {entry?.submittedAt && (
             <span className="block mt-1 text-sm font-normal opacity-90">
               Submitted {new Date(entry.submittedAt).toLocaleString()}
@@ -609,32 +609,6 @@ export function EntryPage() {
             )}
           </div>
 
-          {locked && canManageReports && entry && (
-            <div className="action-bar md:static md:mt-6">
-              <div className="bg-white/95 md:bg-transparent backdrop-blur-md md:backdrop-blur-none rounded-2xl md:rounded-none border border-black/5 md:border-0 p-3 md:p-0 shadow-lg md:shadow-none flex flex-col gap-2">
-                {!closingOnly && (
-                  <Button
-                    variant="secondary"
-                    fullWidth
-                    onClick={saveReceipts}
-                    disabled={saving}
-                    className="py-3.5 text-base"
-                  >
-                    {saving ? "Saving…" : "Save receipt photos"}
-                  </Button>
-                )}
-                <Button
-                  fullWidth
-                  onClick={unlockForCashier}
-                  disabled={saving}
-                  className="py-3.5 text-base"
-                >
-                  {saving ? "Unlocking…" : `Unlock for ${selectedCashier?.name ?? "cashier"}`}
-                </Button>
-              </div>
-            </div>
-          )}
-
           {!readOnly && (
             <ReportActionBar
               saving={saving}
@@ -643,6 +617,14 @@ export function EntryPage() {
               difference={summary.difference}
               onSave={save}
               onSubmit={submit}
+              showSubmit={!locked}
+              onUnlock={locked && canManageReports ? unlockForCashier : undefined}
+              unlockLabel={`Unlock for ${selectedCashier?.name ?? "cashier"}`}
+              secondaryAction={
+                locked && canManageReports && !closingOnly
+                  ? { label: "Save receipt photos", onClick: saveReceipts }
+                  : undefined
+              }
             />
           )}
         </>
