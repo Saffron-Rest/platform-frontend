@@ -129,6 +129,7 @@ input[type="number"] {
   }
 
   .tour-root {
+    isolation: isolate;
     opacity: 0;
     transition: opacity 0.35s ease;
     pointer-events: none;
@@ -137,6 +138,13 @@ input[type="number"] {
   .tour-root-visible {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .tour-shade-panels {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    pointer-events: none;
   }
 
   .tour-shade,
@@ -266,20 +274,19 @@ input[type="number"] {
   }
 
   .tour-card {
-    z-index: 204;
+    position: fixed;
+    z-index: 210;
     display: flex;
     flex-direction: column;
     background: var(--color-surface);
     border: 1px solid rgba(26, 22, 20, 0.08);
     box-shadow: var(--shadow-card);
     pointer-events: auto;
-    transition:
-      opacity 0.22s ease,
-      transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.22s ease;
   }
 
   .tour-card-floating {
-    max-height: min(88vh, 560px);
+    max-height: min(calc(100vh - 2rem), 520px);
     border-radius: 1.25rem;
     overflow: hidden;
   }
@@ -292,20 +299,29 @@ input[type="number"] {
 
   .tour-card-sheet {
     border-radius: 1.25rem 1.25rem 0 0;
-    max-height: min(72vh, 520px);
+    max-height: min(58vh, 460px);
     overflow: hidden;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
     box-shadow: 0 -8px 40px rgba(26, 22, 20, 0.18);
+    /* Sit above mobile bottom nav */
+    bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px)) !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    transform: none !important;
   }
 
   .tour-card-visible {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    pointer-events: auto;
   }
 
   .tour-card-hidden {
     opacity: 0;
-    transform: translateY(12px) scale(0.98);
+    pointer-events: none;
+  }
+
+  .tour-card-center.tour-card-visible {
+    transform: translate(-50%, -50%) !important;
   }
 
   .tour-card-body {

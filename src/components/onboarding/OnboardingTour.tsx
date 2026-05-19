@@ -193,6 +193,8 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
     }
     setNavPending(true);
     navigate(step.route);
+    const t = window.setTimeout(() => setNavPending(false), 8000);
+    return () => window.clearTimeout(t);
   }, [step?.route, stepIndex, location.pathname, navigate]);
 
   useLayoutEffect(() => {
@@ -288,7 +290,8 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
     isMobile
   );
 
-  const canAdvance = !busy && !navPending && (!waiting || isCenter);
+  // Allow advancing once navigation finished; don't block on missing highlight
+  const canAdvance = !busy && !navPending;
 
   const ui = (
     <div className={`fixed inset-0 z-[200] tour-root ${mounted ? "tour-root-visible" : ""}`}
@@ -330,6 +333,8 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
           mounted && contentVisible ? "tour-card-visible" : "tour-card-hidden",
         ].join(" ")}
         style={tooltipStyle}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <header className="tour-card-header">
           <div className="tour-card-header-top">
@@ -421,7 +426,7 @@ export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props)
                 onClick={() => goToStep(stepIndex + 1)}
                 disabled={!canAdvance}
               >
-                {waiting || navPending ? "Please wait…" : "Continue"}
+                Continue
               </Button>
             ) : (
               <Button className="flex-1 !py-2.5 tour-btn-next" onClick={finish} disabled={!canAdvance}>
@@ -445,19 +450,22 @@ function computeTooltipStyle(
   isCenter: boolean,
   isMobile: boolean
 ): CSSProperties {
+  const base: CSSProperties = { position: "fixed" };
+
   if (isMobile) {
     return {
+      ...base,
       left: 0,
       right: 0,
-      bottom: 0,
+      bottom: "calc(var(--nav-height) + env(safe-area-inset-bottom, 0px))",
       width: "100%",
-      maxHeight: "min(72vh, 520px)",
-      transform: "none",
+      maxHeight: "min(58vh, 460px)",
     };
   }
 
   if (isCenter || !hole) {
     return {
+      ...base,
       left: "50%",
       top: "50%",
       transform: "translate(-50%, -50%)",
@@ -468,7 +476,7 @@ function computeTooltipStyle(
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const tw = Math.min(vw - 32, TOOLTIP_MAX_W);
-  const th = Math.min(tooltipHeight, vh - 40);
+  const th = Math.min(tooltipHeight, vh - 48);
   const prefer = placement === "auto" ? guessPlacement(hole, th) : placement;
 
   let top = hole.top + hole.height + GAP;
@@ -484,9 +492,10 @@ function computeTooltipStyle(
   }
 
   left = Math.max(16, Math.min(left, vw - tw - 16));
-  top = Math.max(16, Math.min(top, vh - th - 16));
+  // Keep card fully on screen (footer + buttons always reachable)
+  top = Math.max(16, Math.min(top, vh - th - 24));
 
-  return { top, left, width: tw, transform: "none" };
+  return { ...base, top, left, width: tw };
 }
 
 function guessPlacement(hole: Rect, tooltipHeight: number): "top" | "bottom" {
@@ -507,7 +516,7 @@ function TourShadePanels({ hole }: { hole: Rect }) {
   const panelStyle: CSSProperties = { transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)" };
 
   return (
-    <div className="absolute inset-0 z-[200]" aria-hidden>
+    <div className="tour-shade-panels" aria-hidden>
       <div className="tour-shade" style={{ ...panelStyle, top: 0, left: 0, right: 0, height: Math.max(0, t) }} />
       <div
         className="tour-shade"
