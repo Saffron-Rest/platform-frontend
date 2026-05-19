@@ -22,6 +22,7 @@ import { useAuth } from "../context/AuthContext";
 import { canOperate } from "../lib/roles";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Alert } from "../components/ui/Alert";
+import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Spinner } from "../components/ui/Spinner";
 import { ReportStepper } from "../components/report/ReportStepper";
@@ -72,7 +73,8 @@ export function EntryPage() {
   const [shiftType, setShiftType] = useState<ShiftType>("FULL");
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
 
-  const locked = entry?.status === "LOCKED";
+  const entryStatus = (entry?.status ?? "").toUpperCase();
+  const locked = entryStatus === "LOCKED";
   const closingOnly = entry?.closingOnly ?? shiftType === "CLOSING";
   const readOnly = locked && !canManageReports;
   const scheduledOff = schedule != null && !schedule.working;
@@ -179,8 +181,8 @@ export function EntryPage() {
     }
   };
 
-  const loadEntry = useCallback(async () => {
-    setLoading(true);
+  const loadEntry = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setMessage("");
     try {
       await loadShift();
@@ -211,7 +213,7 @@ export function EntryPage() {
       setMessage(err instanceof Error ? err.message : "Failed to load");
       setMessageError(true);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [canManageReports, selectedCashierId, entryDate, loadShift]);
 
@@ -273,6 +275,20 @@ export function EntryPage() {
       return;
     }
     loadEntry();
+  }, [loadEntry, canManageReports, selectedCashierId]);
+
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (canManageReports && !selectedCashierId) return;
+      void loadEntry({ silent: true });
+    };
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
   }, [loadEntry, canManageReports, selectedCashierId]);
 
   const persistExpenses = async (entryId: string, lines: ExpenseLine[]) => {
@@ -398,9 +414,10 @@ export function EntryPage() {
     setMessageError(false);
     try {
       const updated = await api<DailyEntry>(`/entries/${entry.id}/unlock`, { method: "POST" });
-      await applyEntry(updated);
+      await applyEntry({ ...updated, status: "DRAFT" });
+      await loadEntry({ silent: true });
       setMessage(
-        `Unlocked for ${who} — they can update in the cashier app · ${when}`
+        `Unlocked for ${who} — report is draft again; edit below or have them refresh the cashier app · ${when}`
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unlock failed");
@@ -513,7 +530,8 @@ export function EntryPage() {
 
       {locked && !canManageReports && (
         <Alert variant="warning" className="mb-4">
-          This report is locked. Contact your manager to make changes.
+          This report is locked. Contact your manager to unlock it, then refresh this page (or switch
+          away and back) to edit and submit again.
         </Alert>
       )}
 
@@ -609,7 +627,7 @@ export function EntryPage() {
             )}
           </div>
 
-          {!readOnly && (
+          {!readOnly ? (
             <ReportActionBar
               saving={saving}
               isNew={isNew}
@@ -626,6 +644,22 @@ export function EntryPage() {
                   : undefined
               }
             />
+          ) : (
+            entry && (
+              <div className="action-bar md:static md:mt-6">
+                <div className="bg-white/95 md:bg-transparent backdrop-blur-md md:backdrop-blur-none rounded-2xl md:rounded-none border border-black/5 md:border-0 p-3 md:p-0 shadow-lg md:shadow-none">
+                  <Button
+                    variant="secondary"
+                    fullWidth
+                    onClick={() => void loadEntry()}
+                    disabled={loading}
+                    className="py-3.5 text-base"
+                  >
+                    {loading ? "Refreshing…" : "Refresh report"}
+                  </Button>
+                </div>
+              </div>
+            )
           )}
         </>
       )}
