@@ -2,7 +2,7 @@ import { MoneyInput } from "./MoneyInput";
 import { ExpenseLines } from "./ExpenseLines";
 import { OpeningBalanceField } from "./OpeningBalanceField";
 import { CollapsibleSection } from "./report/CollapsibleSection";
-import type { EntryFormData, ExpenseLine, OpeningHint, Platforms } from "../types";
+import type { EntryFormData, ExpenseLine, OpeningHint, Platforms, TreasurySettings } from "../types";
 import {
   cardBalance,
   cashDifference,
@@ -12,6 +12,8 @@ import {
   totalPayouts,
   totalSales,
 } from "../lib/calc";
+import { treasuryCardNet, totalDeliverySettledToCard } from "../lib/treasuryCalc";
+import { DeliverySettlementFields } from "./report/DeliverySettlementFields";
 
 type Props = {
   data: EntryFormData;
@@ -23,6 +25,7 @@ type Props = {
   openingEditable?: boolean;
   platforms: Platforms;
   openingHint?: OpeningHint | null;
+  treasurySettings?: Pick<TreasurySettings, "cardSalesSettlementRate" | "platformSettlementRates">;
 };
 
 export function EntryForm({
@@ -35,15 +38,22 @@ export function EntryForm({
   openingEditable = true,
   platforms,
   openingHint,
+  treasurySettings,
 }: Props) {
   const set = (key: keyof EntryFormData, value: number | string) =>
     onChange({ ...data, [key]: value });
 
   const closing = closingBalance(data, expenses);
-  const cardNet = cardBalance(data, expenses);
   const diff = cashDifference(data, expenses);
   const cashExpenses = expenseTotalBySource(expenses, "CASH");
   const cardExpenses = expenseTotalBySource(expenses, "CARD");
+  const cardNetBasic = cardBalance(data, expenses);
+  const cardNetTreasury = treasurySettings
+    ? treasuryCardNet(data, cardExpenses, treasurySettings)
+    : cardNetBasic;
+  const deliveryToCard = treasurySettings
+    ? totalDeliverySettledToCard(data, treasurySettings.platformSettlementRates)
+    : 0;
   const salesTotal = totalSales(data);
 
   return (
@@ -103,6 +113,15 @@ export function EntryForm({
             value={data.otherPlatformSales}
             onChange={(v) => set("otherPlatformSales", v)}
             disabled={disabled}
+          />
+        )}
+        {treasurySettings && (
+          <DeliverySettlementFields
+            data={data}
+            onChange={onChange}
+            disabled={disabled}
+            platforms={platforms}
+            treasurySettings={treasurySettings}
           />
         )}
       </CollapsibleSection>
@@ -171,10 +190,17 @@ export function EntryForm({
             </p>
           </div>
           <div className="rounded-xl bg-white/5 p-3 border border-white/10">
-            <p className="text-white/70 text-xs uppercase tracking-wide">Card account (net)</p>
-            <p className="text-2xl font-bold tabular-nums mt-1">{fmt(cardNet)}</p>
+            <p className="text-white/70 text-xs uppercase tracking-wide">Card / bank (treasury)</p>
+            <p className="text-2xl font-bold tabular-nums mt-1">{fmt(cardNetTreasury)}</p>
             <p className="text-white/50 text-[11px] mt-2 leading-snug">
-              Card sales − refunds − card expenses ({fmt(cardExpenses)})
+              {treasurySettings ? (
+                <>
+                  Card sales + delivery to card ({fmt(deliveryToCard)}) − refunds − card expenses (
+                  {fmt(cardExpenses)})
+                </>
+              ) : (
+                <>Card sales − refunds − card expenses ({fmt(cardExpenses)})</>
+              )}
             </p>
           </div>
           <div className="sm:col-span-2">

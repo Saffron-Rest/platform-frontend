@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type {
-  PaymentSource,
-  PayrollEmployee,
-  PayrollReport,
-  SalaryPaymentRecord,
-} from "../types";
+import type { PaymentSource, PayrollEmployee, PayrollReport } from "../types";
 import { fmt } from "../lib/calc";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
+import { Badge } from "../components/ui/Badge";
 
 function monthBounds(year: number, month: number) {
   const from = `${year}-${String(month + 1).padStart(2, "0")}-01`;
@@ -38,12 +34,17 @@ function PaySalaryForm({
   periodTo: string;
   onPaid: () => void;
 }) {
-  const [amount, setAmount] = useState(String(employee.totalPay));
+  const remaining = employee.remainingPay ?? Math.max(0, employee.totalPay - (employee.paidAmount ?? 0));
+  const [amount, setAmount] = useState(String(remaining > 0 ? remaining : employee.totalPay));
   const [source, setSource] = useState<PaymentSource>("CASH");
   const [paidDate, setPaidDate] = useState(todayIso());
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+
+  useEffect(() => {
+    setAmount(String(remaining > 0 ? remaining : employee.totalPay));
+  }, [employee.userId, remaining, employee.totalPay]);
 
   const submit = async () => {
     setErr("");
@@ -75,9 +76,22 @@ function PaySalaryForm({
     );
   }
 
+  if (remaining <= 0.005 && (employee.paidAmount ?? 0) > 0) {
+    return (
+      <p className="text-sm text-emerald-700 py-2 font-medium">
+        Paid in full for this period ({fmt(employee.paidAmount ?? 0)} recorded).
+      </p>
+    );
+  }
+
   return (
     <div className="mt-3 p-3 rounded-xl bg-white border border-black/10 space-y-3">
       <p className="text-sm font-semibold">Record salary payment</p>
+      {(employee.paidAmount ?? 0) > 0 && (
+        <p className="text-xs text-[var(--color-muted)]">
+          Already paid {fmt(employee.paidAmount ?? 0)} · remaining {fmt(remaining)}
+        </p>
+      )}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="field-label">
           Amount (PLN)
@@ -138,7 +152,6 @@ export function SalariesPanel() {
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
   const [report, setReport] = useState<PayrollReport | null>(null);
-  const [payments, setPayments] = useState<SalaryPaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -150,12 +163,8 @@ export function SalariesPanel() {
     setLoading(true);
     setError("");
     try {
-      const [payroll, paid] = await Promise.all([
-        api<PayrollReport>(`/salaries?from=${from}&to=${to}`),
-        api<SalaryPaymentRecord[]>(`/treasury/salary-payments?from=${from}&to=${to}`),
-      ]);
+      const payroll = await api<PayrollReport>(`/salaries?from=${from}&to=${to}`);
       setReport(payroll);
-      setPayments(paid);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load salaries");
     } finally {
@@ -173,16 +182,21 @@ export function SalariesPanel() {
     setViewMonth(d.getMonth());
   };
 
+  const grandPaid = report?.grandTotalPaid ?? 0;
+  const grandRemaining = report?.grandTotalRemaining ?? Math.max(0, (report?.grandTotalPay ?? 0) - grandPaid);
+
   return (
     <div className="space-y-4">
       <Card className="space-y-2 text-sm text-[var(--color-muted)]">
-        <h3 className="font-semibold text-[var(--color-ink)]">How pay is calculated</h3>
+        <h3 className="font-semibold text-[var(--color-ink)]">How pay works</h3>
         <p>
-          Delivery sales only partly increase card balance — set rates in{" "}
-          <Link to="/admin/settings" className="text-[var(--color-saffron)] font-medium">
-            Settings → Treasury
+          <strong>Earned</strong> is calculated from attendance. <strong>Paid</strong> is what you recorded
+          as payouts (reduces treasury cash/card). P&amp;L uses amounts actually paid in the selected dates.
+        </p>
+        <p>
+          <Link to="/admin/payouts" className="text-[var(--color-saffron)] font-medium">
+            View all payouts with filters →
           </Link>
-          . Record each payout below and choose cash or card.
         </p>
       </Card>
 
@@ -209,94 +223,126 @@ export function SalariesPanel() {
         <p className="text-center text-[var(--color-muted)] py-8">Calculating salaries…</p>
       ) : report ? (
         <>
-          <div className="bg-[var(--color-ink)] text-white rounded-2xl p-4 flex justify-between items-center">
-            <div>
-              <p className="text-white/70 text-sm">Total payroll</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="bg-[var(--color-ink)] text-white rounded-2xl p-4">
+              <p className="text-white/70 text-sm">Earned</p>
               <p className="text-2xl font-bold tabular-nums">{fmt(report.grandTotalPay)}</p>
             </div>
-            <div className="text-right">
-              <p className="text-white/70 text-sm">Hours logged</p>
-              <p className="text-xl font-semibold tabular-nums">{report.grandTotalHours.toFixed(1)} h</p>
+            <div className="bg-emerald-700 text-white rounded-2xl p-4">
+              <p className="text-white/80 text-sm">Paid</p>
+              <p className="text-2xl font-bold tabular-nums">{fmt(grandPaid)}</p>
+            </div>
+            <div className="bg-amber-600 text-white rounded-2xl p-4">
+              <p className="text-white/80 text-sm">Remaining</p>
+              <p className="text-2xl font-bold tabular-nums">{fmt(grandRemaining)}</p>
             </div>
           </div>
-
-          {payments.length > 0 && (
-            <Card className="space-y-2">
-              <h3 className="font-semibold text-sm">Payments this month</h3>
-              <ul className="space-y-1 text-sm">
-                {payments.map((p) => (
-                  <li
-                    key={p.id}
-                    className="flex justify-between gap-2 py-1.5 border-b border-black/5 last:border-0"
-                  >
-                    <span>
-                      {p.paidDate} · {p.employeeName} ·{" "}
-                      <span className="text-[var(--color-muted)]">{p.source.toLowerCase()}</span>
-                    </span>
-                    <span className="font-medium tabular-nums">{fmt(p.amount)}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          <p className="text-xs text-center text-[var(--color-muted)]">
+            {report.grandTotalHours.toFixed(1)} hours logged this period
+          </p>
 
           <ul className="space-y-3">
-            {report.employees.map((e) => (
-              <li key={e.userId} className="bg-white rounded-2xl border border-black/5 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setExpanded(expanded === e.userId ? null : e.userId)}
-                  className="w-full p-4 text-left flex flex-wrap items-center justify-between gap-3 hover:bg-[var(--color-cream)]/50"
-                >
-                  <div className="min-w-0">
-                    <p className="font-semibold">{e.name}</p>
-                    <p className="text-sm text-[var(--color-muted)]">
-                      {e.payTypeLabel} · {e.payAmount} {e.payAmountLabel}
-                    </p>
-                    <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                      {e.shiftCount} day{e.shiftCount === 1 ? "" : "s"} · {e.totalHours.toFixed(1)} h
-                    </p>
-                  </div>
-                  <p className="text-lg font-bold tabular-nums text-[var(--color-saffron-dark)]">
-                    {fmt(e.totalPay)}
-                  </p>
-                </button>
+            {report.employees.map((e) => {
+              const paid = e.paidAmount ?? 0;
+              const remaining = e.remainingPay ?? Math.max(0, e.totalPay - paid);
+              return (
+                <li key={e.userId} className="bg-white rounded-2xl border border-black/5 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(expanded === e.userId ? null : e.userId)}
+                    className="w-full p-4 text-left flex flex-wrap items-center justify-between gap-3 hover:bg-[var(--color-cream)]/50"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold">{e.name}</p>
+                        {e.fullyPaid && e.totalPay > 0 && (
+                          <Badge variant="locked">Paid</Badge>
+                        )}
+                        {paid > 0 && remaining > 0.01 && (
+                          <Badge variant="neutral">Partial</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-[var(--color-muted)]">
+                        {e.payTypeLabel} · {e.payAmount} {e.payAmountLabel}
+                      </p>
+                      <p className="text-xs text-[var(--color-muted)] mt-0.5">
+                        {e.shiftCount} day{e.shiftCount === 1 ? "" : "s"} · {e.totalHours.toFixed(1)} h
+                        {paid > 0 && (
+                          <span>
+                            {" "}
+                            · paid {fmt(paid)}
+                            {remaining > 0.01 && ` · owed ${fmt(remaining)}`}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide">Earned</p>
+                      <p className="text-lg font-bold tabular-nums text-[var(--color-saffron-dark)]">
+                        {fmt(e.totalPay)}
+                      </p>
+                      {remaining > 0.01 && (
+                        <p className="text-sm font-medium text-amber-700 tabular-nums">
+                          Owed {fmt(remaining)}
+                        </p>
+                      )}
+                    </div>
+                  </button>
 
-                {expanded === e.userId && (
-                  <div className="px-4 pb-4 border-t border-black/5 bg-[var(--color-cream)]/30">
-                    <p className="text-xs text-[var(--color-muted)] py-2">{e.calculationSummary}</p>
-                    {e.shifts.length > 0 ? (
-                      <ul className="space-y-1">
-                        {e.shifts.map((s) => (
-                          <li
-                            key={s.date}
-                            className="flex justify-between text-sm py-1.5 px-2 rounded-lg bg-white/80"
-                          >
-                            <span>
-                              {s.date} · {s.hoursLabel}
-                            </span>
-                            <span className="tabular-nums text-right text-[var(--color-muted)]">
-                              {s.hours.toFixed(1)} h · {fmt(s.pay)}
-                              {s.payNote && (
-                                <span className="block text-[10px]">{s.payNote}</span>
-                              )}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-[var(--color-muted)]">No attendance this period.</p>
-                    )}
-                    <PaySalaryForm
-                      employee={e}
-                      periodFrom={from}
-                      periodTo={to}
-                      onPaid={() => setRefreshKey((k) => k + 1)}
-                    />
-                  </div>
-                )}
-              </li>
-            ))}
+                  {expanded === e.userId && (
+                    <div className="px-4 pb-4 border-t border-black/5 bg-[var(--color-cream)]/30">
+                      <p className="text-xs text-[var(--color-muted)] py-2">{e.calculationSummary}</p>
+                      {(e.payments?.length ?? 0) > 0 && (
+                        <ul className="mb-3 text-sm space-y-1">
+                          {e.payments!.map((p) => (
+                            <li
+                              key={p.id}
+                              className="flex justify-between py-1 px-2 rounded-lg bg-white/80"
+                            >
+                              <span>
+                                {p.paidDate} · {p.source.toLowerCase()}
+                                {p.notes && (
+                                  <span className="text-[var(--color-muted)]"> · {p.notes}</span>
+                                )}
+                              </span>
+                              <span className="font-medium tabular-nums">{fmt(p.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {e.shifts.length > 0 ? (
+                        <ul className="space-y-1">
+                          {e.shifts.map((s) => (
+                            <li
+                              key={s.date}
+                              className="flex justify-between text-sm py-1.5 px-2 rounded-lg bg-white/80"
+                            >
+                              <span>
+                                {s.date} · {s.hoursLabel}
+                              </span>
+                              <span className="tabular-nums text-right text-[var(--color-muted)]">
+                                {s.hours.toFixed(1)} h · {fmt(s.pay)}
+                                {s.payNote && (
+                                  <span className="block text-[10px]">{s.payNote}</span>
+                                )}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-[var(--color-muted)]">No attendance this period.</p>
+                      )}
+                      <PaySalaryForm
+                        employee={e}
+                        periodFrom={from}
+                        periodTo={to}
+                        onPaid={() => setRefreshKey((k) => k + 1)}
+                      />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </>
       ) : null}

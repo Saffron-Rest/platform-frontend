@@ -36,6 +36,9 @@ type ProfitLossResponse = {
   generatedAt: string;
   currency: string;
   includeLabor: boolean;
+  laborUsesPaidAmounts?: boolean;
+  laborAccrued?: number;
+  laborPaid?: number;
   footerNote: string;
   margins: {
     grossProfit: number;
@@ -191,7 +194,7 @@ export function ProfitLoss() {
               onChange={(e) => setIncludeLabor(e.target.checked)}
               className="rounded border-black/20"
             />
-            Include payroll labor (from attendance)
+            Include salary cost (paid payouts in date range, or earned if none paid yet)
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -222,6 +225,14 @@ export function ProfitLoss() {
             {data.from} → {data.to} · <strong>{data.reportCount}</strong>{" "}
             {data.reportCount === 1 ? "report" : "reports"} · Updated{" "}
             {new Date(data.generatedAt).toLocaleString()}
+            {data.includeLabor && data.laborUsesPaidAmounts && data.laborPaid != null && (
+              <span className="block mt-1">
+                Labor line uses salary paid in this range ({fmt(data.laborPaid)}).
+                {data.laborAccrued != null && data.laborAccrued > data.laborPaid + 0.01 && (
+                  <span> Accrued from attendance: {fmt(data.laborAccrued)}.</span>
+                )}
+              </span>
+            )}
           </p>
 
           <div className="grid sm:grid-cols-3 gap-3 mb-6">

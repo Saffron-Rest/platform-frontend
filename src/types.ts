@@ -75,6 +75,17 @@ export type PayrollShiftRow = {
   payNote?: string;
 };
 
+export type PayrollPaymentRef = {
+  id: string;
+  userId: string;
+  amount: number;
+  paidDate: string;
+  source: PaymentSource;
+  periodFrom?: string;
+  periodTo?: string;
+  notes?: string;
+};
+
 export type PayrollEmployee = {
   userId: string;
   name: string;
@@ -87,7 +98,14 @@ export type PayrollEmployee = {
   calculationSummary: string;
   shiftCount: number;
   totalHours: number;
+  /** Earned from attendance this period */
   totalPay: number;
+  /** Already recorded as paid for this period */
+  paidAmount: number;
+  /** Still owed (earned − paid) */
+  remainingPay: number;
+  fullyPaid?: boolean;
+  payments?: PayrollPaymentRef[];
   shifts: PayrollShiftRow[];
 };
 
@@ -110,6 +128,9 @@ export type PayrollReport = {
   employees: PayrollEmployee[];
   grandTotalHours: number;
   grandTotalPay: number;
+  grandTotalPaid: number;
+  grandTotalRemaining: number;
+  periodPayments?: PayrollPaymentRef[];
   rules: { payType: string; text: string }[];
 };
 
@@ -179,6 +200,12 @@ export type DailyEntry = {
   uberEatsSales: number;
   glovoSales: number;
   otherPlatformSales: number;
+  /** Manual override — how much of delivery sales counts toward card/bank (null = use Settings %). */
+  woltSettledToCard?: number | null;
+  boltSettledToCard?: number | null;
+  uberEatsSettledToCard?: number | null;
+  glovoSettledToCard?: number | null;
+  otherSettledToCard?: number | null;
   cashRefunds: number;
   cardRefunds: number;
   platformRefunds: number;
@@ -218,6 +245,12 @@ export type EntryFormData = {
   uberEatsSales: number;
   glovoSales: number;
   otherPlatformSales: number;
+  /** Manual override — how much of delivery sales counts toward card/bank (null = use Settings %). */
+  woltSettledToCard?: number | null;
+  boltSettledToCard?: number | null;
+  uberEatsSettledToCard?: number | null;
+  glovoSettledToCard?: number | null;
+  otherSettledToCard?: number | null;
   cashRefunds: number;
   cardRefunds: number;
   platformRefunds: number;

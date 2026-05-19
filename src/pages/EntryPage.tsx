@@ -15,6 +15,7 @@ import {
   type OpeningHint,
   type ShiftType,
   type User,
+  type TreasurySettings,
   type WorkSchedule,
 } from "../types";
 import { useAuth } from "../context/AuthContext";
@@ -50,6 +51,9 @@ export function EntryPage() {
   const [entry, setEntry] = useState<DailyEntry | null>(null);
   const [form, setForm] = useState<EntryFormData>(emptyEntryForm());
   const [expenses, setExpenses] = useState<ExpenseLine[]>([]);
+  const [treasurySettings, setTreasurySettings] = useState<
+    Pick<TreasurySettings, "cardSalesSettlementRate" | "platformSettlementRates"> | null
+  >(null);
   const [platforms, setPlatforms] = useState<Platforms>({
     wolt: true,
     bolt: true,
@@ -232,6 +236,11 @@ export function EntryPage() {
 
   useEffect(() => {
     api<{ platforms: Platforms }>("/settings").then((s) => setPlatforms(s.platforms));
+    api<Pick<TreasurySettings, "cardSalesSettlementRate" | "platformSettlementRates">>(
+      "/treasury/settlement-defaults"
+    )
+      .then(setTreasurySettings)
+      .catch(() => setTreasurySettings(null));
     if (canManageReports) {
       api<User[]>("/users")
         .then((list) => {
@@ -594,6 +603,7 @@ export function EntryPage() {
                 openingEditable={canManageReports && !readOnly}
                 platforms={platforms}
                 openingHint={openingHint}
+                treasurySettings={treasurySettings ?? undefined}
               />
             )}
           </div>

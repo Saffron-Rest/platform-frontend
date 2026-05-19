@@ -5,6 +5,7 @@ const tabs = [
   { to: "/admin/team", label: "Team", desc: "Managers, cashiers & pay" },
   { to: "/admin/attendance", label: "Attendance", desc: "Schedule" },
   { to: "/admin/salaries", label: "Salaries", desc: "Payroll" },
+  { to: "/admin/payouts", label: "Payouts", desc: "Paid out" },
   { to: "/admin/hours", label: "Hours", desc: "Open times" },
   { to: "/admin/audit", label: "Audit", desc: "Activity log" },
   { to: "/admin/settings", label: "Settings", desc: "Platforms" },

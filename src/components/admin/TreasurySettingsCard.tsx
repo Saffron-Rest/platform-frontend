@@ -63,9 +63,9 @@ export function TreasurySettingsCard() {
     <Card className="space-y-4">
       <h3 className="font-semibold">Cash & card balances</h3>
       <p className="text-sm text-[var(--color-muted)]">
-        Starting balances and how much of delivery sales reach your bank (e.g. 400 PLN on Wolt at 50% → 200
-        PLN to card). Locked shift reports update balances; record salary payouts from cash or card on
-        Salaries.
+        Starting balances and default % for delivery sales reaching your bank (e.g. 400 PLN on Wolt at 50% →
+        200 PLN). On each shift report you can override the exact amount to card when it differs. Locked
+        reports update balances; record salary payouts on Salaries.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">

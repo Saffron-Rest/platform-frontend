@@ -16,6 +16,7 @@ import { AdminLayout } from "./components/admin/AdminLayout";
 import { AdminTeam } from "./pages/admin/AdminTeam";
 import { AdminAttendance } from "./pages/admin/AdminAttendance";
 import { AdminSalaries } from "./pages/admin/AdminSalaries";
+import { AdminPayouts } from "./pages/admin/AdminPayouts";
 import { AdminRestaurantHours } from "./pages/admin/AdminRestaurantHours";
 import { AdminSettings } from "./pages/admin/AdminSettings";
 import { AdminAudit } from "./pages/admin/AdminAudit";
@@ -45,6 +46,7 @@ export default function App() {
                 <Route path="team" element={<AdminTeam />} />
                 <Route path="attendance" element={<AdminAttendance />} />
                 <Route path="salaries" element={<AdminSalaries />} />
+                <Route path="payouts" element={<AdminPayouts />} />
                 <Route path="hours" element={<AdminRestaurantHours />} />
                 <Route path="settings" element={<AdminSettings />} />
               </Route>
