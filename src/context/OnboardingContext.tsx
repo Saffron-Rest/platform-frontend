@@ -17,16 +17,25 @@ type OnboardingContextValue = {
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
-export function OnboardingProvider({ children }: { children: ReactNode }) {
+type ProviderProps = {
+  children: ReactNode;
+  onOpenMoreMenu?: () => void;
+};
+
+export function OnboardingProvider({ children, onOpenMoreMenu }: ProviderProps) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    if (!isQuickGuideDismissed(user.role, user.id)) {
-      const t = window.setTimeout(() => setOpen(true), 1200);
-      return () => window.clearTimeout(t);
-    }
+    if (isQuickGuideDismissed(user.role, user.id)) return;
+
+    const t = window.setTimeout(() => {
+      if (document.visibilityState === "visible") {
+        setOpen(true);
+      }
+    }, 1200);
+    return () => window.clearTimeout(t);
   }, [user?.id, user?.role]);
 
   const openQuickGuide = useCallback(() => setOpen(true), []);
@@ -36,11 +45,12 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   return (
     <OnboardingContext.Provider value={value}>
       {children}
-      {user && open && (
+      {user && open && typeof document !== "undefined" && (
         <OnboardingTour
           role={user.role}
           userId={user.id}
           onClose={() => setOpen(false)}
+          onOpenMoreMenu={onOpenMoreMenu}
         />
       )}
     </OnboardingContext.Provider>

@@ -191,6 +191,20 @@ export function Dashboard() {
         </Card>
       )}
 
+      {isCashier(user?.role) && data.entries.length === 0 && (
+        <HubSection title="Your report" tourId="tour-your-report">
+          <Card className="!p-5 text-center">
+            <p className="font-semibold">No report started yet</p>
+            <p className="text-sm text-[var(--color-muted)] mt-1">
+              Open <strong>Shift report</strong> from quick actions to begin today&apos;s entry.
+            </p>
+            <Link to="/entry" className="inline-block mt-4">
+              <Button>Open shift report</Button>
+            </Link>
+          </Card>
+        </HubSection>
+      )}
+
       {data.entries.length > 0 && (
         <HubSection
           title={canOperate(user?.role) ? "Today’s reports" : "Your report"}

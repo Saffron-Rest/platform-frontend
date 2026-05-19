@@ -13,11 +13,16 @@ import { BottomNav } from "./BottomNav";
 import { MoreMenu } from "./MoreMenu";
 import { OnboardingProvider, useOnboarding } from "../../context/OnboardingContext";
 
-function AppShellInner() {
+function AppShellInner({
+  moreOpen,
+  setMoreOpen,
+}: {
+  moreOpen: boolean;
+  setMoreOpen: (open: boolean) => void;
+}) {
   const { user, loading, logout } = useAuth();
   const { openQuickGuide } = useOnboarding();
   const loc = useLocation();
-  const [moreOpen, setMoreOpen] = useState(false);
 
   const groups = useMemo(() => navGroupsForRole(user?.role), [user?.role]);
   const primary = useMemo(() => primaryNavLinks(groups), [groups]);
@@ -137,9 +142,10 @@ function AppShellInner() {
 }
 
 export function AppShell() {
+  const [moreOpen, setMoreOpen] = useState(false);
   return (
-    <OnboardingProvider>
-      <AppShellInner />
+    <OnboardingProvider onOpenMoreMenu={() => setMoreOpen(true)}>
+      <AppShellInner moreOpen={moreOpen} setMoreOpen={setMoreOpen} />
     </OnboardingProvider>
   );
 }

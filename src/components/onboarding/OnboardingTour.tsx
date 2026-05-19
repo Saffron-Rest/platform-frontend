@@ -2,10 +2,12 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { Role } from "../../types";
 import {
@@ -13,6 +15,7 @@ import {
   tourStepsForRole,
   type TourStep,
 } from "../../lib/onboarding";
+import { isNavTargetInMoreMenu, routeMatchesPath } from "../../lib/tourNav";
 import { TOUR_CENTER } from "../../lib/tourTargets";
 import { roleLabel } from "../../lib/roles";
 import { Button } from "../ui/Button";
@@ -21,6 +24,7 @@ type Props = {
   role: Role | string;
   userId: string;
   onClose: () => void;
+  onOpenMoreMenu?: () => void;
 };
 
 type Rect = { top: number; left: number; width: number; height: number };
@@ -95,11 +99,14 @@ function useIsMobile() {
   return mobile;
 }
 
-export function OnboardingTour({ role, userId, onClose }: Props) {
-  const steps = tourStepsForRole(role);
+export function OnboardingTour({ role, userId, onClose, onOpenMoreMenu }: Props) {
+  const steps = useMemo(() => tourStepsForRole(role), [role]);
   const navigate = useNavigate();
   const location = useLocation();
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const focusedRef = useRef<HTMLElement | null>(null);
+  const aliveRef = useRef(true);
+  const settleTimerRef = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
   const [stepIndex, setStepIndex] = useState(0);
@@ -113,11 +120,11 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
   const [contentVisible, setContentVisible] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  const step: TourStep = steps[stepIndex];
-  const isCenter = step.target === TOUR_CENTER;
-  const isLast = stepIndex === steps.length - 1;
+  const step = steps[stepIndex];
+  const isCenter = step?.target === TOUR_CENTER;
+  const isLast = steps.length > 0 && stepIndex === steps.length - 1;
   const isIntro = stepIndex === 0 && isCenter;
-  const progressPct = ((stepIndex + 1) / steps.length) * 100;
+  const progressPct = steps.length ? ((stepIndex + 1) / steps.length) * 100 : 0;
 
   const finish = useCallback(() => {
     dismissQuickGuide(role, userId, remember);
@@ -125,8 +132,17 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
   }, [role, userId, remember, onClose]);
 
   const applyHole = useCallback((rect: Rect | null) => {
+    if (!aliveRef.current) return;
     setTargetRect(rect);
     setHoleRect(rect ? holeFromRect(rect) : null);
+  }, []);
+
+  const clearFocusRing = useCallback(() => {
+    const el = focusedRef.current;
+    if (el?.isConnected) {
+      el.classList.remove("tour-target-focus");
+    }
+    focusedRef.current = null;
   }, []);
 
   const goToStep = useCallback(
@@ -134,43 +150,59 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
       if (busy || next < 0 || next >= steps.length || next === stepIndex) return;
       setBusy(true);
       setContentVisible(false);
+      clearFocusRing();
 
       window.setTimeout(() => {
+        if (!aliveRef.current) return;
+        const nextStep = steps[next];
         setStepIndex(next);
         applyHole(null);
-        setWaiting(!steps[next] || steps[next].target === TOUR_CENTER ? false : true);
+        setWaiting(Boolean(nextStep && nextStep.target !== TOUR_CENTER));
         setContentVisible(true);
         setBusy(false);
       }, STEP_LEAVE_MS);
     },
-    [busy, stepIndex, steps, applyHole]
+    [busy, stepIndex, steps, applyHole, clearFocusRing]
   );
 
   useEffect(() => {
+    aliveRef.current = true;
     document.body.classList.add("tour-active");
-    requestAnimationFrame(() => setMounted(true));
-    return () => document.body.classList.remove("tour-active");
-  }, []);
+    requestAnimationFrame(() => {
+      if (aliveRef.current) setMounted(true);
+    });
+    return () => {
+      aliveRef.current = false;
+      document.body.classList.remove("tour-active");
+      clearFocusRing();
+      if (settleTimerRef.current != null) {
+        window.clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
+    };
+  }, [clearFocusRing]);
 
   useEffect(() => {
-    if (!step.route) {
+    if (!step?.route) {
       setNavPending(false);
       return;
     }
-    const want = step.route.split("?")[0];
-    const have = location.pathname;
-    if (have === want || have.startsWith(want + "/")) {
+    if (routeMatchesPath(step.route, location.pathname)) {
       setNavPending(false);
       return;
     }
     setNavPending(true);
     navigate(step.route);
-  }, [step.route, stepIndex, location.pathname, navigate]);
+  }, [step?.route, stepIndex, location.pathname, navigate]);
 
   useLayoutEffect(() => {
-    if (navPending) return;
+    if (!step || navPending) return;
 
     const signal = { cancelled: false };
+
+    if (isNavTargetInMoreMenu(role, step.target, isMobile)) {
+      onOpenMoreMenu?.();
+    }
 
     if (isCenter) {
       applyHole(null);
@@ -182,12 +214,16 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
 
     setWaiting(true);
     waitForTarget(step.target, (rect) => {
-      if (signal.cancelled) return;
+      if (signal.cancelled || !aliveRef.current) return;
       if (rect) {
         const el = findTarget(step.target);
         el?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-        window.setTimeout(() => {
-          if (signal.cancelled) return;
+        if (settleTimerRef.current != null) {
+          window.clearTimeout(settleTimerRef.current);
+        }
+        settleTimerRef.current = window.setTimeout(() => {
+          settleTimerRef.current = null;
+          if (signal.cancelled || !aliveRef.current) return;
           const again = findTarget(step.target);
           applyHole(again ? measure(again) : rect);
           setWaiting(false);
@@ -199,6 +235,7 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
     }, signal);
 
     const sync = () => {
+      if (!aliveRef.current) return;
       const el = findTarget(step.target);
       if (el) applyHole(measure(el));
     };
@@ -210,32 +247,38 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
       window.removeEventListener("resize", sync);
       window.removeEventListener("scroll", sync, true);
     };
-  }, [step.target, stepIndex, navPending, isCenter, applyHole]);
+  }, [step, stepIndex, navPending, isCenter, applyHole, role, isMobile, onOpenMoreMenu]);
 
   useLayoutEffect(() => {
     const el = tooltipRef.current;
     if (!el) return;
     setTooltipHeight(el.offsetHeight || TOOLTIP_MIN_H);
-  }, [stepIndex, waiting, step.title, step.body, step.tips?.length, contentVisible]);
+  }, [stepIndex, waiting, step?.title, step?.body, step?.tips?.length, contentVisible]);
 
   useLayoutEffect(() => {
-    if (isCenter || waiting) return;
+    clearFocusRing();
+    if (!step || isCenter || waiting) return;
     const el = findTarget(step.target);
     if (!el) return;
     el.classList.add("tour-target-focus");
-    return () => el.classList.remove("tour-target-focus");
-  }, [step.target, stepIndex, isCenter, waiting, holeRect]);
+    focusedRef.current = el;
+    return () => clearFocusRing();
+  }, [step, stepIndex, isCenter, waiting, holeRect, clearFocusRing]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (busy || navPending) return;
+      if (busy || navPending || !step) return;
       if (e.key === "Escape") finish();
       if (e.key === "ArrowRight" && !isLast) goToStep(stepIndex + 1);
       if (e.key === "ArrowLeft" && stepIndex > 0) goToStep(stepIndex - 1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [finish, goToStep, isLast, navPending, stepIndex, busy]);
+  }, [finish, goToStep, isLast, navPending, stepIndex, busy, step]);
+
+  if (!steps.length || !step) {
+    return null;
+  }
 
   const tooltipStyle = computeTooltipStyle(
     holeRect,
@@ -247,9 +290,8 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
 
   const canAdvance = !busy && !navPending && (!waiting || isCenter);
 
-  return (
-    <div
-      className={`fixed inset-0 z-[200] tour-root ${mounted ? "tour-root-visible" : ""}`}
+  const ui = (
+    <div className={`fixed inset-0 z-[200] tour-root ${mounted ? "tour-root-visible" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="tour-title"
@@ -304,7 +346,7 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
           <div className="tour-progress-track" aria-hidden>
             <div className="tour-progress-fill" style={{ width: `${progressPct}%` }} />
           </div>
-          {!isMobile && (
+          {!isMobile && steps.length <= 24 && (
             <div className="tour-dots" aria-label={`Step ${stepIndex + 1} of ${steps.length}`}>
               {steps.map((_, i) => (
                 <button
@@ -337,8 +379,8 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
 
           {step.tips && step.tips.length > 0 && (
             <ul className="tour-tips">
-              {step.tips.map((tip) => (
-                <li key={tip}>{tip}</li>
+              {step.tips.map((tip, i) => (
+                <li key={`${stepIndex}-${i}-${tip.slice(0, 24)}`}>{tip}</li>
               ))}
             </ul>
           )}
@@ -346,7 +388,11 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
           {!waiting && !isCenter && !targetRect && (
             <div className="tour-miss-hint">
               <strong>Highlight not visible?</strong>
-              <span>Try opening More (mobile) or the left menu, then tap Continue again.</span>
+              <span>
+                {isMobile
+                  ? "Open More in the bottom bar if this item is in the menu, then tap Continue."
+                  : "Try the left sidebar, then tap Continue again."}
+              </span>
             </div>
           )}
         </div>
@@ -365,7 +411,7 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
               variant="ghost"
               className="!py-2.5 !px-4"
               onClick={() => (stepIndex === 0 ? finish() : goToStep(stepIndex - 1))}
-              disabled={!canAdvance && stepIndex > 0}
+              disabled={busy && stepIndex > 0}
             >
               {stepIndex === 0 ? "Skip" : "Back"}
             </Button>
@@ -387,6 +433,9 @@ export function OnboardingTour({ role, userId, onClose }: Props) {
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(ui, document.body);
 }
 
 function computeTooltipStyle(
@@ -472,4 +521,3 @@ function TourShadePanels({ hole }: { hole: Rect }) {
     </div>
   );
 }
-

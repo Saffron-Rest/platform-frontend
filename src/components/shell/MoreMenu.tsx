@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { NavGroup, NavLinkItem } from "../../lib/navigation";
 import { isNavActive } from "../../lib/navigation";
+import { tourTargetFromPath } from "../../lib/tourTargets";
 
 type Props = {
   open: boolean;
@@ -77,6 +78,7 @@ function MoreRow({
     <li>
       <Link
         to={item.to}
+        data-tour={tourTargetFromPath(item.to)}
         onClick={onClose}
         className={`flex items-center gap-3 p-3 rounded-xl transition ${
           active ? "bg-[var(--color-saffron-light)] text-[var(--color-saffron-dark)]" : "hover:bg-black/[0.03]"

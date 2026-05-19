@@ -18,6 +18,13 @@ type AlertRow = {
   createdAt: string;
 };
 
+type TelegramStatus = {
+  enabled: boolean;
+  configured: boolean;
+  chatIdSet: boolean;
+  unreadAlerts: number;
+};
+
 export function AdminSettings() {
   const navigate = useNavigate();
   const [platforms, setPlatforms] = useState<Platforms>({
@@ -28,14 +35,57 @@ export function AdminSettings() {
     other: true,
   });
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [telegram, setTelegram] = useState<TelegramStatus | null>(null);
   const [logs, setLogs] = useState<AuditLogLike[]>([]);
   const [msg, setMsg] = useState("");
+  const [alertBusy, setAlertBusy] = useState(false);
 
   useEffect(() => {
     api<{ platforms: Platforms }>("/settings").then((s) => setPlatforms(s.platforms));
     api<AlertRow[]>("/alerts").then(setAlerts);
+    api<TelegramStatus>("/alerts/telegram-status").then(setTelegram).catch(() => setTelegram(null));
     api<AuditLogLike[]>("/audit/recent?limit=8").then(setLogs);
   }, []);
+
+  const refreshAlerts = () => {
+    api<AlertRow[]>("/alerts").then(setAlerts);
+    api<TelegramStatus>("/alerts/telegram-status").then(setTelegram).catch(() => setTelegram(null));
+  };
+
+  const checkMissing = async () => {
+    setAlertBusy(true);
+    setMsg("");
+    try {
+      const res = await api<{ missing: string[]; created: number }>("/alerts/check-missing", {
+        method: "POST",
+      });
+      const names = res.missing ?? [];
+      setMsg(
+        names.length
+          ? `Missing reports: ${names.join(", ")}. Telegram notified if configured.`
+          : "All scheduled cashiers have submitted today."
+      );
+      refreshAlerts();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Check failed");
+    } finally {
+      setAlertBusy(false);
+    }
+  };
+
+  const testTelegram = async () => {
+    setAlertBusy(true);
+    try {
+      const res = await api<{ ok: boolean; configured: boolean }>("/alerts/telegram-test", {
+        method: "POST",
+      });
+      setMsg(res.ok ? "Test message sent to Telegram." : "Telegram is not configured on the server.");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Telegram test failed");
+    } finally {
+      setAlertBusy(false);
+    }
+  };
 
   const savePlatforms = async () => {
     await api("/settings/platforms", { method: "PUT", body: JSON.stringify(platforms) });
@@ -66,17 +116,23 @@ export function AdminSettings() {
       </Card>
 
       <Card className="space-y-3">
-        <div className="flex justify-between items-center">
-          <h3 className="font-semibold">Alerts</h3>
-          <button
-            type="button"
-            onClick={() => api("/alerts/check-missing", { method: "POST" }).then(() =>
-              api<AlertRow[]>("/alerts").then(setAlerts)
-            )}
-            className="text-sm text-[var(--color-saffron)] font-medium"
-          >
-            Check missing reports
-          </button>
+        <div className="flex flex-wrap justify-between items-start gap-3">
+          <div>
+            <h3 className="font-semibold">Alerts & Telegram</h3>
+            <p className="text-xs text-[var(--color-muted)] mt-1">
+              {telegram?.configured
+                ? `Telegram connected · ${telegram.unreadAlerts} unread in app`
+                : "Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID on the server, then redeploy."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" className="!py-2 !px-3 text-sm" disabled={alertBusy} onClick={testTelegram}>
+              Test Telegram
+            </Button>
+            <Button className="!py-2 !px-3 text-sm" disabled={alertBusy} onClick={checkMissing}>
+              {alertBusy ? "Checking…" : "Check missing"}
+            </Button>
+          </div>
         </div>
         <ul className="space-y-2 max-h-48 overflow-y-auto">
           {alerts.map((a) => (
