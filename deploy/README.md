@@ -23,7 +23,9 @@ Traffic enters **Kong** on port 80 — not this container directly.
 
 | URL | Routed to |
 |-----|-----------|
-| http://76.13.130.67/ | `saffron-frontend` (this image) |
-| http://76.13.130.67/api | `saffron-backend:3001` |
+| http://cash-flow.saffron.waw.pl/ | `saffron-frontend` (this image) |
+| http://cash-flow.saffron.waw.pl/api | `saffron-backend:3001` |
+
+DNS setup: [deploy/DOMAIN.md](../../deploy/DOMAIN.md)
 
 Deploy Kong from repo root: `deploy/kong/` (see `deploy/kong/README.md`).

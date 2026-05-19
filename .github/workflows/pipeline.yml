@@ -47,6 +47,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64
           build-args: VITE_API_URL=/api
           tags: |
             ${{ env.IMAGE }}:latest
@@ -61,7 +62,7 @@ jobs:
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     environment:
       name: production
-      url: http://76.13.130.67
+      url: http://cash-flow.saffron.waw.pl
     steps:
       - uses: actions/checkout@v4
 
