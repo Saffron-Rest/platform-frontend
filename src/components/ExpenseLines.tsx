@@ -5,6 +5,7 @@ import { InvoiceGallery } from "./expense/InvoiceGallery";
 import type { ExpenseLine, PaymentSource } from "../types";
 import { expenseTotalBySource, fmt, totalExpenseLines } from "../lib/calc";
 import { num } from "../lib/numbers";
+import { Button } from "./ui/Button";
 
 type Props = {
   expenses: ExpenseLine[];
@@ -47,11 +48,23 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }:
       id="report-section-expenses"
       className="report-section-anchor bg-white rounded-2xl p-4 shadow-sm border border-black/5 mb-4"
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h3 className="font-semibold text-lg text-[var(--color-saffron-dark)]">Expenses</h3>
-        <span className="text-sm text-[var(--color-muted)]">
-          Total: <strong className="text-[var(--color-ink)]">{fmt(total)}</strong>
-        </span>
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-sm text-[var(--color-muted)]">
+            Total: <strong className="text-[var(--color-ink)]">{fmt(total)}</strong>
+          </span>
+          {canEditFields && (
+            <Button
+              type="button"
+              variant="primary"
+              className="!py-2 !px-3.5 !text-sm shrink-0"
+              onClick={() => onChange([...expenses, emptyLine()])}
+            >
+              + Add
+            </Button>
+          )}
+        </div>
       </div>
       <p className="text-sm text-[var(--color-muted)] mb-1">
         Cash: <strong>{fmt(fromCash)}</strong>
@@ -195,7 +208,7 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }:
           onClick={() => onChange([...expenses, emptyLine()])}
           className="w-full py-3 rounded-xl border-2 border-dashed border-[var(--color-saffron)]/50 text-[var(--color-saffron-dark)] font-medium text-sm"
         >
-          + Add expense line
+          + Add another expense
         </button>
       )}
 

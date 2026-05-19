@@ -94,6 +94,31 @@ export function Dashboard() {
         <QuickActionGrid items={quickLinks} accentFirst={isCashier(user?.role)} />
       </HubSection>
 
+      {canOperate(user?.role) && (
+        <HubSection title="Record quickly">
+          <div className="grid grid-cols-2 gap-3">
+            <Link to="/finance?add=expense" className="hub-tile hub-tile-accent">
+              <span className="text-2xl leading-none" aria-hidden>
+                +
+              </span>
+              <span>
+                <span className="block font-bold text-sm text-white">Add expense</span>
+                <span className="block text-xs mt-0.5 text-white/80">Post-close or standalone</span>
+              </span>
+            </Link>
+            <Link to="/finance?add=delivery" className="hub-tile hub-tile-accent">
+              <span className="text-2xl leading-none" aria-hidden>
+                +
+              </span>
+              <span>
+                <span className="block font-bold text-sm text-white">Add delivery</span>
+                <span className="block text-xs mt-0.5 text-white/80">Manual platform income</span>
+              </span>
+            </Link>
+          </div>
+        </HubSection>
+      )}
+
       {canOperate(user?.role) && <TreasurySummaryCards />}
 
       {isCashier(user?.role) && schedule && (

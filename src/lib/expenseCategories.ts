@@ -7,6 +7,7 @@ export const EXPENSE_CATEGORIES = [
   { value: "UTILITIES", label: "Utilities" },
   { value: "CLEANING", label: "Cleaning" },
   { value: "MAINTENANCE", label: "Maintenance" },
+  { value: "RENT", label: "Rent" },
   { value: "MARKETING", label: "Marketing" },
   { value: "OTHER", label: "Other" },
 ] as const;

@@ -97,7 +97,7 @@ function operationsGroups(includeAdmin: boolean): NavGroup[] {
           kind: "link",
           to: "/finance",
           label: "Finance",
-          description: "Delivery & expenses",
+          description: "Add delivery or expense",
           icon: IconWallet,
           primary: true,
         },

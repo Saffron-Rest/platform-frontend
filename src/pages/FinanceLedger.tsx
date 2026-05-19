@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   createDeliveryIncome,
   deleteDeliveryIncome,
@@ -22,6 +22,7 @@ import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
 import { Badge } from "../components/ui/Badge";
 import { Spinner } from "../components/ui/Spinner";
+import { FinanceAddPanel } from "../components/finance/FinanceAddPanel";
 import type { ManualDeliveryIncome } from "../types";
 
 const DELIVERY_PLATFORMS = [
@@ -45,12 +46,16 @@ function categoryLabel(value: string) {
   return EXPENSE_CATEGORIES.find((c) => c.value === value)?.label ?? value;
 }
 
-type Tab = "expenses" | "delivery" | "add-expense" | "add-delivery";
+type ViewTab = "expenses" | "delivery";
+type AddKind = "expense" | "delivery";
 
 export function FinanceLedger() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState(todayIso());
-  const [tab, setTab] = useState<Tab>("expenses");
+  const [viewTab, setViewTab] = useState<ViewTab>("expenses");
+  const [addOpen, setAddOpen] = useState<AddKind | null>(null);
+  const addPanelRef = useRef<HTMLDivElement>(null);
   const [expenses, setExpenses] = useState<LedgerExpense[]>([]);
   const [delivery, setDelivery] = useState<ManualDeliveryIncome[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,6 +102,33 @@ export function FinanceLedger() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const add = searchParams.get("add");
+    if (add === "expense" || add === "delivery") {
+      setAddOpen(add);
+      setViewTab(add === "expense" ? "expenses" : "delivery");
+      requestAnimationFrame(() => {
+        addPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [searchParams]);
+
+  const openAdd = (kind: AddKind) => {
+    setAddOpen(kind);
+    setViewTab(kind === "expense" ? "expenses" : "delivery");
+    setSearchParams({ add: kind }, { replace: true });
+    requestAnimationFrame(() => {
+      addPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const closeAdd = () => {
+    setAddOpen(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete("add");
+    setSearchParams(next, { replace: true });
+  };
+
   const expenseTotal = useMemo(
     () => expenses.reduce((s, e) => s + e.amount, 0),
     [expenses]
@@ -126,7 +158,8 @@ export function FinanceLedger() {
       await createDeliveryIncome(payload);
       setMessage("Delivery income recorded");
       setDeliveryForm((f) => ({ ...f, grossAmount: 0, settledToCard: null, notes: "" }));
-      setTab("delivery");
+      closeAdd();
+      setViewTab("delivery");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save");
@@ -154,7 +187,8 @@ export function FinanceLedger() {
         paymentSource: "CASH",
       });
       setInvoiceFile(null);
-      setTab("expenses");
+      closeAdd();
+      setViewTab("expenses");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save");
@@ -214,39 +248,38 @@ export function FinanceLedger() {
       {error && <Alert variant="error">{error}</Alert>}
       {message && <Alert variant="success">{message}</Alert>}
 
-      <div className="flex gap-2 flex-wrap">
-        {(
-          [
-            ["All expenses", "expenses"],
-            ["Delivery income", "delivery"],
-            ["+ Delivery", "add-delivery"],
-            ["+ Expense", "add-expense"],
-          ] as const
-        ).map(([label, key]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`tab-pill text-sm ${tab === key ? "tab-pill-active" : "tab-pill-idle"}`}
+      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 mb-2 bg-[var(--color-cream)]/95 backdrop-blur-md border-b border-black/5 md:static md:mx-0 md:px-0 md:border-0 md:bg-transparent md:backdrop-blur-none">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)] mb-2 md:hidden">
+          Record quickly
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          <Button
+            variant={addOpen === "expense" ? "dark" : "primary"}
+            fullWidth
+            className="!py-3.5"
+            onClick={() => (addOpen === "expense" ? closeAdd() : openAdd("expense"))}
           >
-            {label}
-          </button>
-        ))}
+            {addOpen === "expense" ? "Close expense form" : "+ Add expense"}
+          </Button>
+          <Button
+            variant={addOpen === "delivery" ? "dark" : "primary"}
+            fullWidth
+            className="!py-3.5"
+            onClick={() => (addOpen === "delivery" ? closeAdd() : openAdd("delivery"))}
+          >
+            {addOpen === "delivery" ? "Close delivery form" : "+ Add delivery"}
+          </Button>
+        </div>
       </div>
 
-      {loading && tab !== "add-delivery" && tab !== "add-expense" ? (
-        <div className="flex justify-center py-12">
-          <Spinner label="Loading ledger…" />
-        </div>
-      ) : null}
-
-      {tab === "add-delivery" && (
-        <Card className="space-y-4">
-          <h3 className="font-semibold text-lg">Add delivery income</h3>
-          <p className="text-sm text-[var(--color-muted)]">
-            Use when delivery sales are not on a shift report. Counts toward total income, analytics, and card
-            balance (using settlement % from Settings unless you override).
-          </p>
+      <div ref={addPanelRef} className="space-y-4 mb-4">
+        {addOpen === "delivery" && (
+          <FinanceAddPanel
+            title="Add delivery income"
+            subtitle="When delivery sales are not on a shift report — counts toward income and card balance."
+            onClose={closeAdd}
+          >
+            <div className="space-y-4">
           <label className="field-label">
             Date
             <input
@@ -309,19 +342,20 @@ export function FinanceLedger() {
               onChange={(e) => setDeliveryForm((f) => ({ ...f, notes: e.target.value }))}
             />
           </label>
-          <Button variant="dark" fullWidth disabled={saving} onClick={() => void handleAddDelivery()}>
-            {saving ? "Saving…" : "Save delivery income"}
-          </Button>
-        </Card>
-      )}
+            <Button variant="dark" fullWidth disabled={saving} onClick={() => void handleAddDelivery()}>
+              {saving ? "Saving…" : "Save delivery income"}
+            </Button>
+            </div>
+          </FinanceAddPanel>
+        )}
 
-      {tab === "add-expense" && (
-        <Card className="space-y-4">
-          <h3 className="font-semibold text-lg">Add post-close expense</h3>
-          <p className="text-sm text-[var(--color-muted)]">
-            Purchases after the shift is closed — not tied to a cashier report. Affects P&amp;L and treasury for the
-            date you choose.
-          </p>
+        {addOpen === "expense" && (
+          <FinanceAddPanel
+            title="Add post-close expense"
+            subtitle="Purchases after the shift is closed — not on a cashier report. Affects P&amp;L and treasury."
+            onClose={closeAdd}
+          >
+            <div className="space-y-4">
           <label className="field-label">
             Date
             <input
@@ -387,20 +421,51 @@ export function FinanceLedger() {
               onChange={(e) => setInvoiceFile(e.target.files?.[0] ?? null)}
             />
           </label>
-          <Button variant="dark" fullWidth disabled={saving} onClick={() => void handleAddExpense()}>
-            {saving ? "Saving…" : "Save expense"}
-          </Button>
-        </Card>
-      )}
+            <Button variant="dark" fullWidth disabled={saving} onClick={() => void handleAddExpense()}>
+              {saving ? "Saving…" : "Save expense"}
+            </Button>
+            </div>
+          </FinanceAddPanel>
+        )}
+      </div>
 
-      {tab === "delivery" && !loading && (
+            <div className="flex gap-2 flex-wrap">
+        {(
+          [
+            ["All expenses", "expenses"],
+            ["Delivery income", "delivery"],
+          ] as const
+        ).map(([label, key]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setViewTab(key)}
+            className={`tab-pill text-sm ${viewTab === key ? "tab-pill-active" : "tab-pill-idle"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Spinner label="Loading ledger…" />
+        </div>
+      ) : null}
+
+      {viewTab === "delivery" && !loading && (
         <Card>
           <div className="flex items-center justify-between gap-2 mb-4">
             <h3 className="font-semibold">Delivery income</h3>
             <span className="text-sm font-medium">{fmt(deliveryTotal)} PLN gross</span>
           </div>
           {delivery.length === 0 ? (
-            <p className="text-sm text-[var(--color-muted)]">No manual delivery entries in this range.</p>
+            <div className="text-center py-8 space-y-3">
+              <p className="text-sm text-[var(--color-muted)]">No manual delivery entries in this range.</p>
+              <Button variant="primary" onClick={() => openAdd("delivery")}>
+                + Add delivery income
+              </Button>
+            </div>
           ) : (
             <ul className="divide-y divide-black/5">
               {delivery.map((d) => (
@@ -429,14 +494,19 @@ export function FinanceLedger() {
         </Card>
       )}
 
-      {tab === "expenses" && !loading && (
+      {viewTab === "expenses" && !loading && (
         <Card>
           <div className="flex items-center justify-between gap-2 mb-4">
             <h3 className="font-semibold">All expenses</h3>
             <span className="text-sm font-medium">{fmt(expenseTotal)} PLN</span>
           </div>
           {expenses.length === 0 ? (
-            <p className="text-sm text-[var(--color-muted)]">No expenses in this range.</p>
+            <div className="text-center py-8 space-y-3">
+              <p className="text-sm text-[var(--color-muted)]">No expenses in this range.</p>
+              <Button variant="primary" onClick={() => openAdd("expense")}>
+                + Add expense
+              </Button>
+            </div>
           ) : (
             <ul className="space-y-4">
               {expenses.map((row) => {
