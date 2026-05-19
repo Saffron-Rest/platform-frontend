@@ -1,39 +1,42 @@
-# Push to GitHub — platform-frontend
+# platform-frontend — GitHub setup
 
-Repo: **https://github.com/Saffron-Rest/platform-frontend**
+Repo: https://github.com/Saffron-Rest/platform-frontend
 
-## 1. Push code
+## One pipeline (`pipeline.yml`)
+
+```
+push to main →  1 · Test (npm build)
+             →  2 · Build & push image (GHCR)
+             →  3 · Deploy web to VPS (port 80)
+```
+
+## Secrets (same VPS as backend)
+
+| Secret | Required |
+|--------|----------|
+| `VPS_HOST` | Yes — `76.13.130.67` |
+| `VPS_USER` | Yes — `root` |
+| `VPS_SSH_KEY` | Yes |
+| `GHCR_TOKEN` | If package is private |
+| `HTTP_PORT` | Optional — default `80` |
+
+Backend secrets (`POSTGRES_PASSWORD`, `JWT_SECRET`) are **not** needed in this repo.
+
+## Deploy order
+
+1. [platform-backend](https://github.com/Saffron-Rest/platform-backend) — deploy first  
+2. **This repo** — then deploy frontend  
+
+## Push
 
 ```bash
 cd ~/Desktop/saffron-app/platform-frontend
-git push -u origin main
-```
-
-If SSH fails, add `~/.ssh/id_ed25519.pub` to GitHub → **SSH keys**, then:
-
-```bash
 git remote set-url origin git@github.com:Saffron-Rest/platform-frontend.git
-git push -u origin main
+git add .
+git commit -m "Fix CI: single pipeline in .github/workflows"
+git push origin main
 ```
 
-## 2. GitHub secrets
+## App URL
 
-Same VPS secrets as backend (you can reuse them in this repo):
-
-| Secret | Value |
-|--------|--------|
-| `VPS_HOST` | `76.13.130.67` |
-| `VPS_USER` | `root` |
-| `VPS_SSH_KEY` | Your private SSH key |
-| `GHCR_TOKEN` | Optional if package is public |
-
-## 3. Order of deploy
-
-1. Deploy **backend** first ([platform-backend](https://github.com/Saffron-Rest/platform-backend))
-2. Deploy **frontend** (this repo) — Actions → **Deploy** → Run workflow
-
-## 4. Verify
-
-Open http://76.13.130.67 — Saffron login page.
-
-Image: `ghcr.io/saffron-rest/platform-frontend:latest`
+http://76.13.130.67

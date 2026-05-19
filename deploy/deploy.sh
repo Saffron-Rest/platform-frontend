@@ -8,9 +8,11 @@ if [[ -n "${REGISTRY_PASSWORD:-}" && -n "${REGISTRY_USER:-}" ]]; then
   echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USER" "$REGISTRY_HOST" --password-stdin
 fi
 
+HTTP_PORT="${HTTP_PORT:-80}"
+
 cat > .env <<EOF
 FRONTEND_IMAGE=${FRONTEND_IMAGE:?FRONTEND_IMAGE required}
-HTTP_PORT=${HTTP_PORT:-80}
+HTTP_PORT=${HTTP_PORT}
 EOF
 chmod 600 .env
 
