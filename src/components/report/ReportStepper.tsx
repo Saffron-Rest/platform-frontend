@@ -10,7 +10,10 @@ export function ReportStepper({ steps }: Props) {
   const allDone = doneCount === steps.length;
 
   return (
-    <div className="mb-4 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm">
+    <div
+      data-tour="tour-entry-stepper"
+      className="mb-4 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm"
+    >
       <div className="flex items-center justify-between text-xs text-[var(--color-muted)] mb-3">
         <span className="font-semibold text-[var(--color-ink)]">Progress</span>
         <span className={`font-medium tabular-nums ${allDone ? "text-[var(--color-success)]" : ""}`}>

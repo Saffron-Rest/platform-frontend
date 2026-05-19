@@ -236,7 +236,10 @@ export function ShiftReports() {
 
       <TreasurySummaryCards compact />
 
-      <Card className="!p-5 border-2 border-[var(--color-saffron)]/35 bg-gradient-to-br from-[var(--color-saffron)]/10 to-white">
+      <Card
+        data-tour="tour-reports-open"
+        className="!p-5 border-2 border-[var(--color-saffron)]/35 bg-gradient-to-br from-[var(--color-saffron)]/10 to-white"
+      >
         <h2 className="font-semibold text-lg text-[var(--color-ink)]">Open a report</h2>
         <p className="text-sm text-[var(--color-muted)] mt-1 mb-4">
           Pick the business date and cashier. You will get the full form — new draft or existing report.
@@ -305,7 +308,7 @@ export function ShiftReports() {
         </section>
       )}
 
-      <Card className="space-y-4">
+      <Card className="space-y-4" data-tour="tour-reports-filters">
         <h2 className="font-semibold text-[var(--color-ink)]">Browse reports</h2>
         <div className="flex flex-wrap gap-2">
           {(

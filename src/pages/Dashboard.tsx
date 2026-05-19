@@ -92,18 +92,23 @@ export function Dashboard() {
             : `${data.date} · Your shift`
         }
         action={
-          <Button variant="secondary" className="!py-2 !px-4 text-sm" onClick={openQuickGuide}>
+          <Button
+            variant="secondary"
+            className="!py-2 !px-4 text-sm"
+            onClick={openQuickGuide}
+            data-tour="tour-help"
+          >
             Quick guide
           </Button>
         }
       />
 
-      <HubSection title="Quick actions">
+      <HubSection title="Quick actions" tourId="tour-quick-actions">
         <QuickActionGrid items={quickLinks} accentFirst={isCashier(user?.role)} />
       </HubSection>
 
       {canOperate(user?.role) && (
-        <HubSection title="Record quickly">
+        <HubSection title="Record quickly" tourId="tour-record-quickly">
           <div className="grid grid-cols-2 gap-3">
             <Link to="/finance?add=expense" className="hub-tile hub-tile-accent">
               <span className="text-2xl leading-none" aria-hidden>
@@ -127,7 +132,7 @@ export function Dashboard() {
         </HubSection>
       )}
 
-      {canOperate(user?.role) && <TreasurySummaryCards />}
+      {canOperate(user?.role) && <TreasurySummaryCards tourId="tour-treasury" />}
 
       {isCashier(user?.role) && schedule && (
         <Alert variant={schedule.working ? "info" : "warning"}>
@@ -142,7 +147,7 @@ export function Dashboard() {
         </Alert>
       )}
 
-      <HubSection title="Today’s numbers">
+      <HubSection title="Today’s numbers" tourId="tour-today-numbers">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatTile label="Total sales" value={data.totalSales} highlight />
           <StatTile label="Cash" value={data.cashSales} />
@@ -189,6 +194,7 @@ export function Dashboard() {
       {data.entries.length > 0 && (
         <HubSection
           title={canOperate(user?.role) ? "Today’s reports" : "Your report"}
+          tourId={canOperate(user?.role) ? "tour-today-reports" : "tour-your-report"}
           action={
             canOperate(user?.role) ? (
               <Link to="/reports" className="text-sm font-semibold text-[var(--color-saffron)]">

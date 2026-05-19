@@ -209,7 +209,7 @@ export function AdminTeam() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="tour-admin-team">
       <PageHeader
         title="Team"
         subtitle="Create managers and cashiers, set pay for cashiers, activate or deactivate"

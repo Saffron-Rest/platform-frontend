@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "./AuthContext";
-import { QuickStartGuide } from "../components/onboarding/QuickStartGuide";
+import { OnboardingTour } from "../components/onboarding/OnboardingTour";
 import { isQuickGuideDismissed } from "../lib/onboarding";
 
 type OnboardingContextValue = {
@@ -24,7 +24,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
     if (!isQuickGuideDismissed(user.role, user.id)) {
-      setOpen(true);
+      const t = window.setTimeout(() => setOpen(true), 600);
+      return () => window.clearTimeout(t);
     }
   }, [user?.id, user?.role]);
 
@@ -36,7 +37,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     <OnboardingContext.Provider value={value}>
       {children}
       {user && open && (
-        <QuickStartGuide
+        <OnboardingTour
           role={user.role}
           userId={user.id}
           onClose={() => setOpen(false)}

@@ -610,7 +610,10 @@ export function EntryPage() {
             />
           )}
 
-          <div className={!readOnly || (locked && canManageReports) ? "mb-40 md:mb-0" : ""}>
+          <div
+            data-tour="tour-entry-form"
+            className={!readOnly || (locked && canManageReports) ? "mb-40 md:mb-0" : ""}
+          >
             {closingOnly ? (
               <ClosingEntryForm
                 data={form}

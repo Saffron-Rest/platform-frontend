@@ -110,6 +110,7 @@ export function AdminAudit() {
         subtitle="Who did what, when — for compliance and troubleshooting"
       />
 
+      <div data-tour="tour-audit-filters">
       <AuditFilters
         filters={filters}
         users={users}
@@ -125,6 +126,7 @@ export function AdminAudit() {
           setSelectedId(null);
         }}
       />
+      </div>
 
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 

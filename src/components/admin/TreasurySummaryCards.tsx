@@ -11,9 +11,10 @@ type Props = {
   className?: string;
   /** Tighter layout for report list pages */
   compact?: boolean;
+  tourId?: string;
 };
 
-export function TreasurySummaryCards({ className = "", compact = false }: Props) {
+export function TreasurySummaryCards({ className = "", compact = false, tourId }: Props) {
   const { user } = useAuth();
   const [treasury, setTreasury] = useState<TreasuryOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +45,7 @@ export function TreasurySummaryCards({ className = "", compact = false }: Props)
   const cardClass = compact ? "!p-3" : "!p-4";
 
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div className={`space-y-2 ${className}`} data-tour={tourId}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className={`font-semibold text-[var(--color-ink)] ${compact ? "text-sm" : ""}`}>
           Treasury balances

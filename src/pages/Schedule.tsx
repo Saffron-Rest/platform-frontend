@@ -19,7 +19,9 @@ export function Schedule() {
               : "Team shifts for the month"
         }
       />
-      <AttendanceCalendar readOnly={!editable} />
+      <div data-tour="tour-schedule-calendar">
+        <AttendanceCalendar readOnly={!editable} />
+      </div>
     </div>
   );
 }

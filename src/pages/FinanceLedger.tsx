@@ -249,7 +249,10 @@ export function FinanceLedger() {
       {error && <Alert variant="error">{error}</Alert>}
       {message && <Alert variant="success">{message}</Alert>}
 
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 mb-2 bg-[var(--color-cream)]/95 backdrop-blur-md border-b border-black/5 md:static md:mx-0 md:px-0 md:border-0 md:bg-transparent md:backdrop-blur-none">
+      <div
+        data-tour="tour-finance-add"
+        className="sticky top-0 z-20 -mx-4 px-4 py-3 mb-2 bg-[var(--color-cream)]/95 backdrop-blur-md border-b border-black/5 md:static md:mx-0 md:px-0 md:border-0 md:bg-transparent md:backdrop-blur-none"
+      >
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)] mb-2 md:hidden">
           Record quickly
         </p>
@@ -429,7 +432,7 @@ export function FinanceLedger() {
         )}
       </div>
 
-            <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap" data-tour="tour-finance-tabs">
         {(
           [
             ["All expenses", "expenses"],

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { NavGroup } from "../../lib/navigation";
 import { isNavActive } from "../../lib/navigation";
+import { tourTargetFromPath } from "../../lib/tourTargets";
 
 type Props = {
   groups: NavGroup[];
@@ -23,6 +24,7 @@ export function SidebarNav({ groups, pathname }: Props) {
                 <li key={item.to}>
                   <Link
                     to={item.to}
+                    data-tour={tourTargetFromPath(item.to)}
                     className={`nav-item ${active ? "nav-item-active" : "nav-item-idle"}`}
                   >
                     <Icon className="w-5 h-5 shrink-0 opacity-90" />

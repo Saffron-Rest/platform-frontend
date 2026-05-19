@@ -31,7 +31,7 @@ export function ReportActionBar({
   const balanced = !short && !over;
 
   return (
-    <div className="action-bar md:static md:mt-6">
+    <div className="action-bar md:static md:mt-6" data-tour="tour-entry-actions">
       <div className="bg-white/95 md:bg-transparent backdrop-blur-md md:backdrop-blur-none rounded-2xl md:rounded-none border border-black/5 md:border-0 p-3 md:p-0 shadow-lg md:shadow-none flex flex-col gap-2">
         <div
           className={`md:hidden flex items-center justify-between gap-3 px-1 pb-1 text-sm ${

@@ -123,4 +123,22 @@ input[type="number"] {
       scroll-margin-top: 1rem;
     }
   }
+
+  .tour-spotlight-pulse {
+    animation: tour-spotlight-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes tour-spotlight-pulse {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 9999px rgba(26, 22, 20, 0.62),
+        0 0 0 0 rgba(196, 92, 38, 0.35);
+    }
+    50% {
+      box-shadow:
+        0 0 0 9999px rgba(26, 22, 20, 0.62),
+        0 0 0 6px rgba(196, 92, 38, 0.45);
+    }
+  }
 }

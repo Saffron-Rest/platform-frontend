@@ -69,6 +69,7 @@ function AppShellInner() {
           <button
             type="button"
             onClick={openQuickGuide}
+            data-tour="tour-help"
             className="w-full text-sm py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition font-semibold text-white/90"
           >
             Quick guide
@@ -94,6 +95,7 @@ function AppShellInner() {
               <button
                 type="button"
                 onClick={openQuickGuide}
+                data-tour="tour-help"
                 className="text-xs font-semibold px-3 py-2 rounded-full bg-white/5 hover:bg-white/10"
               >
                 Guide

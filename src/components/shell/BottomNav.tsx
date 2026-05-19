@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { NavLinkItem } from "../../lib/navigation";
 import { isNavActive } from "../../lib/navigation";
+import { tourTargetFromPath } from "../../lib/tourTargets";
 
 function IconMore({ className = "w-5 h-5" }: { className?: string }) {
   return (
@@ -35,6 +36,7 @@ export function BottomNav({ primary, pathname, onMore, moreActive, showMore = tr
             <Link
               key={item.to}
               to={item.to}
+              data-tour={tourTargetFromPath(item.to)}
               className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-2.5 min-h-[var(--nav-height)] transition ${
                 active ? "text-[var(--color-saffron)]" : "text-[var(--color-muted)]"
               }`}

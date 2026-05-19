@@ -146,7 +146,7 @@ export function ProfitLoss() {
         badge={data?.templateLabel}
       />
 
-      <Card className="mb-6 space-y-4">
+      <Card className="mb-6 space-y-4" data-tour="tour-pl-dates">
         <div className="flex flex-wrap gap-2">
           {presets.map((p) => (
             <button
