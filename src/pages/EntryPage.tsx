@@ -75,7 +75,9 @@ export function EntryPage() {
 
   const entryStatus = (entry?.status ?? "").toUpperCase();
   const locked = entryStatus === "LOCKED";
-  const closingOnly = entry?.closingOnly ?? shiftType === "CLOSING";
+  const scheduleClosingOnly = entry?.closingOnly ?? shiftType === "CLOSING";
+  /** Cashiers on a closing shift use the short form; admin/manager always get the full report editor. */
+  const closingOnly = scheduleClosingOnly && !canManageReports;
   const readOnly = locked && !canManageReports;
   const scheduledOff = schedule != null && !schedule.working;
   const isNew = !entry;
@@ -439,11 +441,10 @@ export function EntryPage() {
       Math.abs(summary.difference) > 0.01
         ? `\n\nCash difference: ${fmt(summary.difference)}`
         : "\n\nCash is balanced.";
-    if (
-      !confirm(
-        `Submit and lock the report for ${who} (${when})? After submit, the cashier cannot edit it.${diffNote}`
-      )
-    ) {
+    const submitPrompt = locked && canManageReports
+      ? `Save changes and keep this report submitted for ${who} (${when})?${diffNote}`
+      : `Submit and lock the report for ${who} (${when})? After submit, the cashier cannot edit it.${diffNote}`;
+    if (!confirm(submitPrompt)) {
       return;
     }
     setSaving(true);
@@ -535,10 +536,17 @@ export function EntryPage() {
         </Alert>
       )}
 
+      {scheduleClosingOnly && canManageReports && !closingOnly && (
+        <Alert variant="info" className="mb-4">
+          <strong>Closing shift on schedule</strong> — you still have the full report editor (sales,
+          expenses, payouts). Cashiers only see opening + cash count for this shift type.
+        </Alert>
+      )}
+
       {locked && canManageReports && (
         <Alert variant="info" className="mb-4">
-          <strong>Submitted and locked.</strong> You can edit and save changes here. Use{" "}
-          <em>Unlock for cashier</em> only if {selectedCashier?.name ?? "they"} need to edit in the
+          <strong>Submitted and locked.</strong> Edit any section below and save, or submit again to
+          re-lock. Use <em>Unlock for cashier</em> only if {selectedCashier?.name ?? "they"} need the
           cashier app.
           {entry?.submittedAt && (
             <span className="block mt-1 text-sm font-normal opacity-90">
@@ -608,18 +616,20 @@ export function EntryPage() {
                 data={form}
                 onChange={setForm}
                 disabled={readOnly}
-                openingEditable={canManageReports && !readOnly}
+                openingEditable={canManageReports}
                 openingHint={openingHint}
               />
             ) : (
               <EntryForm
                 data={form}
-                expenses={expenses.length ? expenses : !entry && !readOnly ? [emptyExpenseLine()] : expenses}
+                expenses={
+                  expenses.length ? expenses : readOnly ? expenses : [emptyExpenseLine()]
+                }
                 onChange={setForm}
                 onExpensesChange={setExpenses}
                 disabled={readOnly}
                 invoicesEditable={canManageReports || !locked}
-                openingEditable={canManageReports && !readOnly}
+                openingEditable={canManageReports}
                 platforms={platforms}
                 openingHint={openingHint}
                 treasurySettings={treasurySettings ?? undefined}
@@ -635,7 +645,7 @@ export function EntryPage() {
               difference={summary.difference}
               onSave={save}
               onSubmit={submit}
-              showSubmit={!locked}
+              showSubmit={!locked || canManageReports}
               onUnlock={locked && canManageReports ? unlockForCashier : undefined}
               unlockLabel={`Unlock for ${selectedCashier?.name ?? "cashier"}`}
               secondaryAction={
