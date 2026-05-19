@@ -1,4 +1,4 @@
-# Production frontend — nginx on port 80, proxies /api to saffron-backend.
+# Production frontend — internal nginx only; Kong on :80 routes / and /api.
 name: saffron-frontend
 
 services:
@@ -6,8 +6,8 @@ services:
     image: ${FRONTEND_IMAGE:?set FRONTEND_IMAGE}
     container_name: saffron-frontend
     restart: unless-stopped
-    ports:
-      - "${HTTP_PORT:-80}:80"
+    expose:
+      - "80"
     networks:
       - saffron_net
 
