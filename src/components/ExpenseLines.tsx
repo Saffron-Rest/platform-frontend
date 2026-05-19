@@ -1,7 +1,6 @@
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from "../lib/expenseCategories";
 import { PAYMENT_SOURCES } from "../lib/paymentSource";
-import { deleteExpenseInvoice } from "../api/expenses";
-import { InvoiceGallery } from "./expense/InvoiceGallery";
+import { ExpenseInvoiceUploader } from "./expense/ExpenseInvoiceUploader";
 import type { ExpenseLine, PaymentSource } from "../types";
 import { expenseTotalBySource, fmt, totalExpenseLines } from "../lib/calc";
 import { num } from "../lib/numbers";
@@ -39,9 +38,6 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }:
   const remove = (index: number) => {
     onChange(expenses.filter((_, i) => i !== index));
   };
-
-  const invoiceList = (line: ExpenseLine) =>
-    line.invoices ?? (line.invoice ? [line.invoice] : []);
 
   return (
     <section
@@ -135,67 +131,37 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }:
               />
             </label>
 
-            <InvoiceGallery
-              invoices={invoiceList(line)}
-              editable={canEditInvoices && Boolean(line.id)}
-              onDelete={
-                line.id
-                  ? async (fileId) => {
-                      try {
-                        const updated = await deleteExpenseInvoice(line.id!, fileId);
-                        update(i, {
-                          invoices: updated.invoices,
-                          invoice: updated.invoice,
-                        });
-                      } catch (err) {
-                        alert(err instanceof Error ? err.message : "Could not remove invoice");
-                      }
-                    }
-                  : undefined
-              }
-            />
-
-            {canEditInvoices && (
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="text-sm flex-1 min-w-[200px]">
-                  <span className="text-[var(--color-muted)]">
-                    {canEditFields ? "Add receipt photos" : "Add receipt photos (admin)"}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    multiple
-                    className="mt-1 w-full text-sm"
-                    onChange={(e) => {
-                      const files = e.target.files ? [...e.target.files] : [];
-                      if (files.length) {
-                        update(i, {
-                          pendingFiles: [...(line.pendingFiles ?? []), ...files],
-                          pendingFile: files[0],
-                        });
-                      }
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                {(line.pendingFiles ?? (line.pendingFile ? [line.pendingFile] : [])).map((f, fi) => (
-                  <span key={`${f.name}-${fi}`} className="text-xs text-amber-700 self-end pb-2">
-                    {f.name} (uploads on save)
-                  </span>
-                ))}
-                {canEditFields && (
-                  <button
-                    type="button"
-                    onClick={() => remove(i)}
-                    className="text-sm text-[var(--color-danger)] px-3 py-1 self-end"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
+            {(canEditInvoices || (line.invoices?.length ?? 0) > 0) && (
+              <ExpenseInvoiceUploader
+                expenseId={line.id}
+                invoices={line.invoices ?? (line.invoice ? [line.invoice] : [])}
+                pendingFiles={[
+                  ...(line.pendingFiles ?? []),
+                  ...(line.pendingFile ? [line.pendingFile] : []),
+                ]}
+                disabled={!canEditInvoices}
+                uploadImmediately={canEditFields}
+                onChange={(patch) =>
+                  update(i, {
+                    ...patch,
+                    invoice: patch.invoices?.[0] ?? line.invoice,
+                    pendingFile: patch.pendingFiles?.[0],
+                  })
+                }
+              />
             )}
 
-            {disabled && !canEditInvoices && invoiceList(line).length === 0 && (
+            {canEditFields && (
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                className="text-sm text-[var(--color-danger)] px-1"
+              >
+                Remove expense line
+              </button>
+            )}
+
+            {disabled && !canEditInvoices && !(line.invoices?.length ?? 0) && (
               <p className="text-xs text-[var(--color-muted)]">No receipt photos attached.</p>
             )}
           </div>

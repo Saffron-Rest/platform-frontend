@@ -128,22 +128,27 @@ export type StandaloneExpensePayload = {
   paymentSource: string;
 };
 
-export async function createStandaloneExpense(payload: StandaloneExpensePayload, invoice?: File) {
-  if (invoice) {
-    const fd = new FormData();
-    fd.append("data", new Blob([JSON.stringify(payload)], { type: "application/json" }));
-    fd.append("invoice", invoice);
-    const raw = await api<Record<string, unknown>>("/expenses/standalone", {
-      method: "POST",
-      body: fd,
-    });
-    return mapLedgerExpense(raw);
-  }
+export async function createStandaloneExpense(
+  payload: StandaloneExpensePayload,
+  invoices?: File | File[]
+) {
+  const files = invoices
+    ? Array.isArray(invoices)
+      ? invoices
+      : [invoices]
+    : [];
   const raw = await api<Record<string, unknown>>("/expenses/standalone/json", {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return mapLedgerExpense(raw);
+  let row = mapLedgerExpense(raw);
+  for (const file of files) {
+    if (row.id) {
+      const updated = await uploadExpenseInvoice(row.id, file);
+      row = { ...row, ...updated };
+    }
+  }
+  return row;
 }
 
 export async function deleteStandaloneExpense(id: string) {

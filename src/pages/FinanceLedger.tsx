@@ -15,6 +15,7 @@ import {
 } from "../api/expenses";
 import { EXPENSE_CATEGORIES } from "../lib/expenseCategories";
 import { fmt } from "../lib/calc";
+import { ExpenseInvoiceUploader } from "../components/expense/ExpenseInvoiceUploader";
 import { InvoiceGallery } from "../components/expense/InvoiceGallery";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
@@ -76,7 +77,7 @@ export function FinanceLedger() {
     amount: 0,
     paymentSource: "CASH",
   });
-  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [invoiceFiles, setInvoiceFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -177,7 +178,7 @@ export function FinanceLedger() {
     setError("");
     setMessage("");
     try {
-      await createStandaloneExpense(expenseForm, invoiceFile ?? undefined);
+      await createStandaloneExpense(expenseForm, invoiceFiles);
       setMessage("Expense recorded");
       setExpenseForm({
         effectiveDate: todayIso(),
@@ -186,7 +187,7 @@ export function FinanceLedger() {
         amount: 0,
         paymentSource: "CASH",
       });
-      setInvoiceFile(null);
+      setInvoiceFiles([]);
       closeAdd();
       setViewTab("expenses");
       await load();
@@ -412,15 +413,14 @@ export function FinanceLedger() {
               <option value="CARD">Card / bank</option>
             </select>
           </label>
-          <label className="field-label">
-            Invoice (photo or PDF)
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              className="field-input"
-              onChange={(e) => setInvoiceFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
+          <ExpenseInvoiceUploader
+            invoices={[]}
+            pendingFiles={invoiceFiles}
+            disabled={saving}
+            uploadImmediately={false}
+            pendingHint="Will upload when you save this expense"
+            onChange={(patch) => setInvoiceFiles(patch.pendingFiles ?? [])}
+          />
             <Button variant="dark" fullWidth disabled={saving} onClick={() => void handleAddExpense()}>
               {saving ? "Saving…" : "Save expense"}
             </Button>
