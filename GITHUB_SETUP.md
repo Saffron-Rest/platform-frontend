@@ -30,7 +30,8 @@ cat ~/.ssh/saffron_github_deploy       # paste into GitHub secret SSH_PRIVATE_KE
 ```
 
 Copy key: `cat ~/.ssh/id_ed25519` — must include `-----BEGIN` / `-----END` lines.
-| `GHCR_TOKEN` | If package is private |
+| `GHCR_TOKEN` | Yes — PAT with `read:packages` |
+| `GHCR_USERNAME` | Yes — GitHub username that owns the PAT (not the org name) |
 | `HTTP_PORT` | Optional — default `80` |
 
 Backend secrets (`POSTGRES_PASSWORD`, `JWT_SECRET`) are **not** needed in this repo.

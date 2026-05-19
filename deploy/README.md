@@ -12,7 +12,8 @@ Repo: [Saffron-Rest/platform-frontend](https://github.com/Saffron-Rest/platform-
 | `VPS_USER` | `root` |
 | `VPS_SSH_KEY` | Private SSH key |
 | `HTTP_PORT` | `80` (optional) |
-| `GHCR_TOKEN` | PAT with `read:packages` (if image private) |
+| `GHCR_TOKEN` | PAT with `read:packages` |
+| `GHCR_USERNAME` | Your GitHub username (PAT owner) |
 
 Deploy **backend first**: [platform-backend](https://github.com/Saffron-Rest/platform-backend) (`saffron-backend` container must be running on `saffron_net`).
 

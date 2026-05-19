@@ -4,9 +4,12 @@ APP_DIR="${VPS_APP_DIR:-/docker/saffron-frontend}"
 cd "$APP_DIR"
 
 REGISTRY_HOST="${REGISTRY_HOST:-ghcr.io}"
-if [[ -n "${REGISTRY_PASSWORD:-}" && -n "${REGISTRY_USER:-}" ]]; then
-  echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USER" "$REGISTRY_HOST" --password-stdin
+if [[ -z "${REGISTRY_PASSWORD:-}" || -z "${REGISTRY_USER:-}" ]]; then
+  echo "ERROR: REGISTRY_USER and REGISTRY_PASSWORD required to pull from private GHCR." >&2
+  echo "Add GitHub secrets GHCR_USERNAME + GHCR_TOKEN, or make the package public." >&2
+  exit 1
 fi
+echo "$REGISTRY_PASSWORD" | docker login -u "$REGISTRY_USER" --password-stdin "$REGISTRY_HOST"
 
 HTTP_PORT="${HTTP_PORT:-80}"
 

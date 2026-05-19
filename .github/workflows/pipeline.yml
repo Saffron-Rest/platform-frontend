@@ -71,12 +71,22 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
         run: |
           missing=0
           if [ -z "$VPS_HOST" ]; then echo "::error::Missing secret VPS_HOST (e.g. 76.13.130.67)"; missing=1; fi
           if [ -z "$VPS_USER" ]; then echo "::error::Missing secret VPS_USER (e.g. root)"; missing=1; fi
           if [ -z "$SSH_PRIVATE_KEY" ] && [ -z "$VPS_SSH_KEY" ]; then
             echo "::error::Missing SSH key — add repository secret SSH_PRIVATE_KEY (or VPS_SSH_KEY) with the full private key"
+            missing=1
+          fi
+          if [ -z "$GHCR_TOKEN" ]; then
+            echo "::error::Missing GHCR_TOKEN — PAT with read:packages (or make the GHCR package public)"
+            missing=1
+          fi
+          if [ -z "$GHCR_USERNAME" ]; then
+            echo "::error::Missing GHCR_USERNAME — your GitHub username (owner of the PAT)"
             missing=1
           fi
           exit "$missing"
@@ -97,7 +107,7 @@ jobs:
         env:
           FRONTEND_IMAGE: ${{ env.IMAGE }}:latest
           HTTP_PORT: ${{ secrets.HTTP_PORT }}
-          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_USER: ${{ secrets.GHCR_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.GHCR_TOKEN }}
         with:
           host: ${{ secrets.VPS_HOST }}
