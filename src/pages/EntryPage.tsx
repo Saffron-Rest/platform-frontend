@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { syncExpenses, uploadPendingInvoices, loadExpenses } from "../api/expenses";
@@ -72,6 +72,20 @@ export function EntryPage() {
   const [openingHint, setOpeningHint] = useState<OpeningHint | null>(null);
   const [shiftType, setShiftType] = useState<ShiftType>("FULL");
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
+  /** True while the user has unsaved edits; pauses focus/visibility auto-refresh
+   *  so opening the file picker or switching tabs never wipes work in progress. */
+  const dirtyRef = useRef(false);
+  const markPristine = useCallback(() => {
+    dirtyRef.current = false;
+  }, []);
+  const handleFormChange = useCallback((next: EntryFormData) => {
+    dirtyRef.current = true;
+    setForm(next);
+  }, []);
+  const handleExpensesChange = useCallback((next: ExpenseLine[]) => {
+    dirtyRef.current = true;
+    setExpenses(next);
+  }, []);
 
   const entryStatus = (entry?.status ?? "").toUpperCase();
   const locked = entryStatus === "LOCKED";
@@ -181,6 +195,7 @@ export function EntryPage() {
     } else {
       setExpenses([]);
     }
+    markPristine();
   };
 
   const loadEntry = useCallback(async (opts?: { silent?: boolean }) => {
@@ -283,6 +298,8 @@ export function EntryPage() {
     const refreshIfVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (canManageReports && !selectedCashierId) return;
+      // Never overwrite unsaved edits or interrupt a save/upload in progress.
+      if (dirtyRef.current || saving) return;
       void loadEntry({ silent: true });
     };
     window.addEventListener("focus", refreshIfVisible);
@@ -291,7 +308,7 @@ export function EntryPage() {
       window.removeEventListener("focus", refreshIfVisible);
       document.removeEventListener("visibilitychange", refreshIfVisible);
     };
-  }, [loadEntry, canManageReports, selectedCashierId]);
+  }, [loadEntry, canManageReports, selectedCashierId, saving]);
 
   const persistExpenses = async (entryId: string, lines: ExpenseLine[]) => {
     const before = [...lines];
@@ -617,7 +634,7 @@ export function EntryPage() {
             {closingOnly ? (
               <ClosingEntryForm
                 data={form}
-                onChange={setForm}
+                onChange={handleFormChange}
                 disabled={readOnly}
                 openingEditable={canManageReports}
                 openingHint={openingHint}
@@ -628,8 +645,8 @@ export function EntryPage() {
                 expenses={
                   expenses.length ? expenses : readOnly ? expenses : [emptyExpenseLine()]
                 }
-                onChange={setForm}
-                onExpensesChange={setExpenses}
+                onChange={handleFormChange}
+                onExpensesChange={handleExpensesChange}
                 disabled={readOnly}
                 invoicesEditable={canManageReports || !locked}
                 openingEditable={canManageReports}

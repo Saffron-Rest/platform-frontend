@@ -3,7 +3,7 @@ import { PAYMENT_SOURCES } from "../lib/paymentSource";
 import { ExpenseInvoiceUploader } from "./expense/ExpenseInvoiceUploader";
 import type { ExpenseLine, PaymentSource } from "../types";
 import { expenseTotalBySource, fmt, totalExpenseLines } from "../lib/calc";
-import { num } from "../lib/numbers";
+import { AmountField } from "./ui/AmountField";
 import { Button } from "./ui/Button";
 
 type Props = {
@@ -105,19 +105,13 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }:
                   ))}
                 </select>
               </label>
-              <label className="text-sm">
-                Amount
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  disabled={disabled}
-                  value={num(line.amount)}
-                  onChange={(e) => update(i, { amount: num(e.target.value) })}
-                  className="w-full mt-1 px-3 py-2 rounded-lg border bg-white text-lg font-medium"
-                />
-              </label>
+              <AmountField
+                label="Amount"
+                value={line.amount}
+                onChange={(v) => update(i, { amount: v })}
+                disabled={disabled}
+                className="text-sm"
+              />
             </div>
             <label className="text-sm block">
               Description

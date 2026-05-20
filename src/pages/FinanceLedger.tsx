@@ -18,6 +18,7 @@ import { fmt } from "../lib/calc";
 import { ExpenseInvoiceUploader } from "../components/expense/ExpenseInvoiceUploader";
 import { InvoiceGallery } from "../components/expense/InvoiceGallery";
 import { PageHeader } from "../components/ui/PageHeader";
+import { AmountField } from "../components/ui/AmountField";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
@@ -307,36 +308,22 @@ export function FinanceLedger() {
               ))}
             </select>
           </label>
-          <label className="field-label">
-            Gross delivery sales (PLN)
-            <input
-              type="number"
-              min={0}
-              step={0.01}
-              className="field-input"
-              value={deliveryForm.grossAmount || ""}
-              onChange={(e) =>
-                setDeliveryForm((f) => ({ ...f, grossAmount: parseFloat(e.target.value) || 0 }))
-              }
-            />
-          </label>
-          <label className="field-label">
-            Settled to card (optional override)
-            <input
-              type="number"
-              min={0}
-              step={0.01}
-              className="field-input"
-              placeholder="Leave empty to use % from Settings"
-              value={deliveryForm.settledToCard ?? ""}
-              onChange={(e) =>
-                setDeliveryForm((f) => ({
-                  ...f,
-                  settledToCard: e.target.value === "" ? null : parseFloat(e.target.value) || 0,
-                }))
-              }
-            />
-          </label>
+          <AmountField
+            label="Gross delivery sales (PLN)"
+            className="field-label"
+            inputClassName="field-input"
+            value={deliveryForm.grossAmount}
+            onChange={(v) => setDeliveryForm((f) => ({ ...f, grossAmount: v }))}
+          />
+          <AmountField
+            label="Settled to card (optional override)"
+            className="field-label"
+            inputClassName="field-input"
+            placeholder="Leave empty to use % from Settings"
+            nullable
+            value={deliveryForm.settledToCard ?? null}
+            onChange={(v) => setDeliveryForm((f) => ({ ...f, settledToCard: v }))}
+          />
           <label className="field-label">
             Notes
             <input
@@ -392,19 +379,13 @@ export function FinanceLedger() {
               onChange={(e) => setExpenseForm((f) => ({ ...f, description: e.target.value }))}
             />
           </label>
-          <label className="field-label">
-            Amount (PLN)
-            <input
-              type="number"
-              min={0}
-              step={0.01}
-              className="field-input"
-              value={expenseForm.amount || ""}
-              onChange={(e) =>
-                setExpenseForm((f) => ({ ...f, amount: parseFloat(e.target.value) || 0 }))
-              }
-            />
-          </label>
+          <AmountField
+            label="Amount (PLN)"
+            className="field-label"
+            inputClassName="field-input"
+            value={expenseForm.amount}
+            onChange={(v) => setExpenseForm((f) => ({ ...f, amount: v }))}
+          />
           <label className="field-label">
             Paid from
             <select
