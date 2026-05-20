@@ -72,10 +72,7 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
             {fmt(treasury.cashBalance)}
           </p>
           {!compact && (
-            <p className="text-xs text-emerald-800/70 mt-1">
-              Initial {fmt(treasury.settings.initialCashBalance)} · from locked reports{" "}
-              {fmt(treasury.cashFromEntries)} · salaries {fmt(treasury.salaryPaidFromCash)}
-            </p>
+            <CashOnHandMeta treasury={treasury} />
           )}
         </Card>
         <Card className={`${cardClass} bg-sky-50 border-sky-200/60`}>
@@ -90,14 +87,19 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
             {fmt(treasury.cardBalance)}
           </p>
           {!compact && (
-            <p className="text-xs text-sky-800/70 mt-1">
-              Initial {fmt(treasury.settings.initialCardBalance)} · from reports{" "}
-              {fmt(treasury.cardFromShiftReports ?? treasury.cardFromEntries)}
-              {(treasury.cardFromManualDelivery ?? 0) > 0 && (
-                <> · manual delivery {fmt(treasury.cardFromManualDelivery!)}</>
-              )}{" "}
-              · salaries {fmt(treasury.salaryPaidFromCard)}
-            </p>
+            <BalanceBreakdown
+              tone="sky"
+              items={[
+                ["Initial balance", treasury.settings.initialCardBalance],
+                [
+                  "Card net from reports",
+                  treasury.cardFromShiftReports ?? treasury.cardFromEntries,
+                ],
+                ["Manual delivery (Finance)", treasury.cardFromManualDelivery ?? 0],
+                ["Finance expenses (card)", -(treasury.standaloneCardExpenses ?? 0)],
+                ["Salary paid by card", -treasury.salaryPaidFromCard],
+              ]}
+            />
           )}
         </Card>
       </div>
@@ -107,5 +109,105 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
         </p>
       )}
     </div>
+  );
+}
+
+function CashOnHandMeta({ treasury }: { treasury: TreasuryOverview }) {
+  const fromLatest = treasury.cashSource === "LATEST_COUNT" && treasury.cashLatestCountDate;
+  const computed = treasury.cashComputedBalance;
+  const showVariance =
+    typeof computed === "number" && Math.abs(computed - treasury.cashBalance) > 0.005;
+
+  if (!fromLatest) {
+    return (
+      <p className="text-xs text-emerald-800/70 mt-2">
+        No locked shift report yet — showing initial balance from Treasury settings.
+      </p>
+    );
+  }
+  const dateLabel = formatLatestDate(treasury.cashLatestCountDate!);
+  const who = treasury.cashLatestCountCashierName;
+  return (
+    <div className="mt-2 text-xs text-emerald-800/80 space-y-0.5">
+      <p>
+        Latest count: <strong>{dateLabel}</strong>
+        {who && (
+          <>
+            {" · "}
+            {who}
+          </>
+        )}
+      </p>
+      {showVariance && (
+        <p className="text-emerald-900/60">
+          Expected from movements: <strong>{fmt(computed!)}</strong>
+          {" · "}variance{" "}
+          <strong
+            className={
+              computed! - treasury.cashBalance > 0
+                ? "text-amber-700"
+                : "text-rose-700"
+            }
+          >
+            {computed! - treasury.cashBalance > 0 ? "+" : "−"}
+            {fmt(Math.abs(computed! - treasury.cashBalance))}
+          </strong>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function formatLatestDate(iso: string): string {
+  try {
+    return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function BalanceBreakdown({
+  tone,
+  items,
+}: {
+  tone: "emerald" | "sky";
+  items: [string, number][];
+}) {
+  const labelClass = tone === "emerald" ? "text-emerald-900/70" : "text-sky-900/70";
+  const valueClass = tone === "emerald" ? "text-emerald-900" : "text-sky-900";
+  const visible = items.filter(([, v]) => Math.abs(v) > 0.005);
+  if (visible.length === 0) return null;
+  return (
+    <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-xs">
+      {visible.map(([label, value]) => (
+        <FragmentRow key={label} label={label} value={value} labelClass={labelClass} valueClass={valueClass} />
+      ))}
+    </dl>
+  );
+}
+
+function FragmentRow({
+  label,
+  value,
+  labelClass,
+  valueClass,
+}: {
+  label: string;
+  value: number;
+  labelClass: string;
+  valueClass: string;
+}) {
+  return (
+    <>
+      <dt className={labelClass}>{label}</dt>
+      <dd className={`tabular-nums font-semibold ${valueClass}`}>
+        {value < 0 ? "−" : ""}
+        {fmt(Math.abs(value))}
+      </dd>
+    </>
   );
 }

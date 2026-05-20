@@ -143,12 +143,28 @@ export type TreasurySettings = {
 
 export type TreasuryOverview = {
   settings: TreasurySettings;
+  /** Cash actually in the drawer — most recent locked actual count (falls back
+   *  to initial balance when no locked report exists yet). */
   cashBalance: number;
+  /** Cumulative card / bank balance (no physical count). */
   cardBalance: number;
+  /** Where `cashBalance` came from. */
+  cashSource?: "LATEST_COUNT" | "INITIAL";
+  cashLatestCountDate?: string;
+  cashLatestCountCashierName?: string;
+  cashLatestCountSubmittedAt?: string;
+  /** Cumulative cash balance derived from initial + all reports − salaries
+   *  − standalone cash expenses. Useful for cross-check vs the physical count. */
+  cashComputedBalance?: number;
+  /** Net of standalone expenses (kept for backward compatibility) */
   cashFromEntries: number;
   cardFromEntries: number;
+  /** Raw components so the UI breakdown adds up cleanly */
+  cashFromShiftReports?: number;
   cardFromShiftReports?: number;
   cardFromManualDelivery?: number;
+  standaloneCashExpenses?: number;
+  standaloneCardExpenses?: number;
   salaryPaidFromCash: number;
   salaryPaidFromCard: number;
   currency: string;
