@@ -60,48 +60,72 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
         )}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Card className={`${cardClass} bg-emerald-50 border-emerald-200/60`}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/80">
-            Cash on hand
-          </p>
-          <p
-            className={`font-bold tabular-nums text-emerald-900 mt-1 ${
-              compact ? "text-xl" : "text-2xl"
-            }`}
+        <Link
+          to="/treasury/history?source=cash"
+          aria-label="Open cash history"
+          className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+        >
+          <Card
+            className={`${cardClass} bg-emerald-50 border-emerald-200/60 transition hover:bg-emerald-100/70 hover:border-emerald-300/70 group cursor-pointer`}
           >
-            {fmt(treasury.cashBalance)}
-          </p>
-          {!compact && (
-            <CashOnHandMeta treasury={treasury} />
-          )}
-        </Card>
-        <Card className={`${cardClass} bg-sky-50 border-sky-200/60`}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-sky-800/80">
-            Card / bank
-          </p>
-          <p
-            className={`font-bold tabular-nums text-sky-900 mt-1 ${
-              compact ? "text-xl" : "text-2xl"
-            }`}
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/80">
+                Cash on hand
+              </p>
+              <span className="text-xs font-medium text-emerald-800/70 opacity-0 group-hover:opacity-100 transition">
+                View history →
+              </span>
+            </div>
+            <p
+              className={`font-bold tabular-nums text-emerald-900 mt-1 ${
+                compact ? "text-xl" : "text-2xl"
+              }`}
+            >
+              {fmt(treasury.cashBalance)}
+            </p>
+            {!compact && <CashOnHandMeta treasury={treasury} />}
+          </Card>
+        </Link>
+        <Link
+          to="/treasury/history?source=card"
+          aria-label="Open card and bank history"
+          className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60"
+        >
+          <Card
+            className={`${cardClass} bg-sky-50 border-sky-200/60 transition hover:bg-sky-100/70 hover:border-sky-300/70 group cursor-pointer`}
           >
-            {fmt(treasury.cardBalance)}
-          </p>
-          {!compact && (
-            <BalanceBreakdown
-              tone="sky"
-              items={[
-                ["Initial balance", treasury.settings.initialCardBalance],
-                [
-                  "Card net from reports",
-                  treasury.cardFromShiftReports ?? treasury.cardFromEntries,
-                ],
-                ["Manual delivery (Finance)", treasury.cardFromManualDelivery ?? 0],
-                ["Finance expenses (card)", -(treasury.standaloneCardExpenses ?? 0)],
-                ["Salary paid by card", -treasury.salaryPaidFromCard],
-              ]}
-            />
-          )}
-        </Card>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-sky-800/80">
+                Card / bank
+              </p>
+              <span className="text-xs font-medium text-sky-800/70 opacity-0 group-hover:opacity-100 transition">
+                View history →
+              </span>
+            </div>
+            <p
+              className={`font-bold tabular-nums text-sky-900 mt-1 ${
+                compact ? "text-xl" : "text-2xl"
+              }`}
+            >
+              {fmt(treasury.cardBalance)}
+            </p>
+            {!compact && (
+              <BalanceBreakdown
+                tone="sky"
+                items={[
+                  ["Initial balance", treasury.settings.initialCardBalance],
+                  [
+                    "Card net from reports",
+                    treasury.cardFromShiftReports ?? treasury.cardFromEntries,
+                  ],
+                  ["Manual delivery (Finance)", treasury.cardFromManualDelivery ?? 0],
+                  ["Finance expenses (card)", -(treasury.standaloneCardExpenses ?? 0)],
+                  ["Salary paid by card", -treasury.salaryPaidFromCard],
+                ]}
+              />
+            )}
+          </Card>
+        </Link>
       </div>
       {compact && (
         <p className="text-xs text-[var(--color-muted)]">
