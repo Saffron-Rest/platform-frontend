@@ -1,16 +1,35 @@
 import { api } from "./client";
 
+export type TreasuryLedgerSource = "CASH" | "CARD";
+
+export type TreasuryLedgerCategory =
+  | "INCOME"
+  | "SHIFT_EXPENSE"
+  | "STANDALONE_EXPENSE"
+  | "SALARY"
+  | "TRANSFER";
+
 export type TreasuryLedgerKind =
-  | "SHIFT_REPORT"
+  // Shift report rows
+  | "SHIFT_CASH_SALES"
+  | "SHIFT_CASH_REFUND"
+  | "SHIFT_CARD_SALES_SETTLED"
+  | "SHIFT_CARD_REFUND"
+  | "SHIFT_PLATFORM_REFUND"
+  | "SHIFT_DELIVERY_SETTLED"
+  | "SHIFT_BANK_DEPOSIT"
+  | "SHIFT_CASH_WITHDRAWAL"
+  | "SHIFT_OWNER_WITHDRAWAL"
+  | "SHIFT_EXPENSE"
+  // Non-shift rows
   | "MANUAL_DELIVERY"
   | "STANDALONE_EXPENSE"
   | "SALARY_PAYOUT";
 
-export type TreasuryLedgerSource = "CASH" | "CARD";
-
 export type TreasuryLedgerRow = {
   date: string;
   kind: TreasuryLedgerKind;
+  category: TreasuryLedgerCategory;
   label: string;
   amount: number;
   sign: "+" | "-";
@@ -18,7 +37,8 @@ export type TreasuryLedgerRow = {
   refRoute?: string;
   refLabel?: string;
   refId?: string;
-  category?: string;
+  expenseCategory?: string;
+  platform?: string;
   notes?: string;
 };
 

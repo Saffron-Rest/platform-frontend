@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   getTreasuryLedger,
   type TreasuryLedger,
-  type TreasuryLedgerKind,
+  type TreasuryLedgerCategory,
   type TreasuryLedgerRow,
   type TreasuryLedgerSource,
 } from "../api/treasury";
@@ -20,19 +20,35 @@ const SOURCES: { value: TreasuryLedgerSource; label: string }[] = [
   { value: "CASH", label: "Cash" },
 ];
 
-const KIND_LABELS: Record<TreasuryLedgerKind, string> = {
-  SHIFT_REPORT: "Shift report",
-  MANUAL_DELIVERY: "Delivery income",
-  STANDALONE_EXPENSE: "Expense",
-  SALARY_PAYOUT: "Salary",
+type CategoryFilter = "ALL" | TreasuryLedgerCategory;
+
+const CATEGORY_LABELS: Record<TreasuryLedgerCategory, string> = {
+  INCOME: "Income",
+  SHIFT_EXPENSE: "Shift expenses",
+  STANDALONE_EXPENSE: "Post-close expenses",
+  SALARY: "Salaries",
+  TRANSFER: "Transfers",
 };
 
-const KIND_VARIANT: Record<TreasuryLedgerKind, "neutral" | "draft" | "inactive"> = {
-  SHIFT_REPORT: "neutral",
-  MANUAL_DELIVERY: "draft",
+const CATEGORY_VARIANT: Record<
+  TreasuryLedgerCategory,
+  "draft" | "neutral" | "inactive" | "locked"
+> = {
+  INCOME: "draft",
+  SHIFT_EXPENSE: "neutral",
   STANDALONE_EXPENSE: "inactive",
-  SALARY_PAYOUT: "inactive",
+  SALARY: "inactive",
+  TRANSFER: "locked",
 };
+
+const FILTERS: { value: CategoryFilter; label: string }[] = [
+  { value: "ALL", label: "All" },
+  { value: "INCOME", label: "Income" },
+  { value: "SHIFT_EXPENSE", label: "Shift expenses" },
+  { value: "STANDALONE_EXPENSE", label: "Post-close expenses" },
+  { value: "SALARY", label: "Salaries" },
+  { value: "TRANSFER", label: "Transfers" },
+];
 
 function monthStartIso() {
   const d = new Date();
@@ -44,8 +60,22 @@ function todayIso() {
 }
 
 function readSource(raw: string | null): TreasuryLedgerSource {
-  const upper = (raw ?? "card").toUpperCase();
-  return upper === "CASH" ? "CASH" : "CARD";
+  return (raw ?? "card").toUpperCase() === "CASH" ? "CASH" : "CARD";
+}
+
+function readFilter(raw: string | null): CategoryFilter {
+  const u = (raw ?? "all").toUpperCase();
+  if (u === "ALL") return "ALL";
+  if (
+    u === "INCOME" ||
+    u === "SHIFT_EXPENSE" ||
+    u === "STANDALONE_EXPENSE" ||
+    u === "SALARY" ||
+    u === "TRANSFER"
+  ) {
+    return u;
+  }
+  return "ALL";
 }
 
 function formatDate(iso: string): string {
@@ -64,6 +94,7 @@ export function TreasuryHistory() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const source = readSource(searchParams.get("source"));
+  const filter = readFilter(searchParams.get("filter"));
   const [from, setFrom] = useState(searchParams.get("from") ?? monthStartIso());
   const [to, setTo] = useState(searchParams.get("to") ?? todayIso());
   const [ledger, setLedger] = useState<TreasuryLedger | null>(null);
@@ -92,22 +123,33 @@ export function TreasuryHistory() {
     };
   }, [source, from, to]);
 
-  const sortedRows = useMemo(() => {
-    if (!ledger?.rows) return [];
-    return [...ledger.rows].reverse();
+  /** Category totals across the full window (independent of active filter). */
+  const categoryTotals = useMemo(() => {
+    const base: Record<TreasuryLedgerCategory, { inflow: number; outflow: number; count: number }> = {
+      INCOME: { inflow: 0, outflow: 0, count: 0 },
+      SHIFT_EXPENSE: { inflow: 0, outflow: 0, count: 0 },
+      STANDALONE_EXPENSE: { inflow: 0, outflow: 0, count: 0 },
+      SALARY: { inflow: 0, outflow: 0, count: 0 },
+      TRANSFER: { inflow: 0, outflow: 0, count: 0 },
+    };
+    if (!ledger?.rows) return base;
+    for (const row of ledger.rows) {
+      const bucket = base[row.category];
+      if (!bucket) continue;
+      bucket.count += 1;
+      if (row.sign === "+") bucket.inflow += row.amount;
+      else bucket.outflow += row.amount;
+    }
+    return base;
   }, [ledger]);
 
-  const totals = useMemo(() => {
-    if (!ledger?.rows) return { inflow: 0, outflow: 0 };
-    return ledger.rows.reduce(
-      (acc, row) => {
-        if (row.sign === "+") acc.inflow += row.amount;
-        else acc.outflow += row.amount;
-        return acc;
-      },
-      { inflow: 0, outflow: 0 }
-    );
-  }, [ledger]);
+  const visibleRows = useMemo(() => {
+    if (!ledger?.rows) return [];
+    const rows = filter === "ALL"
+      ? ledger.rows
+      : ledger.rows.filter((r) => r.category === filter);
+    return [...rows].reverse();
+  }, [ledger, filter]);
 
   const setSource = (next: TreasuryLedgerSource) => {
     const params = new URLSearchParams(searchParams);
@@ -117,11 +159,18 @@ export function TreasuryHistory() {
     setSearchParams(params, { replace: true });
   };
 
+  const setFilter = (next: CategoryFilter) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "ALL") params.delete("filter");
+    else params.set("filter", next.toLowerCase());
+    setSearchParams(params, { replace: true });
+  };
+
   const sourceTitle = source === "CASH" ? "Cash history" : "Card / bank history";
   const sourceSubtitle =
     source === "CASH"
-      ? "Every cash movement: shift reports, post-close expenses, and salary payouts."
-      : "Every card / bank movement: shift card settlement, delivery income, expenses, and salary payouts.";
+      ? "Every cash movement broken down by category — income, shift expenses, post-close expenses, salaries, and transfers."
+      : "Every card / bank movement broken down by category — income, shift expenses, post-close expenses, salaries, and transfers.";
 
   return (
     <div className="space-y-4">
@@ -198,18 +247,20 @@ export function TreasuryHistory() {
             </Card>
             <Card className="!p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
-                Activity in range
+                Net change
               </p>
-              <p className="text-sm tabular-nums mt-1 space-x-3">
-                <span className="text-emerald-700 font-semibold">+ {fmt(totals.inflow)}</span>
-                <span className="text-rose-700 font-semibold">− {fmt(totals.outflow)}</span>
+              <p
+                className={`text-xl font-bold tabular-nums mt-1 ${
+                  ledger.closingBalance - ledger.openingBalance >= 0
+                    ? "text-emerald-700"
+                    : "text-rose-700"
+                }`}
+              >
+                {ledger.closingBalance - ledger.openingBalance >= 0 ? "+" : "−"}
+                {fmt(Math.abs(ledger.closingBalance - ledger.openingBalance))}
               </p>
               <p className="text-xs text-[var(--color-muted)] mt-1">
-                Net{" "}
-                <strong>
-                  {totals.inflow - totals.outflow >= 0 ? "+" : "−"}
-                  {fmt(Math.abs(totals.inflow - totals.outflow))}
-                </strong>
+                {ledger.rows.length} movement{ledger.rows.length === 1 ? "" : "s"} in range
               </p>
             </Card>
             <Card className="!p-4">
@@ -223,9 +274,75 @@ export function TreasuryHistory() {
             </Card>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {(Object.keys(CATEGORY_LABELS) as TreasuryLedgerCategory[]).map((cat) => {
+              const { inflow, outflow, count } = categoryTotals[cat];
+              const net = inflow - outflow;
+              const active = filter === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setFilter(active ? "ALL" : cat)}
+                  className={`text-left rounded-2xl border p-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)]/50 ${
+                    active
+                      ? "bg-[var(--color-saffron)]/10 border-[var(--color-saffron)]/60"
+                      : "bg-white border-black/5 hover:border-black/15"
+                  }`}
+                  aria-pressed={active}
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                    {CATEGORY_LABELS[cat]}
+                  </p>
+                  <p
+                    className={`text-base font-bold tabular-nums mt-0.5 ${
+                      net >= 0 ? "text-emerald-700" : "text-rose-700"
+                    }`}
+                  >
+                    {net >= 0 ? "+" : "−"}
+                    {fmt(Math.abs(net))}
+                  </p>
+                  <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+                    {count === 0 ? "No movements" : `${count} movement${count === 1 ? "" : "s"}`}
+                    {inflow > 0 && outflow > 0 && (
+                      <>
+                        {" · "}
+                        <span className="text-emerald-700">+{fmt(inflow)}</span>
+                        {" / "}
+                        <span className="text-rose-700">−{fmt(outflow)}</span>
+                      </>
+                    )}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter by category">
+            {FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                role="tab"
+                aria-selected={filter === f.value}
+                onClick={() => setFilter(f.value)}
+                className={`tab-pill text-xs ${filter === f.value ? "tab-pill-active" : "tab-pill-idle"}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
           <Card>
-            <h3 className="font-semibold mb-3">Movements</h3>
-            {sortedRows.length === 0 ? (
+            <h3 className="font-semibold mb-3">
+              Movements
+              {filter !== "ALL" && (
+                <span className="text-sm font-normal text-[var(--color-muted)] ml-2">
+                  · {CATEGORY_LABELS[filter]}
+                </span>
+              )}
+            </h3>
+            {visibleRows.length === 0 ? (
               <div className="text-center py-10 space-y-3">
                 <p className="text-sm text-[var(--color-muted)]">
                   No movements in this range.
@@ -236,7 +353,7 @@ export function TreasuryHistory() {
               </div>
             ) : (
               <ul className="divide-y divide-black/5">
-                {sortedRows.map((row, idx) => (
+                {visibleRows.map((row, idx) => (
                   <LedgerRowItem key={`${row.kind}-${row.refId ?? idx}-${row.date}-${idx}`} row={row} />
                 ))}
               </ul>
@@ -255,7 +372,7 @@ function LedgerRowItem({ row }: { row: TreasuryLedgerRow }) {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-medium truncate">{row.label}</p>
-          <Badge variant={KIND_VARIANT[row.kind]}>{KIND_LABELS[row.kind]}</Badge>
+          <Badge variant={CATEGORY_VARIANT[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>
         </div>
         <p className="text-xs text-[var(--color-muted)] mt-1">
           {formatDate(row.date)}
