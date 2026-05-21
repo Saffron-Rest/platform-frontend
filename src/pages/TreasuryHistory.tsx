@@ -11,12 +11,18 @@ import {
   createCardSettlement,
   deleteCardSettlement,
 } from "../api/cardSettlements";
+import {
+  createBankDeposit,
+  deleteBankDeposit,
+  type BankDepositLinkPayload,
+} from "../api/bankDeposits";
 import { fmt } from "../lib/calc";
 import { Alert } from "../components/ui/Alert";
 import { AmountField } from "../components/ui/AmountField";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { FinanceAddPanel } from "../components/finance/FinanceAddPanel";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Spinner } from "../components/ui/Spinner";
 
@@ -95,17 +101,25 @@ function formatDate(iso: string): string {
   }
 }
 
-/** Row identity for tracking which line is being reconciled. */
+/** Row identity for tracking which line is being reconciled / selected. */
 function rowKey(row: TreasuryLedgerRow): string {
   return `${row.kind}::${row.refId ?? row.date}`;
 }
 
-/** A card-side income row that can have a manual settlement reconciliation attached. */
+/** A card-side income row that can have a reconciliation attached. */
 function isReconcilable(row: TreasuryLedgerRow): boolean {
   if (row.kind === "CARD_SETTLEMENT") return false;
   if (row.category !== "INCOME") return false;
   if (row.sign !== "+") return false;
   return !!row.refId;
+}
+
+/** Can this row be added to a multi-day batch? Not if it's already settled some other way. */
+function isBatchable(row: TreasuryLedgerRow): boolean {
+  if (!isReconcilable(row)) return false;
+  if (row.bankDepositId) return false;
+  if (row.settledOverride) return false;
+  return true;
 }
 
 export function TreasuryHistory() {
@@ -121,11 +135,19 @@ export function TreasuryHistory() {
   const [info, setInfo] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
 
-  // Inline reconciliation editor — which row is open + the in-progress values
+  // Inline single-row reconciliation editor
   const [openRowKey, setOpenRowKey] = useState<string | null>(null);
   const [settled, setSettled] = useState<number>(0);
   const [settledNotes, setSettledNotes] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  // Multi-row batch selection + bank deposit form
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchBankDate, setBatchBankDate] = useState<string>(todayIso());
+  const [batchSettled, setBatchSettled] = useState<number>(0);
+  const [batchNotes, setBatchNotes] = useState<string>("");
+  const [batchSaving, setBatchSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,11 +171,17 @@ export function TreasuryHistory() {
     };
   }, [source, from, to, reloadTick]);
 
+  /** Clear all per-row state when the user navigates between source/filter/date range. */
+  const clearAllEditors = () => {
+    setOpenRowKey(null);
+    setSelectedKeys(new Set());
+    setBatchOpen(false);
+  };
+
   const openReconcile = (row: TreasuryLedgerRow) => {
     setError("");
     setInfo("");
     setOpenRowKey(rowKey(row));
-    // Default the settled value to whatever's already on the row (override or original)
     setSettled(row.amount);
     setSettledNotes(row.settledNotes ?? "");
   };
@@ -170,8 +198,6 @@ export function TreasuryHistory() {
       setError("Bank-credited amount must be zero or positive");
       return;
     }
-    // Gross = the snapshot of the row's original (pre-override) amount.
-    // When editing an existing override, originalAmount holds the snapshot.
     const gross = row.settledOverride && typeof row.originalAmount === "number"
       ? row.originalAmount
       : row.amount;
@@ -210,6 +236,95 @@ export function TreasuryHistory() {
     }
   };
 
+  const handleRemoveDeposit = async (row: TreasuryLedgerRow) => {
+    if (!row.bankDepositId) return;
+    const count = row.bankDepositLinkCount ?? 1;
+    if (!confirm(
+      count > 1
+        ? `Remove the bank deposit covering ${count} rows? All linked rows will revert to their original amounts.`
+        : "Remove this bank deposit and restore the original amount?"
+    )) return;
+    try {
+      await deleteBankDeposit(row.bankDepositId);
+      setInfo("Bank deposit removed.");
+      setReloadTick((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not remove bank deposit");
+    }
+  };
+
+  const toggleSelected = (row: TreasuryLedgerRow) => {
+    const key = rowKey(row);
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedKeys(new Set());
+    setBatchOpen(false);
+  };
+
+  const selectedRows = useMemo(() => {
+    if (!ledger?.rows) return [] as TreasuryLedgerRow[];
+    return ledger.rows.filter((r) => selectedKeys.has(rowKey(r)));
+  }, [ledger, selectedKeys]);
+
+  const selectedGross = useMemo(
+    () => selectedRows.reduce((acc, r) => acc + r.amount, 0),
+    [selectedRows],
+  );
+
+  const openBatchForm = () => {
+    if (selectedRows.length === 0) return;
+    setError("");
+    setInfo("");
+    // Default bank date = latest selected row's date, or today if newer
+    const latest = selectedRows
+      .map((r) => r.date)
+      .sort()
+      .pop() ?? todayIso();
+    setBatchBankDate(latest > todayIso() ? latest : todayIso() >= latest ? todayIso() : latest);
+    setBatchSettled(selectedGross);
+    setBatchNotes("");
+    setBatchOpen(true);
+  };
+
+  const handleSaveBatch = async () => {
+    if (selectedRows.length === 0) return;
+    if (!Number.isFinite(batchSettled) || batchSettled < 0) {
+      setError("Bank-credited amount must be zero or positive");
+      return;
+    }
+    const links: BankDepositLinkPayload[] = selectedRows.map((r) => ({
+      linkedKind: r.kind,
+      linkedRefId: r.refId as string,
+      linkedDate: r.date,
+      grossAmount: r.amount,
+    }));
+    setBatchSaving(true);
+    setError("");
+    setInfo("");
+    try {
+      await createBankDeposit({
+        bankDate: batchBankDate,
+        totalSettled: batchSettled,
+        notes: batchNotes.trim() || undefined,
+        links,
+      });
+      setInfo(`Bank deposit recorded for ${links.length} row${links.length === 1 ? "" : "s"}.`);
+      clearSelection();
+      setReloadTick((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save bank deposit");
+    } finally {
+      setBatchSaving(false);
+    }
+  };
+
   /** Category totals across the full window (independent of active filter). */
   const categoryTotals = useMemo(() => {
     const base: Record<TreasuryLedgerCategory, { inflow: number; outflow: number; count: number }> = {
@@ -244,7 +359,7 @@ export function TreasuryHistory() {
     params.set("from", from);
     params.set("to", to);
     setSearchParams(params, { replace: true });
-    closeReconcile();
+    clearAllEditors();
   };
 
   const setFilter = (next: CategoryFilter) => {
@@ -258,10 +373,12 @@ export function TreasuryHistory() {
   const sourceSubtitle =
     source === "CASH"
       ? "Every cash movement broken down by category — income, shift expenses, post-close expenses, salaries, and transfers."
-      : "Every card / bank movement broken down by category — tap any income row to reconcile it against your bank statement.";
+      : "Tap any income row to settle it against the bank — or check multiple rows to reconcile them all under a single bank deposit (e.g. weekend sales settled on Monday).";
+
+  const batchVariance = batchSettled - selectedGross;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
       <PageHeader
         title={sourceTitle}
         subtitle={sourceSubtitle}
@@ -314,6 +431,88 @@ export function TreasuryHistory() {
           </label>
         </div>
       </Card>
+
+      {batchOpen && (
+        <FinanceAddPanel
+          title="Reconcile as bank deposit"
+          subtitle={`${selectedRows.length} row${selectedRows.length === 1 ? "" : "s"} selected · gross ${fmt(selectedGross)} PLN. Enter the actual amount the bank credited — the difference will be distributed across the selected rows.`}
+          onClose={() => setBatchOpen(false)}
+        >
+          <div className="space-y-3">
+            <div className="rounded-xl border border-black/5 bg-white p-3 max-h-44 overflow-y-auto">
+              <ul className="divide-y divide-black/5 text-sm">
+                {selectedRows.map((r) => (
+                  <li key={rowKey(r)} className="py-1.5 flex items-center justify-between gap-2">
+                    <span className="truncate">
+                      <span className="text-[var(--color-muted)] mr-1.5">{formatDate(r.date)}</span>
+                      {r.label}
+                    </span>
+                    <span className="tabular-nums shrink-0">{fmt(r.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <label className="field-label">
+              Bank deposit date
+              <input
+                type="date"
+                className="field-input"
+                value={batchBankDate}
+                onChange={(e) => setBatchBankDate(e.target.value)}
+              />
+            </label>
+            <AmountField
+              label="What did the bank credit (total)?"
+              className="field-label"
+              inputClassName="field-input"
+              value={batchSettled}
+              onChange={setBatchSettled}
+            />
+            <div
+              className={`rounded-xl px-3 py-2 text-sm font-medium tabular-nums ${
+                Math.abs(batchVariance) < 0.005
+                  ? "bg-black/5 text-[var(--color-muted)]"
+                  : batchVariance < 0
+                    ? "bg-rose-50 text-rose-800 border border-rose-200/60"
+                    : "bg-emerald-50 text-emerald-800 border border-emerald-200/60"
+              }`}
+            >
+              {Math.abs(batchVariance) < 0.005 ? (
+                <>Matches the selection — no adjustment will be applied.</>
+              ) : (
+                <>
+                  Variance:{" "}
+                  <strong>
+                    {batchVariance >= 0 ? "+" : "−"}
+                    {fmt(Math.abs(batchVariance))} PLN
+                  </strong>
+                  <span className="block text-xs font-normal mt-0.5">
+                    Each row will be reduced/increased pro-rata to add up to the bank deposit.
+                  </span>
+                </>
+              )}
+            </div>
+            <label className="field-label">
+              Notes (optional)
+              <input
+                type="text"
+                className="field-input"
+                placeholder="Wolt weekly settlement / POS fee 1.5%…"
+                value={batchNotes}
+                onChange={(e) => setBatchNotes(e.target.value)}
+              />
+            </label>
+            <Button
+              variant="dark"
+              fullWidth
+              disabled={batchSaving}
+              onClick={() => void handleSaveBatch()}
+            >
+              {batchSaving ? "Saving…" : "Save bank deposit"}
+            </Button>
+          </div>
+        </FinanceAddPanel>
+      )}
 
       {error && <Alert variant="error">{error}</Alert>}
       {info && <Alert variant="success">{info}</Alert>}
@@ -445,16 +644,22 @@ export function TreasuryHistory() {
                 {visibleRows.map((row, idx) => {
                   const key = `${row.kind}-${row.refId ?? idx}-${row.date}-${idx}`;
                   const reconcilable = source === "CARD" && isReconcilable(row);
+                  const batchable = source === "CARD" && isBatchable(row);
                   const isOpen = openRowKey === rowKey(row);
+                  const checked = selectedKeys.has(rowKey(row));
                   return (
                     <LedgerRowItem
                       key={key}
                       row={row}
                       reconcilable={reconcilable}
+                      batchable={batchable}
+                      checked={checked}
+                      onToggleCheck={() => toggleSelected(row)}
                       open={isOpen}
                       onOpen={() => openReconcile(row)}
                       onClose={closeReconcile}
                       onRemoveOverride={() => void handleRemoveOverride(row)}
+                      onRemoveDeposit={() => void handleRemoveDeposit(row)}
                       settled={settled}
                       onSettledChange={setSettled}
                       notesValue={settledNotes}
@@ -469,6 +674,37 @@ export function TreasuryHistory() {
           </Card>
         </>
       ) : null}
+
+      {selectedKeys.size > 0 && !batchOpen && (
+        <div className="fixed bottom-0 inset-x-0 z-30 px-3 pb-3 pointer-events-none">
+          <div className="max-w-3xl mx-auto pointer-events-auto rounded-2xl bg-[var(--color-ink)] text-white shadow-2xl px-4 py-3 flex items-center gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-sm">
+                {selectedKeys.size} row{selectedKeys.size === 1 ? "" : "s"} selected
+              </p>
+              <p className="text-xs text-white/70 tabular-nums">
+                gross {fmt(selectedGross)} PLN
+              </p>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="text-xs font-medium text-white/70 hover:text-white px-2 py-1"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={openBatchForm}
+                className="text-sm font-semibold bg-[var(--color-saffron)] text-[var(--color-ink)] rounded-xl px-3 py-2"
+              >
+                Reconcile as bank deposit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -476,10 +712,14 @@ export function TreasuryHistory() {
 type LedgerRowItemProps = {
   row: TreasuryLedgerRow;
   reconcilable: boolean;
+  batchable: boolean;
+  checked: boolean;
+  onToggleCheck: () => void;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
   onRemoveOverride: () => void;
+  onRemoveDeposit: () => void;
   settled: number;
   onSettledChange: (v: number) => void;
   notesValue: string;
@@ -491,10 +731,14 @@ type LedgerRowItemProps = {
 function LedgerRowItem({
   row,
   reconcilable,
+  batchable,
+  checked,
+  onToggleCheck,
   open,
   onOpen,
   onClose,
   onRemoveOverride,
+  onRemoveDeposit,
   settled,
   onSettledChange,
   notesValue,
@@ -504,18 +748,33 @@ function LedgerRowItem({
 }: LedgerRowItemProps) {
   const isInflow = row.sign === "+";
   const overridden = !!row.settledOverride;
+  const inDeposit = !!row.bankDepositId;
   const original = typeof row.originalAmount === "number" ? row.originalAmount : null;
   const variance = original != null ? row.amount - original : 0;
 
   return (
     <li className="py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="flex items-start gap-3">
+        {batchable && (
+          <label className="shrink-0 pt-0.5">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={onToggleCheck}
+              className="w-4 h-4 accent-[var(--color-saffron)]"
+              aria-label={`Select ${row.label}`}
+            />
+          </label>
+        )}
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-medium truncate">{row.label}</p>
             <Badge variant={CATEGORY_VARIANT[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>
-            {overridden && (
-              <Badge variant="draft">Settled</Badge>
+            {overridden && <Badge variant="draft">Settled</Badge>}
+            {inDeposit && (
+              <Badge variant="locked">
+                Bank deposit {row.bankDepositDate ? formatDate(row.bankDepositDate) : ""}
+              </Badge>
             )}
           </div>
           <p className="text-xs text-[var(--color-muted)] mt-1">
@@ -529,7 +788,15 @@ function LedgerRowItem({
               </>
             )}
           </p>
-          {overridden && original != null && (
+          {inDeposit && original != null && (
+            <p className="text-xs text-[var(--color-muted)] mt-1 tabular-nums">
+              this row's share: {fmt(row.amount)} of {fmt(row.bankDepositSettled ?? 0)} total
+              {typeof row.bankDepositLinkCount === "number" && row.bankDepositLinkCount > 1 && (
+                <> · part of {row.bankDepositLinkCount}-day batch</>
+              )}
+            </p>
+          )}
+          {overridden && !inDeposit && original != null && (
             <p className="text-xs text-[var(--color-muted)] mt-1 tabular-nums">
               originally {fmt(original)} · settled {fmt(row.amount)} ·{" "}
               <span className={variance >= 0 ? "text-emerald-700" : "text-rose-700"}>
@@ -538,15 +805,33 @@ function LedgerRowItem({
               </span>
             </p>
           )}
-          {row.settledNotes && (
+          {row.bankDepositNotes && (
+            <p className="text-xs text-[var(--color-muted)] mt-1 italic">
+              note: {row.bankDepositNotes}
+            </p>
+          )}
+          {row.settledNotes && !inDeposit && (
             <p className="text-xs text-[var(--color-muted)] mt-1 italic">
               note: {row.settledNotes}
             </p>
           )}
-          {row.notes && !row.settledNotes && (
+          {row.notes && !row.settledNotes && !row.bankDepositNotes && (
             <p className="text-xs text-[var(--color-muted)] mt-1 italic">{row.notes}</p>
           )}
-          {reconcilable && !open && (
+
+          {/* Per-row actions */}
+          {inDeposit && (
+            <div className="flex items-center gap-3 mt-1.5">
+              <button
+                type="button"
+                onClick={onRemoveDeposit}
+                className="text-xs font-medium text-rose-600 hover:underline"
+              >
+                Remove bank deposit
+              </button>
+            </div>
+          )}
+          {reconcilable && !inDeposit && !open && (
             <div className="flex items-center gap-3 mt-1.5">
               <button
                 type="button"
@@ -568,7 +853,7 @@ function LedgerRowItem({
           )}
         </div>
         <div className="text-right tabular-nums shrink-0">
-          {overridden && original != null && Math.abs(variance) >= 0.005 && (
+          {(overridden || inDeposit) && original != null && Math.abs(variance) >= 0.005 && (
             <p className="text-xs text-[var(--color-muted)] line-through">
               {fmt(original)}
             </p>
@@ -585,7 +870,6 @@ function LedgerRowItem({
 
       {open && (
         <ReconcileForm
-          row={row}
           settled={settled}
           onSettledChange={onSettledChange}
           notesValue={notesValue}
@@ -593,6 +877,7 @@ function LedgerRowItem({
           saving={saving}
           onSave={onSave}
           onClose={onClose}
+          row={row}
         />
       )}
     </li>

@@ -53,6 +53,14 @@ export type TreasuryLedgerRow = {
   settlementId?: string;
   /** Free-form note saved with the override. */
   settledNotes?: string;
+  /** Bank deposit metadata when this row is part of a multi-day batch reconciliation. */
+  bankDepositId?: string;
+  bankDepositDate?: string;
+  bankDepositSettled?: number;
+  bankDepositGross?: number;
+  bankDepositVariance?: number;
+  bankDepositLinkCount?: number;
+  bankDepositNotes?: string;
   notes?: string;
 };
 

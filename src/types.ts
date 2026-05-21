@@ -164,6 +164,7 @@ export type TreasuryOverview = {
   cardFromShiftReports?: number;
   cardFromManualDelivery?: number;
   cardFromManualSettlement?: number;
+  cardFromBankDeposits?: number;
   standaloneCashExpenses?: number;
   standaloneCardExpenses?: number;
   salaryPaidFromCash: number;
@@ -240,6 +241,29 @@ export type CardSettlement = {
   delta: number;
   notes?: string;
   createdAt?: string;
+};
+
+/** A single bank credit that reconciles one or more source rows (multi-day batches). */
+export type BankDepositLink = {
+  id: string;
+  linkedKind: string;
+  linkedRefId: string;
+  linkedDate: string;
+  grossAmount: number;
+  /** Pro-rata share of totalSettled this link absorbs. */
+  share: number;
+};
+
+export type BankDeposit = {
+  id: string;
+  bankDate: string;
+  totalSettled: number;
+  totalGross: number;
+  variance: number;
+  linkCount: number;
+  notes?: string;
+  createdAt?: string;
+  links: BankDepositLink[];
 };
 
 export type DailyEntry = {
