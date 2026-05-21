@@ -107,9 +107,15 @@ function rowKey(row: TreasuryLedgerRow): string {
   return `${row.kind}::${row.refId ?? row.date}`;
 }
 
-/** A card-side income row that can have a reconciliation attached. */
+/** A card-side income row that can have a reconciliation attached.
+ *
+ *  Rows that the user already enters with an actual settled amount (e.g. manually-added
+ *  delivery income via Finance, or a standalone card-settlement row) are excluded — they
+ *  are settled by construction and don't need a second reconciliation step.
+ */
 function isReconcilable(row: TreasuryLedgerRow): boolean {
   if (row.kind === "CARD_SETTLEMENT") return false;
+  if (row.kind === "MANUAL_DELIVERY") return false;
   if (row.category !== "INCOME") return false;
   if (row.sign !== "+") return false;
   return !!row.refId;
