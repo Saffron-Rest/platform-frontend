@@ -163,6 +163,7 @@ export type TreasuryOverview = {
   cashFromShiftReports?: number;
   cardFromShiftReports?: number;
   cardFromManualDelivery?: number;
+  cardFromManualSettlement?: number;
   standaloneCashExpenses?: number;
   standaloneCardExpenses?: number;
   salaryPaidFromCash: number;
@@ -224,6 +225,19 @@ export type ManualDeliveryIncome = {
   grossAmount: number;
   settledToCard: number;
   settledOverridden?: boolean;
+  notes?: string;
+  createdAt?: string;
+};
+
+/** Manual reconciliation of POS card sales: how much was rung up vs how much the bank credited.
+ *  The `delta` (settled − gross) is added to the card / bank treasury balance. */
+export type CardSettlement = {
+  id: string;
+  effectiveDate: string;
+  grossAmount: number;
+  settledAmount: number;
+  /** settledAmount − grossAmount (can be negative). */
+  delta: number;
   notes?: string;
   createdAt?: string;
 };

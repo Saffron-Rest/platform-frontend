@@ -23,6 +23,7 @@ export type TreasuryLedgerKind =
   | "SHIFT_EXPENSE"
   // Non-shift rows
   | "MANUAL_DELIVERY"
+  | "CARD_SETTLEMENT"
   | "STANDALONE_EXPENSE"
   | "SALARY_PAYOUT";
 
@@ -39,6 +40,19 @@ export type TreasuryLedgerRow = {
   refId?: string;
   expenseCategory?: string;
   platform?: string;
+  /** Standalone CARD_SETTLEMENT row metadata. */
+  grossAmount?: number;
+  settledAmount?: number;
+  /** Linked-settlement overrides applied on top of an existing card-income row. */
+  settledOverride?: boolean;
+  /** Amount the row would have had without the override (snapshot). */
+  originalAmount?: number;
+  /** Optional gross-sold figure recorded with the settlement (e.g. 2000 PLN). */
+  settledGross?: number;
+  /** ID of the persisted CardSettlement override (for delete). */
+  settlementId?: string;
+  /** Free-form note saved with the override. */
+  settledNotes?: string;
   notes?: string;
 };
 

@@ -7,8 +7,13 @@ import {
   type TreasuryLedgerRow,
   type TreasuryLedgerSource,
 } from "../api/treasury";
+import {
+  createCardSettlement,
+  deleteCardSettlement,
+} from "../api/cardSettlements";
 import { fmt } from "../lib/calc";
 import { Alert } from "../components/ui/Alert";
+import { AmountField } from "../components/ui/AmountField";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -90,6 +95,19 @@ function formatDate(iso: string): string {
   }
 }
 
+/** Row identity for tracking which line is being reconciled. */
+function rowKey(row: TreasuryLedgerRow): string {
+  return `${row.kind}::${row.refId ?? row.date}`;
+}
+
+/** A card-side income row that can have a manual settlement reconciliation attached. */
+function isReconcilable(row: TreasuryLedgerRow): boolean {
+  if (row.kind === "CARD_SETTLEMENT") return false;
+  if (row.category !== "INCOME") return false;
+  if (row.sign !== "+") return false;
+  return !!row.refId;
+}
+
 export function TreasuryHistory() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -100,6 +118,14 @@ export function TreasuryHistory() {
   const [ledger, setLedger] = useState<TreasuryLedger | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [reloadTick, setReloadTick] = useState(0);
+
+  // Inline reconciliation editor — which row is open + the in-progress values
+  const [openRowKey, setOpenRowKey] = useState<string | null>(null);
+  const [settled, setSettled] = useState<number>(0);
+  const [settledNotes, setSettledNotes] = useState<string>("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,7 +147,68 @@ export function TreasuryHistory() {
     return () => {
       cancelled = true;
     };
-  }, [source, from, to]);
+  }, [source, from, to, reloadTick]);
+
+  const openReconcile = (row: TreasuryLedgerRow) => {
+    setError("");
+    setInfo("");
+    setOpenRowKey(rowKey(row));
+    // Default the settled value to whatever's already on the row (override or original)
+    setSettled(row.amount);
+    setSettledNotes(row.settledNotes ?? "");
+  };
+
+  const closeReconcile = () => {
+    setOpenRowKey(null);
+    setSettled(0);
+    setSettledNotes("");
+  };
+
+  const handleSaveOverride = async (row: TreasuryLedgerRow) => {
+    if (!row.refId) return;
+    if (!Number.isFinite(settled) || settled < 0) {
+      setError("Bank-credited amount must be zero or positive");
+      return;
+    }
+    // Gross = the snapshot of the row's original (pre-override) amount.
+    // When editing an existing override, originalAmount holds the snapshot.
+    const gross = row.settledOverride && typeof row.originalAmount === "number"
+      ? row.originalAmount
+      : row.amount;
+    setSaving(true);
+    setError("");
+    setInfo("");
+    try {
+      await createCardSettlement({
+        effectiveDate: row.date,
+        grossAmount: gross,
+        settledAmount: settled,
+        linkedKind: row.kind,
+        linkedRefId: row.refId,
+        notes: settledNotes.trim() || undefined,
+      });
+      setInfo("Settlement saved.");
+      closeReconcile();
+      setReloadTick((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save settlement");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveOverride = async (row: TreasuryLedgerRow) => {
+    if (!row.settlementId) return;
+    if (!confirm("Remove this manual settlement and restore the original amount?")) return;
+    try {
+      await deleteCardSettlement(row.settlementId);
+      setInfo("Settlement removed.");
+      setReloadTick((n) => n + 1);
+      if (openRowKey === rowKey(row)) closeReconcile();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not remove settlement");
+    }
+  };
 
   /** Category totals across the full window (independent of active filter). */
   const categoryTotals = useMemo(() => {
@@ -157,6 +244,7 @@ export function TreasuryHistory() {
     params.set("from", from);
     params.set("to", to);
     setSearchParams(params, { replace: true });
+    closeReconcile();
   };
 
   const setFilter = (next: CategoryFilter) => {
@@ -170,7 +258,7 @@ export function TreasuryHistory() {
   const sourceSubtitle =
     source === "CASH"
       ? "Every cash movement broken down by category — income, shift expenses, post-close expenses, salaries, and transfers."
-      : "Every card / bank movement broken down by category — income, shift expenses, post-close expenses, salaries, and transfers.";
+      : "Every card / bank movement broken down by category — tap any income row to reconcile it against your bank statement.";
 
   return (
     <div className="space-y-4">
@@ -228,6 +316,7 @@ export function TreasuryHistory() {
       </Card>
 
       {error && <Alert variant="error">{error}</Alert>}
+      {info && <Alert variant="success">{info}</Alert>}
 
       {loading ? (
         <div className="flex justify-center py-12">
@@ -353,9 +442,28 @@ export function TreasuryHistory() {
               </div>
             ) : (
               <ul className="divide-y divide-black/5">
-                {visibleRows.map((row, idx) => (
-                  <LedgerRowItem key={`${row.kind}-${row.refId ?? idx}-${row.date}-${idx}`} row={row} />
-                ))}
+                {visibleRows.map((row, idx) => {
+                  const key = `${row.kind}-${row.refId ?? idx}-${row.date}-${idx}`;
+                  const reconcilable = source === "CARD" && isReconcilable(row);
+                  const isOpen = openRowKey === rowKey(row);
+                  return (
+                    <LedgerRowItem
+                      key={key}
+                      row={row}
+                      reconcilable={reconcilable}
+                      open={isOpen}
+                      onOpen={() => openReconcile(row)}
+                      onClose={closeReconcile}
+                      onRemoveOverride={() => void handleRemoveOverride(row)}
+                      settled={settled}
+                      onSettledChange={setSettled}
+                      notesValue={settledNotes}
+                      onNotesChange={setSettledNotes}
+                      saving={saving}
+                      onSave={() => void handleSaveOverride(row)}
+                    />
+                  );
+                })}
               </ul>
             )}
           </Card>
@@ -365,39 +473,224 @@ export function TreasuryHistory() {
   );
 }
 
-function LedgerRowItem({ row }: { row: TreasuryLedgerRow }) {
+type LedgerRowItemProps = {
+  row: TreasuryLedgerRow;
+  reconcilable: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onRemoveOverride: () => void;
+  settled: number;
+  onSettledChange: (v: number) => void;
+  notesValue: string;
+  onNotesChange: (v: string) => void;
+  saving: boolean;
+  onSave: () => void;
+};
+
+function LedgerRowItem({
+  row,
+  reconcilable,
+  open,
+  onOpen,
+  onClose,
+  onRemoveOverride,
+  settled,
+  onSettledChange,
+  notesValue,
+  onNotesChange,
+  saving,
+  onSave,
+}: LedgerRowItemProps) {
   const isInflow = row.sign === "+";
+  const overridden = !!row.settledOverride;
+  const original = typeof row.originalAmount === "number" ? row.originalAmount : null;
+  const variance = original != null ? row.amount - original : 0;
+
   return (
-    <li className="py-3 flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="font-medium truncate">{row.label}</p>
-          <Badge variant={CATEGORY_VARIANT[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>
-        </div>
-        <p className="text-xs text-[var(--color-muted)] mt-1">
-          {formatDate(row.date)}
-          {row.refRoute && (
-            <>
-              {" · "}
-              <Link to={row.refRoute} className="text-[var(--color-saffron)] font-medium">
-                {row.refLabel ?? "Open"} →
-              </Link>
-            </>
+    <li className="py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium truncate">{row.label}</p>
+            <Badge variant={CATEGORY_VARIANT[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>
+            {overridden && (
+              <Badge variant="draft">Settled</Badge>
+            )}
+          </div>
+          <p className="text-xs text-[var(--color-muted)] mt-1">
+            {formatDate(row.date)}
+            {row.refRoute && (
+              <>
+                {" · "}
+                <Link to={row.refRoute} className="text-[var(--color-saffron)] font-medium">
+                  {row.refLabel ?? "Open"} →
+                </Link>
+              </>
+            )}
+          </p>
+          {overridden && original != null && (
+            <p className="text-xs text-[var(--color-muted)] mt-1 tabular-nums">
+              originally {fmt(original)} · settled {fmt(row.amount)} ·{" "}
+              <span className={variance >= 0 ? "text-emerald-700" : "text-rose-700"}>
+                variance {variance >= 0 ? "+" : "−"}
+                {fmt(Math.abs(variance))}
+              </span>
+            </p>
           )}
-        </p>
-        {row.notes && (
-          <p className="text-xs text-[var(--color-muted)] mt-1 italic">{row.notes}</p>
+          {row.settledNotes && (
+            <p className="text-xs text-[var(--color-muted)] mt-1 italic">
+              note: {row.settledNotes}
+            </p>
+          )}
+          {row.notes && !row.settledNotes && (
+            <p className="text-xs text-[var(--color-muted)] mt-1 italic">{row.notes}</p>
+          )}
+          {reconcilable && !open && (
+            <div className="flex items-center gap-3 mt-1.5">
+              <button
+                type="button"
+                onClick={onOpen}
+                className="text-xs font-semibold text-[var(--color-saffron)] hover:underline"
+              >
+                {overridden ? "Edit settled amount" : "Settle to actual"}
+              </button>
+              {overridden && (
+                <button
+                  type="button"
+                  onClick={onRemoveOverride}
+                  className="text-xs font-medium text-rose-600 hover:underline"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="text-right tabular-nums shrink-0">
+          {overridden && original != null && Math.abs(variance) >= 0.005 && (
+            <p className="text-xs text-[var(--color-muted)] line-through">
+              {fmt(original)}
+            </p>
+          )}
+          <p className={`font-semibold ${isInflow ? "text-emerald-700" : "text-rose-700"}`}>
+            {isInflow ? "+" : "−"}
+            {fmt(row.amount)}
+          </p>
+          <p className="text-xs text-[var(--color-muted)] mt-0.5">
+            balance {fmt(row.runningBalance)}
+          </p>
+        </div>
+      </div>
+
+      {open && (
+        <ReconcileForm
+          row={row}
+          settled={settled}
+          onSettledChange={onSettledChange}
+          notesValue={notesValue}
+          onNotesChange={onNotesChange}
+          saving={saving}
+          onSave={onSave}
+          onClose={onClose}
+        />
+      )}
+    </li>
+  );
+}
+
+function ReconcileForm({
+  row,
+  settled,
+  onSettledChange,
+  notesValue,
+  onNotesChange,
+  saving,
+  onSave,
+  onClose,
+}: {
+  row: TreasuryLedgerRow;
+  settled: number;
+  onSettledChange: (v: number) => void;
+  notesValue: string;
+  onNotesChange: (v: string) => void;
+  saving: boolean;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const original = row.settledOverride && typeof row.originalAmount === "number"
+    ? row.originalAmount
+    : row.amount;
+  const variance = settled - original;
+  const sameAsOriginal = Math.abs(variance) < 0.005;
+
+  return (
+    <div className="mt-3 rounded-2xl border-2 border-[var(--color-saffron)]/40 bg-[var(--color-saffron)]/8 p-3 sm:p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">Reconcile against bank</p>
+          <p className="text-xs text-[var(--color-muted)] mt-0.5">
+            This row currently contributes <strong className="tabular-nums">{fmt(original)}</strong> PLN to the card balance.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 rounded-lg px-2.5 py-1.5 text-sm font-semibold text-[var(--color-muted)] hover:bg-black/5"
+        >
+          Cancel
+        </button>
+      </div>
+
+      <AmountField
+        label="What did the bank actually credit?"
+        className="field-label"
+        inputClassName="field-input"
+        value={settled}
+        onChange={onSettledChange}
+      />
+
+      <div
+        className={`rounded-xl px-3 py-2 text-sm font-medium tabular-nums ${
+          sameAsOriginal
+            ? "bg-black/5 text-[var(--color-muted)]"
+            : variance < 0
+              ? "bg-rose-50 text-rose-800 border border-rose-200/60"
+              : "bg-emerald-50 text-emerald-800 border border-emerald-200/60"
+        }`}
+      >
+        {sameAsOriginal ? (
+          <>Matches the original — no adjustment will be applied.</>
+        ) : (
+          <>
+            Adjustment:{" "}
+            <strong>
+              {variance >= 0 ? "+" : "−"}
+              {fmt(Math.abs(variance))} PLN
+            </strong>
+            <span className="block text-xs font-normal mt-0.5">
+              {variance < 0
+                ? "Bank credited less — the shortfall will be subtracted from card balance."
+                : "Bank credited more — the surplus will be added to card balance."}
+            </span>
+          </>
         )}
       </div>
-      <div className="text-right tabular-nums shrink-0">
-        <p className={`font-semibold ${isInflow ? "text-emerald-700" : "text-rose-700"}`}>
-          {isInflow ? "+" : "−"}
-          {fmt(row.amount)}
-        </p>
-        <p className="text-xs text-[var(--color-muted)] mt-0.5">
-          balance {fmt(row.runningBalance)}
-        </p>
-      </div>
-    </li>
+
+      <label className="field-label">
+        Notes (optional)
+        <input
+          type="text"
+          className="field-input"
+          placeholder="POS fee 1.5% / Wolt holdback / chargeback…"
+          value={notesValue}
+          onChange={(e) => onNotesChange(e.target.value)}
+        />
+      </label>
+
+      <Button variant="dark" fullWidth disabled={saving} onClick={onSave}>
+        {saving ? "Saving…" : "Save settlement"}
+      </Button>
+    </div>
   );
 }
