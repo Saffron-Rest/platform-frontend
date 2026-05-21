@@ -189,6 +189,18 @@ export type ExpenseInvoice = {
   entryId?: string;
 };
 
+/** File attached to a shift entry (e.g. POS card sales report). */
+export type EntryFile = {
+  id: string;
+  filename: string;
+  category?: string;
+  entryId?: string;
+  createdAt?: string;
+};
+
+/** Category constant for the POS card sales report uploads. */
+export const POS_REPORT_CATEGORY = "pos-report";
+
 export type PaymentSource = "CASH" | "CARD";
 
 export type ExpenseLine = {
@@ -267,6 +279,8 @@ export type DailyEntry = {
   shiftType?: ShiftType;
   closingOnly?: boolean;
   schedule?: WorkSchedule;
+  /** Files attached directly to this entry (e.g. POS card sales report). */
+  files?: EntryFile[];
 };
 
 /** Payout fields + sales/refunds/notes — expense lines are separate */

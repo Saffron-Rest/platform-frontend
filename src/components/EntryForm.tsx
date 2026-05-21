@@ -2,7 +2,15 @@ import { MoneyInput } from "./MoneyInput";
 import { ExpenseLines } from "./ExpenseLines";
 import { OpeningBalanceField } from "./OpeningBalanceField";
 import { CollapsibleSection } from "./report/CollapsibleSection";
-import type { EntryFormData, ExpenseLine, OpeningHint, Platforms, TreasurySettings } from "../types";
+import { PosReportUploader } from "./report/PosReportUploader";
+import type {
+  EntryFile,
+  EntryFormData,
+  ExpenseLine,
+  OpeningHint,
+  Platforms,
+  TreasurySettings,
+} from "../types";
 import {
   cardBalance,
   cashDifference,
@@ -27,6 +35,14 @@ type Props = {
   platforms: Platforms;
   openingHint?: OpeningHint | null;
   treasurySettings?: Pick<TreasurySettings, "cardSalesSettlementRate" | "platformSettlementRates">;
+  /** POS report files attached to this entry (already uploaded). */
+  posReportFiles?: EntryFile[];
+  /** POS report files staged for upload after the entry is created. */
+  pendingPosReports?: File[];
+  /** The ID of the entry — required for immediate upload; missing means new draft. */
+  entryId?: string;
+  /** Receives uploader changes (uploaded files + pending files). */
+  onPosReportChange?: (patch: { files?: EntryFile[]; pendingFiles?: File[] }) => void;
 };
 
 export function EntryForm({
@@ -40,6 +56,10 @@ export function EntryForm({
   platforms,
   openingHint,
   treasurySettings,
+  posReportFiles = [],
+  pendingPosReports = [],
+  entryId,
+  onPosReportChange,
 }: Props) {
   const set = (key: keyof EntryFormData, value: number | string) =>
     onChange({ ...data, [key]: value });
@@ -94,6 +114,16 @@ export function EntryForm({
           onChange={(v) => set("cardSales", v)}
           disabled={disabled}
         />
+        {onPosReportChange && (
+          <PosReportUploader
+            files={posReportFiles}
+            pendingFiles={pendingPosReports}
+            entryId={entryId}
+            editable={!disabled}
+            required={num(data.cardSales) > 0}
+            onChange={onPosReportChange}
+          />
+        )}
         {platforms.wolt && (
           <MoneyInput label="Wolt" value={data.woltSales} onChange={(v) => set("woltSales", v)} disabled={disabled} />
         )}

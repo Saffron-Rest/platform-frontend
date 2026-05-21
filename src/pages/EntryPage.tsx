@@ -2,13 +2,16 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { syncExpenses, uploadPendingInvoices, loadExpenses } from "../api/expenses";
+import { uploadEntryFile } from "../api/entryFiles";
 import { EntryForm } from "../components/EntryForm";
 import { ClosingEntryForm } from "../components/ClosingEntryForm";
 import { entryToFormData, num } from "../lib/numbers";
 import {
   emptyEntryForm,
   emptyExpenseLine,
+  POS_REPORT_CATEGORY,
   type DailyEntry,
+  type EntryFile,
   type EntryFormData,
   type ExpenseLine,
   type Platforms,
@@ -52,6 +55,8 @@ export function EntryPage() {
   const [entry, setEntry] = useState<DailyEntry | null>(null);
   const [form, setForm] = useState<EntryFormData>(emptyEntryForm());
   const [expenses, setExpenses] = useState<ExpenseLine[]>([]);
+  const [posReportFiles, setPosReportFiles] = useState<EntryFile[]>([]);
+  const [pendingPosReports, setPendingPosReports] = useState<File[]>([]);
   const [treasurySettings, setTreasurySettings] = useState<
     Pick<TreasurySettings, "cardSalesSettlementRate" | "platformSettlementRates"> | null
   >(null);
@@ -86,6 +91,14 @@ export function EntryPage() {
     dirtyRef.current = true;
     setExpenses(next);
   }, []);
+  const handlePosReportChange = useCallback(
+    (patch: { files?: EntryFile[]; pendingFiles?: File[] }) => {
+      dirtyRef.current = true;
+      if (patch.files !== undefined) setPosReportFiles(patch.files);
+      if (patch.pendingFiles !== undefined) setPendingPosReports(patch.pendingFiles);
+    },
+    []
+  );
 
   const entryStatus = (entry?.status ?? "").toUpperCase();
   const locked = entryStatus === "LOCKED";
@@ -96,6 +109,8 @@ export function EntryPage() {
   const scheduledOff = schedule != null && !schedule.working;
   const isNew = !entry;
 
+  const hasPosReport = posReportFiles.length > 0 || pendingPosReports.length > 0;
+
   const summary = useMemo(
     () => reportSummary(form, expenses, closingOnly),
     [form, expenses, closingOnly]
@@ -105,10 +120,10 @@ export function EntryPage() {
     [form, expenses, closingOnly]
   );
   const validationIssues = useMemo(
-    () => getReportValidationIssues(form, expenses, closingOnly),
-    [form, expenses, closingOnly]
+    () => getReportValidationIssues(form, expenses, closingOnly, { hasPosReport }),
+    [form, expenses, closingOnly, hasPosReport]
   );
-  const canSubmit = reportReadyToSubmit(form, expenses, closingOnly);
+  const canSubmit = reportReadyToSubmit(form, expenses, closingOnly, { hasPosReport });
 
   const selectedCashier = useMemo(
     () => cashiers.find((c) => c.id === selectedCashierId),
@@ -195,6 +210,11 @@ export function EntryPage() {
     } else {
       setExpenses([]);
     }
+    const allFiles = e?.files ?? [];
+    setPosReportFiles(
+      allFiles.filter((f) => (f.category ?? "").toLowerCase() === POS_REPORT_CATEGORY)
+    );
+    setPendingPosReports([]);
     markPristine();
   };
 
@@ -316,6 +336,17 @@ export function EntryPage() {
     return uploadPendingInvoices(before, synced);
   };
 
+  /** Uploads any POS report files that were staged before the entry existed. */
+  const flushPendingPosReports = async (entryId: string) => {
+    if (!pendingPosReports.length) return;
+    const uploaded: EntryFile[] = [];
+    for (const file of pendingPosReports) {
+      uploaded.push(await uploadEntryFile(entryId, file, POS_REPORT_CATEGORY));
+    }
+    setPosReportFiles((prev) => [...prev, ...uploaded]);
+    setPendingPosReports([]);
+  };
+
   const findEntryForDate = async (): Promise<DailyEntry | null> => {
     const todayParams = new URLSearchParams({ date: entryDate });
     let e = await api<DailyEntry | null>(`/entries/today?${todayParams}`);
@@ -381,6 +412,7 @@ export function EntryPage() {
         const synced = await persistExpenses(saved.id, expenses);
         setExpenses(synced);
       }
+      await flushPendingPosReports(saved.id);
       const refreshed = await api<DailyEntry>(`/entries/${saved.id}`);
       await applyEntry(refreshed);
       const who = selectedCashier?.name ?? "Cashier";
@@ -653,6 +685,10 @@ export function EntryPage() {
                 platforms={platforms}
                 openingHint={openingHint}
                 treasurySettings={treasurySettings ?? undefined}
+                posReportFiles={posReportFiles}
+                pendingPosReports={pendingPosReports}
+                entryId={entry?.id}
+                onPosReportChange={handlePosReportChange}
               />
             )}
           </div>

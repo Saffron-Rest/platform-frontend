@@ -77,22 +77,39 @@ export function buildReportSteps(
   ];
 }
 
+export type ReportContextFlags = {
+  /** True when a POS card sales report file is attached (uploaded or pending). */
+  hasPosReport?: boolean;
+};
+
 export function getReportValidationIssues(
   form: EntryFormData,
   expenses: ExpenseLine[],
-  closingOnly: boolean
+  closingOnly: boolean,
+  context: ReportContextFlags = {}
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const opening = num(form.openingBalance);
   const actual = num(form.actualCashCounted);
+  const cardSales = num(form.cardSales);
   const sales =
     num(form.cashSales) +
-    num(form.cardSales) +
+    cardSales +
     num(form.woltSales) +
     num(form.boltSales) +
     num(form.uberEatsSales) +
     num(form.glovoSales) +
     num(form.otherPlatformSales);
+
+  if (cardSales > 0 && !context.hasPosReport) {
+    issues.push({
+      id: "pos-report-required",
+      level: "error",
+      stepId: "sales",
+      message:
+        "Upload the POS card sales report (photo or PDF) — required whenever card sales are entered.",
+    });
+  }
 
   if (opening <= 0) {
     issues.push({
@@ -176,10 +193,11 @@ export function getReportValidationIssues(
 export function reportReadyToSubmit(
   form: EntryFormData,
   expenses: ExpenseLine[],
-  closingOnly: boolean
+  closingOnly: boolean,
+  context: ReportContextFlags = {}
 ): boolean {
   const steps = buildReportSteps(form, expenses, closingOnly);
-  const blocking = getReportValidationIssues(form, expenses, closingOnly).filter(
+  const blocking = getReportValidationIssues(form, expenses, closingOnly, context).filter(
     (i) => i.level === "error"
   );
   return steps.every((s) => s.done) && blocking.length === 0;
