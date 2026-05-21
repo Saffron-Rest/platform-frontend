@@ -73,6 +73,34 @@ export function AdminSettings() {
     }
   };
 
+  const checkUnsettledDelivery = async () => {
+    setAlertBusy(true);
+    setMsg("");
+    try {
+      const res = await api<{
+        platforms: { label: string; projected: number; dayCount: number }[];
+        thresholdDays: number;
+        totalProjected?: number;
+      }>("/alerts/check-unsettled-delivery", { method: "POST" });
+      const list = res.platforms ?? [];
+      if (!list.length) {
+        setMsg(`No delivery older than ${res.thresholdDays} day(s) is unsettled.`);
+      } else {
+        const breakdown = list
+          .map((p) => `${p.label} ${p.projected.toFixed(2)} PLN (${p.dayCount}d)`)
+          .join(" · ");
+        setMsg(
+          `Unsettled delivery > ${res.thresholdDays}d: ${breakdown}. Telegram notified if configured.`
+        );
+      }
+      refreshAlerts();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Check failed");
+    } finally {
+      setAlertBusy(false);
+    }
+  };
+
   const testTelegram = async () => {
     setAlertBusy(true);
     try {
@@ -131,6 +159,14 @@ export function AdminSettings() {
             </Button>
             <Button className="!py-2 !px-3 text-sm" disabled={alertBusy} onClick={checkMissing}>
               {alertBusy ? "Checking…" : "Check missing"}
+            </Button>
+            <Button
+              variant="secondary"
+              className="!py-2 !px-3 text-sm"
+              disabled={alertBusy}
+              onClick={checkUnsettledDelivery}
+            >
+              {alertBusy ? "Checking…" : "Scan unsettled delivery"}
             </Button>
           </div>
         </div>

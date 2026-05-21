@@ -43,6 +43,9 @@ export type TreasuryLedgerRow = {
   /** Standalone CARD_SETTLEMENT row metadata. */
   grossAmount?: number;
   settledAmount?: number;
+  /** True when the row is waiting on the bank to actually credit it (delivery before
+   *  reconciliation). Pending rows are shown but don't move the running balance. */
+  pending?: boolean;
   /** Linked-settlement overrides applied on top of an existing card-income row. */
   settledOverride?: boolean;
   /** Amount the row would have had without the override (snapshot). */

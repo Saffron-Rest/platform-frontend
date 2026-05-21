@@ -31,7 +31,7 @@ const SOURCES: { value: TreasuryLedgerSource; label: string }[] = [
   { value: "CASH", label: "Cash" },
 ];
 
-type CategoryFilter = "ALL" | TreasuryLedgerCategory;
+type CategoryFilter = "ALL" | TreasuryLedgerCategory | "PENDING";
 
 const CATEGORY_LABELS: Record<TreasuryLedgerCategory, string> = {
   INCOME: "Income",
@@ -82,7 +82,8 @@ function readFilter(raw: string | null): CategoryFilter {
     u === "SHIFT_EXPENSE" ||
     u === "STANDALONE_EXPENSE" ||
     u === "SALARY" ||
-    u === "TRANSFER"
+    u === "TRANSFER" ||
+    u === "PENDING"
   ) {
     return u;
   }
@@ -114,6 +115,15 @@ function isReconcilable(row: TreasuryLedgerRow): boolean {
   return !!row.refId;
 }
 
+/** Platform label / icon for delivery rows. */
+const PLATFORMS: { key: string; label: string }[] = [
+  { key: "wolt", label: "Wolt" },
+  { key: "bolt", label: "Bolt" },
+  { key: "uberEats", label: "Uber Eats" },
+  { key: "glovo", label: "Glovo" },
+  { key: "other", label: "Other delivery" },
+];
+
 /** Can this row be added to a multi-day batch? Not if it's already settled some other way. */
 function isBatchable(row: TreasuryLedgerRow): boolean {
   if (!isReconcilable(row)) return false;
@@ -122,11 +132,13 @@ function isBatchable(row: TreasuryLedgerRow): boolean {
   return true;
 }
 
+
 export function TreasuryHistory() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const source = readSource(searchParams.get("source"));
   const filter = readFilter(searchParams.get("filter"));
+  const pendingPlatform = filter === "PENDING" ? (searchParams.get("platform") ?? null) : null;
   const [from, setFrom] = useState(searchParams.get("from") ?? monthStartIso());
   const [to, setTo] = useState(searchParams.get("to") ?? todayIso());
   const [ledger, setLedger] = useState<TreasuryLedger | null>(null);
@@ -347,11 +359,51 @@ export function TreasuryHistory() {
 
   const visibleRows = useMemo(() => {
     if (!ledger?.rows) return [];
-    const rows = filter === "ALL"
-      ? ledger.rows
-      : ledger.rows.filter((r) => r.category === filter);
+    let rows: TreasuryLedgerRow[];
+    if (filter === "ALL") {
+      rows = ledger.rows;
+    } else if (filter === "PENDING") {
+      rows = ledger.rows.filter((r) => {
+        if (!r.pending) return false;
+        if (pendingPlatform && r.platform !== pendingPlatform) return false;
+        return true;
+      });
+    } else {
+      rows = ledger.rows.filter((r) => r.category === filter);
+    }
     return [...rows].reverse();
-  }, [ledger, filter]);
+  }, [ledger, filter, pendingPlatform]);
+
+  /** Pending totals by platform, used to show "Pending Wolt 1200 PLN" filter pills. */
+  const pendingByPlatform = useMemo(() => {
+    const map = new Map<string, { count: number; total: number }>();
+    if (!ledger?.rows) return map;
+    for (const r of ledger.rows) {
+      if (!r.pending) continue;
+      const key = r.platform ?? "other";
+      const cur = map.get(key) ?? { count: 0, total: 0 };
+      cur.count++;
+      cur.total += r.amount;
+      map.set(key, cur);
+    }
+    return map;
+  }, [ledger]);
+
+  const pendingTotalAll = useMemo(
+    () => Array.from(pendingByPlatform.values()).reduce((acc, v) => acc + v.total, 0),
+    [pendingByPlatform],
+  );
+  const pendingCountAll = useMemo(
+    () => Array.from(pendingByPlatform.values()).reduce((acc, v) => acc + v.count, 0),
+    [pendingByPlatform],
+  );
+
+  const selectAllVisiblePending = () => {
+    if (!ledger?.rows) return;
+    setSelectedKeys(new Set(
+      visibleRows.filter(isBatchable).map(rowKey)
+    ));
+  };
 
   const setSource = (next: TreasuryLedgerSource) => {
     const params = new URLSearchParams(searchParams);
@@ -362,10 +414,16 @@ export function TreasuryHistory() {
     clearAllEditors();
   };
 
-  const setFilter = (next: CategoryFilter) => {
+  const setFilter = (next: CategoryFilter, platform?: string | null) => {
     const params = new URLSearchParams(searchParams);
-    if (next === "ALL") params.delete("filter");
-    else params.set("filter", next.toLowerCase());
+    if (next === "ALL") {
+      params.delete("filter");
+      params.delete("platform");
+    } else {
+      params.set("filter", next.toLowerCase());
+      if (next === "PENDING" && platform) params.set("platform", platform);
+      else params.delete("platform");
+    }
     setSearchParams(params, { replace: true });
   };
 
@@ -621,12 +679,68 @@ export function TreasuryHistory() {
             ))}
           </div>
 
+          {source === "CARD" && pendingCountAll > 0 && (
+            <Card className="!p-3 border-amber-200 bg-amber-50/60">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  Pending bank settlement
+                </span>
+                <span className="text-xs text-amber-900/80">
+                  {pendingCountAll} row{pendingCountAll === 1 ? "" : "s"} · {fmt(pendingTotalAll)} {ledger?.currency ?? "PLN"} projected
+                </span>
+                <div className="flex-1" />
+                {(filter === "PENDING" || selectedKeys.size === 0) && (
+                  <Button
+                    variant="secondary"
+                    onClick={selectAllVisiblePending}
+                    disabled={visibleRows.filter(isBatchable).length === 0}
+                  >
+                    Select all visible
+                  </Button>
+                )}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFilter(filter === "PENDING" && !pendingPlatform ? "ALL" : "PENDING", null)}
+                  className={`tab-pill text-xs ${
+                    filter === "PENDING" && !pendingPlatform ? "tab-pill-active" : "tab-pill-idle"
+                  }`}
+                >
+                  All pending
+                </button>
+                {PLATFORMS.filter((p) => pendingByPlatform.has(p.key)).map((p) => {
+                  const info = pendingByPlatform.get(p.key)!;
+                  const active = filter === "PENDING" && pendingPlatform === p.key;
+                  return (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => setFilter(active ? "ALL" : "PENDING", active ? null : p.key)}
+                      className={`tab-pill text-xs ${active ? "tab-pill-active" : "tab-pill-idle"}`}
+                      title={`${info.count} unreconciled day${info.count === 1 ? "" : "s"}`}
+                    >
+                      Pending {p.label} · {fmt(info.total)}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
           <Card>
             <h3 className="font-semibold mb-3">
               Movements
-              {filter !== "ALL" && (
+              {filter !== "ALL" && filter !== "PENDING" && (
                 <span className="text-sm font-normal text-[var(--color-muted)] ml-2">
                   · {CATEGORY_LABELS[filter]}
+                </span>
+              )}
+              {filter === "PENDING" && (
+                <span className="text-sm font-normal text-amber-800 ml-2">
+                  · Pending bank settlement{pendingPlatform ? ` · ${
+                    PLATFORMS.find((p) => p.key === pendingPlatform)?.label ?? pendingPlatform
+                  }` : ""}
                 </span>
               )}
             </h3>
@@ -749,11 +863,12 @@ function LedgerRowItem({
   const isInflow = row.sign === "+";
   const overridden = !!row.settledOverride;
   const inDeposit = !!row.bankDepositId;
+  const pending = !!row.pending;
   const original = typeof row.originalAmount === "number" ? row.originalAmount : null;
   const variance = original != null ? row.amount - original : 0;
 
   return (
-    <li className="py-3">
+    <li className={`py-3 ${pending ? "bg-amber-50/40 -mx-2 px-2 rounded-lg" : ""}`}>
       <div className="flex items-start gap-3">
         {batchable && (
           <label className="shrink-0 pt-0.5">
@@ -770,6 +885,14 @@ function LedgerRowItem({
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-medium truncate">{row.label}</p>
             <Badge variant={CATEGORY_VARIANT[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>
+            {pending && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                title="Awaiting bank deposit — not yet counted in card balance"
+              >
+                Pending bank settlement
+              </span>
+            )}
             {overridden && <Badge variant="draft">Settled</Badge>}
             {inDeposit && (
               <Badge variant="locked">
@@ -858,12 +981,24 @@ function LedgerRowItem({
               {fmt(original)}
             </p>
           )}
-          <p className={`font-semibold ${isInflow ? "text-emerald-700" : "text-rose-700"}`}>
+          <p
+            className={`font-semibold ${
+              pending
+                ? "text-amber-700"
+                : isInflow
+                  ? "text-emerald-700"
+                  : "text-rose-700"
+            }`}
+          >
             {isInflow ? "+" : "−"}
             {fmt(row.amount)}
           </p>
           <p className="text-xs text-[var(--color-muted)] mt-0.5">
-            balance {fmt(row.runningBalance)}
+            {pending ? (
+              <span className="text-amber-700">awaiting bank · balance unchanged</span>
+            ) : (
+              <>balance {fmt(row.runningBalance)}</>
+            )}
           </p>
         </div>
       </div>
