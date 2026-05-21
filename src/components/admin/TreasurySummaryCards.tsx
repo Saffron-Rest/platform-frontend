@@ -119,6 +119,8 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
                     treasury.cardFromShiftReports ?? treasury.cardFromEntries,
                   ],
                   ["Manual delivery (Finance)", treasury.cardFromManualDelivery ?? 0],
+                  ["Settlement adjustments", treasury.cardFromManualSettlement ?? 0],
+                  ["Bank deposit adjustments", treasury.cardFromBankDeposits ?? 0],
                   ["Finance expenses (card)", -(treasury.standaloneCardExpenses ?? 0)],
                   ["Salary paid by card", -treasury.salaryPaidFromCard],
                 ]}
