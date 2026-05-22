@@ -37,8 +37,16 @@ export function AdminSettings() {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [telegram, setTelegram] = useState<TelegramStatus | null>(null);
   const [logs, setLogs] = useState<AuditLogLike[]>([]);
-  const [msg, setMsg] = useState("");
-  const [alertBusy, setAlertBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; kind: "success" | "error" | "warning" | "info" } | null>(null);
+  const [alertBusy, setAlertBusy] = useState<null | "missing" | "telegram" | "delivery" | "platforms">(null);
+
+  const ok = (text: string) => setMsg({ text, kind: "success" });
+  const warn = (text: string) => setMsg({ text, kind: "warning" });
+  const err = (e: unknown, fallback: string) => {
+    const text = e instanceof Error ? e.message : fallback;
+    console.error("[AdminSettings]", fallback, e);
+    setMsg({ text, kind: "error" });
+  };
 
   useEffect(() => {
     api<{ platforms: Platforms }>("/settings").then((s) => setPlatforms(s.platforms));
@@ -53,29 +61,29 @@ export function AdminSettings() {
   };
 
   const checkMissing = async () => {
-    setAlertBusy(true);
-    setMsg("");
+    setAlertBusy("missing");
+    setMsg(null);
     try {
       const res = await api<{ missing: string[]; created: number }>("/alerts/check-missing", {
         method: "POST",
       });
       const names = res.missing ?? [];
-      setMsg(
-        names.length
-          ? `Missing reports: ${names.join(", ")}. Telegram notified if configured.`
-          : "All scheduled cashiers have submitted today."
-      );
+      if (names.length) {
+        warn(`Missing reports: ${names.join(", ")}. Telegram notified if configured.`);
+      } else {
+        ok("All scheduled cashiers have submitted today.");
+      }
       refreshAlerts();
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Check failed");
+      err(e, "Check failed");
     } finally {
-      setAlertBusy(false);
+      setAlertBusy(null);
     }
   };
 
   const checkUnsettledDelivery = async () => {
-    setAlertBusy(true);
-    setMsg("");
+    setAlertBusy("delivery");
+    setMsg(null);
     try {
       const res = await api<{
         platforms: { label: string; projected: number; dayCount: number }[];
@@ -84,46 +92,61 @@ export function AdminSettings() {
       }>("/alerts/check-unsettled-delivery", { method: "POST" });
       const list = res.platforms ?? [];
       if (!list.length) {
-        setMsg(`No delivery older than ${res.thresholdDays} day(s) is unsettled.`);
+        ok(`No delivery older than ${res.thresholdDays} day(s) is unsettled.`);
       } else {
         const breakdown = list
           .map((p) => `${p.label} ${p.projected.toFixed(2)} PLN (${p.dayCount}d)`)
           .join(" · ");
-        setMsg(
-          `Unsettled delivery > ${res.thresholdDays}d: ${breakdown}. Telegram notified if configured.`
-        );
+        warn(`Unsettled delivery > ${res.thresholdDays}d: ${breakdown}. Telegram notified if configured.`);
       }
       refreshAlerts();
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Check failed");
+      err(e, "Check failed");
     } finally {
-      setAlertBusy(false);
+      setAlertBusy(null);
     }
   };
 
   const testTelegram = async () => {
-    setAlertBusy(true);
+    setAlertBusy("telegram");
+    setMsg(null);
     try {
       const res = await api<{ ok: boolean; configured: boolean }>("/alerts/telegram-test", {
         method: "POST",
       });
-      setMsg(res.ok ? "Test message sent to Telegram." : "Telegram is not configured on the server.");
+      if (res.ok) {
+        ok("Test message sent to Telegram — check the chat.");
+      } else if (!res.configured) {
+        warn(
+          "Telegram is not configured on the server. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, then redeploy."
+        );
+      } else {
+        err(new Error("Telegram is configured but sending failed. Check backend logs."), "Telegram test failed");
+      }
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Telegram test failed");
+      err(e, "Telegram test failed");
     } finally {
-      setAlertBusy(false);
+      setAlertBusy(null);
     }
   };
 
   const savePlatforms = async () => {
-    await api("/settings/platforms", { method: "PUT", body: JSON.stringify(platforms) });
-    setMsg("Platforms saved");
+    setAlertBusy("platforms");
+    setMsg(null);
+    try {
+      await api("/settings/platforms", { method: "PUT", body: JSON.stringify(platforms) });
+      ok("Platforms saved.");
+    } catch (e) {
+      err(e, "Save failed");
+    } finally {
+      setAlertBusy(null);
+    }
   };
 
   return (
     <div className="space-y-6">
       <PageHeader title="Settings" subtitle="Treasury, platforms, alerts, and audit log" />
-      {msg && <Alert variant="success">{msg}</Alert>}
+      {msg && <Alert variant={msg.kind}>{msg.text}</Alert>}
 
       <TreasurySettingsCard />
 
@@ -154,22 +177,38 @@ export function AdminSettings() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" className="!py-2 !px-3 text-sm" disabled={alertBusy} onClick={testTelegram}>
-              Test Telegram
+            <Button
+              variant="secondary"
+              className="!py-2 !px-3 text-sm"
+              disabled={!!alertBusy}
+              onClick={testTelegram}
+            >
+              {alertBusy === "telegram" ? "Sending…" : "Test Telegram"}
             </Button>
-            <Button className="!py-2 !px-3 text-sm" disabled={alertBusy} onClick={checkMissing}>
-              {alertBusy ? "Checking…" : "Check missing"}
+            <Button
+              className="!py-2 !px-3 text-sm"
+              disabled={!!alertBusy}
+              onClick={checkMissing}
+            >
+              {alertBusy === "missing" ? "Checking…" : "Check missing"}
             </Button>
             <Button
               variant="secondary"
               className="!py-2 !px-3 text-sm"
-              disabled={alertBusy}
+              disabled={!!alertBusy}
               onClick={checkUnsettledDelivery}
             >
-              {alertBusy ? "Checking…" : "Scan unsettled delivery"}
+              {alertBusy === "delivery" ? "Scanning…" : "Scan unsettled delivery"}
             </Button>
           </div>
         </div>
+        {telegram && !telegram.configured && (
+          <Alert variant="warning">
+            Telegram is not configured on the server. "Test Telegram" will report
+            "not configured" until <code>TELEGRAM_BOT_TOKEN</code> and{" "}
+            <code>TELEGRAM_CHAT_ID</code> are set and the backend is redeployed.
+          </Alert>
+        )}
         <ul className="space-y-2 max-h-48 overflow-y-auto">
           {alerts.map((a) => (
             <li
