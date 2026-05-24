@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
+import {
+  deleteSalaryPayment,
+  updateSalaryPayment,
+  type UpdateSalaryPaymentInput,
+} from "../../api/salaryPayments";
 import type { PaymentSource, SalaryPaymentRecord, User } from "../../types";
 import { fmt } from "../../lib/calc";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -30,6 +35,9 @@ export function AdminPayouts() {
   const [payments, setPayments] = useState<SalaryPaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     api<User[]>("/users")
@@ -60,6 +68,46 @@ export function AdminPayouts() {
   }, [load]);
 
   const total = useMemo(() => payments.reduce((s, p) => s + p.amount, 0), [payments]);
+
+  const onSaveEdit = async (id: string, patch: UpdateSalaryPaymentInput) => {
+    setBusyId(id);
+    setError("");
+    setMessage("");
+    try {
+      const res = await updateSalaryPayment(id, patch);
+      if (res.payment) {
+        setPayments((rows) => rows.map((r) => (r.id === id ? { ...r, ...res.payment! } : r)));
+      }
+      setEditingId(null);
+      setMessage("Payment updated. Treasury balances refreshed.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update payment");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onRemove = async (p: SalaryPaymentRecord) => {
+    if (
+      !confirm(
+        `Remove this ${fmt(p.amount)} ${p.source.toLowerCase()} salary payout for ${p.employeeName}?\n\nTreasury balances will recalculate automatically.`
+      )
+    ) {
+      return;
+    }
+    setBusyId(p.id);
+    setError("");
+    setMessage("");
+    try {
+      await deleteSalaryPayment(p.id);
+      setPayments((rows) => rows.filter((r) => r.id !== p.id));
+      setMessage("Payment removed. Treasury balances refreshed.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove payment");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -169,6 +217,7 @@ export function AdminPayouts() {
       </Card>
 
       {error && <Alert variant="error">{error}</Alert>}
+      {message && <Alert variant="success">{message}</Alert>}
 
       <Card>
         <div className="flex justify-between items-baseline gap-2 mb-4">
@@ -183,32 +232,204 @@ export function AdminPayouts() {
           <p className="text-center text-[var(--color-muted)] py-6">No payouts match these filters.</p>
         ) : (
           <ul className="divide-y divide-black/5">
-            {payments.map((p) => (
-              <li key={p.id} className="py-3 flex flex-wrap justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-medium">{p.employeeName}</p>
-                  <p className="text-sm text-[var(--color-muted)]">
-                    Paid {p.paidDate}
-                    {p.periodFrom && p.periodTo && (
-                      <span>
-                        {" "}
-                        · payroll {p.periodFrom} → {p.periodTo}
-                      </span>
+            {payments.map((p) =>
+              editingId === p.id ? (
+                <li key={p.id} className="py-3">
+                  <PayoutEditForm
+                    payment={p}
+                    busy={busyId === p.id}
+                    onCancel={() => setEditingId(null)}
+                    onSave={(patch) => onSaveEdit(p.id, patch)}
+                  />
+                </li>
+              ) : (
+                <li
+                  key={p.id}
+                  className="py-3 flex flex-wrap justify-between gap-2 items-start"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{p.employeeName}</p>
+                    <p className="text-sm text-[var(--color-muted)]">
+                      Paid {p.paidDate}
+                      {p.periodFrom && p.periodTo && (
+                        <span>
+                          {" "}
+                          · payroll {p.periodFrom} → {p.periodTo}
+                        </span>
+                      )}
+                    </p>
+                    {p.notes && (
+                      <p className="text-xs text-[var(--color-muted)] mt-0.5">{p.notes}</p>
                     )}
-                  </p>
-                  {p.notes && (
-                    <p className="text-xs text-[var(--color-muted)] mt-0.5">{p.notes}</p>
-                  )}
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="font-bold tabular-nums">{fmt(p.amount)}</p>
-                  <Badge variant="neutral">{p.source === "CASH" ? "Cash" : "Card"}</Badge>
-                </div>
-              </li>
-            ))}
+                  </div>
+                  <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                    <p className="font-bold tabular-nums">{fmt(p.amount)}</p>
+                    <Badge variant="neutral">{p.source === "CASH" ? "Cash" : "Card"}</Badge>
+                    <div className="flex gap-1 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingId(p.id);
+                          setError("");
+                          setMessage("");
+                        }}
+                        disabled={busyId === p.id}
+                        className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline px-2 py-1"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRemove(p)}
+                        disabled={busyId === p.id}
+                        className="text-xs font-medium text-[var(--color-danger)] hover:underline px-2 py-1"
+                      >
+                        {busyId === p.id ? "…" : "Remove"}
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              )
+            )}
           </ul>
         )}
       </Card>
+    </div>
+  );
+}
+
+function PayoutEditForm({
+  payment,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  payment: SalaryPaymentRecord;
+  busy: boolean;
+  onCancel: () => void;
+  onSave: (patch: UpdateSalaryPaymentInput) => void;
+}) {
+  const [amount, setAmount] = useState(String(payment.amount));
+  const [paidDate, setPaidDate] = useState(payment.paidDate);
+  const [source, setSource] = useState<PaymentSource>(payment.source);
+  const [periodFrom, setPeriodFrom] = useState(payment.periodFrom ?? "");
+  const [periodTo, setPeriodTo] = useState(payment.periodTo ?? "");
+  const [notes, setNotes] = useState(payment.notes ?? "");
+
+  const submit = () => {
+    const patch: UpdateSalaryPaymentInput = {};
+    const next = Number(amount);
+    if (Number.isFinite(next) && Math.abs(next - payment.amount) > 0.005) {
+      patch.amount = next;
+    }
+    if (paidDate && paidDate !== payment.paidDate) patch.paidDate = paidDate;
+    if (source !== payment.source) patch.source = source;
+
+    const hadPeriod = !!(payment.periodFrom && payment.periodTo);
+    const hasPeriod = !!(periodFrom && periodTo);
+    if (hadPeriod && !hasPeriod) {
+      patch.clearPeriod = true;
+    } else if (hasPeriod) {
+      if (periodFrom !== payment.periodFrom) patch.periodFrom = periodFrom;
+      if (periodTo !== payment.periodTo) patch.periodTo = periodTo;
+    }
+
+    const trimmedNotes = notes.trim();
+    const currentNotes = (payment.notes ?? "").trim();
+    if (currentNotes && !trimmedNotes) {
+      patch.clearNotes = true;
+    } else if (trimmedNotes !== currentNotes) {
+      patch.notes = trimmedNotes;
+    }
+
+    onSave(patch);
+  };
+
+  return (
+    <div className="p-3 rounded-xl border border-[var(--color-saffron)]/30 bg-[var(--color-saffron)]/5 space-y-3">
+      <div className="flex justify-between items-center">
+        <p className="font-semibold text-sm">Edit payout · {payment.employeeName}</p>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-xs text-[var(--color-muted)] px-2 py-1"
+        >
+          Cancel
+        </button>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="field-label">
+          Amount (PLN)
+          <input
+            type="number"
+            min={0.01}
+            step={0.01}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="field-input"
+          />
+        </label>
+        <label className="field-label">
+          Paid on
+          <input
+            type="date"
+            value={paidDate}
+            onChange={(e) => setPaidDate(e.target.value)}
+            className="field-input"
+          />
+        </label>
+      </div>
+      <div className="flex gap-2">
+        {(["CASH", "CARD"] as PaymentSource[]).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSource(s)}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium border ${
+              source === s
+                ? "bg-[var(--color-saffron)] text-white border-[var(--color-saffron)]"
+                : "bg-white border-black/10"
+            }`}
+          >
+            From {s === "CASH" ? "cash" : "card"}
+          </button>
+        ))}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="field-label">
+          Payroll from <span className="text-[var(--color-muted)] font-normal">(optional)</span>
+          <input
+            type="date"
+            value={periodFrom}
+            onChange={(e) => setPeriodFrom(e.target.value)}
+            className="field-input"
+          />
+        </label>
+        <label className="field-label">
+          Payroll to <span className="text-[var(--color-muted)] font-normal">(optional)</span>
+          <input
+            type="date"
+            value={periodTo}
+            onChange={(e) => setPeriodTo(e.target.value)}
+            className="field-input"
+          />
+        </label>
+      </div>
+      <label className="field-label">
+        Note <span className="text-[var(--color-muted)] font-normal">(optional)</span>
+        <input
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className="field-input"
+          placeholder="e.g. May payroll"
+        />
+      </label>
+      <Button type="button" fullWidth disabled={busy} onClick={submit}>
+        {busy ? "Saving…" : "Save changes"}
+      </Button>
+      <p className="text-xs text-[var(--color-muted)]">
+        Treasury balances will recalculate automatically after saving.
+      </p>
     </div>
   );
 }

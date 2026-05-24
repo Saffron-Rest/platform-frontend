@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { deleteSalaryPayment } from "../api/salaryPayments";
 import type { PaymentSource, PayrollEmployee, PayrollReport } from "../types";
 import { fmt } from "../lib/calc";
 import { Card } from "../components/ui/Card";
@@ -156,6 +157,20 @@ export function SalariesPanel() {
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [removingPaymentId, setRemovingPaymentId] = useState<string | null>(null);
+
+  const removePayment = async (id: string, label: string) => {
+    if (!confirm(`Remove this payment (${label})? Treasury balances will recalculate.`)) return;
+    setRemovingPaymentId(id);
+    try {
+      await deleteSalaryPayment(id);
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to remove payment");
+    } finally {
+      setRemovingPaymentId(null);
+    }
+  };
 
   const { from, to } = useMemo(() => monthBounds(viewYear, viewMonth), [viewYear, viewMonth]);
 
@@ -335,22 +350,49 @@ export function SalariesPanel() {
                     <div className="px-4 pb-4 border-t border-black/5 bg-[var(--color-cream)]/30">
                       <p className="text-xs text-[var(--color-muted)] py-2">{e.calculationSummary}</p>
                       {(e.payments?.length ?? 0) > 0 && (
-                        <ul className="mb-3 text-sm space-y-1">
-                          {e.payments!.map((p) => (
-                            <li
-                              key={p.id}
-                              className="flex justify-between py-1 px-2 rounded-lg bg-white/80"
+                        <div className="mb-3">
+                          <div className="flex items-baseline justify-between mb-1">
+                            <p className="text-xs font-medium text-[var(--color-muted)]">
+                              Payouts this period
+                            </p>
+                            <Link
+                              to="/admin/payouts"
+                              className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
                             >
-                              <span>
-                                {p.paidDate} · {p.source.toLowerCase()}
-                                {p.notes && (
-                                  <span className="text-[var(--color-muted)]"> · {p.notes}</span>
-                                )}
-                              </span>
-                              <span className="font-medium tabular-nums">{fmt(p.amount)}</span>
-                            </li>
-                          ))}
-                        </ul>
+                              Manage →
+                            </Link>
+                          </div>
+                          <ul className="text-sm space-y-1">
+                            {e.payments!.map((p) => (
+                              <li
+                                key={p.id}
+                                className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-lg bg-white/80"
+                              >
+                                <span className="min-w-0 flex-1">
+                                  {p.paidDate} · {p.source.toLowerCase()}
+                                  {p.notes && (
+                                    <span className="text-[var(--color-muted)]"> · {p.notes}</span>
+                                  )}
+                                </span>
+                                <span className="font-medium tabular-nums shrink-0">{fmt(p.amount)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removePayment(
+                                      p.id,
+                                      `${fmt(p.amount)} ${p.source.toLowerCase()} on ${p.paidDate}`
+                                    )
+                                  }
+                                  disabled={removingPaymentId === p.id}
+                                  className="text-xs font-medium text-[var(--color-danger)] hover:underline px-1.5 py-0.5 shrink-0"
+                                  title="Remove this payment"
+                                >
+                                  {removingPaymentId === p.id ? "…" : "×"}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                       {e.shifts.length > 0 ? (
                         <ul className="space-y-1">
