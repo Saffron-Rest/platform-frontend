@@ -47,14 +47,40 @@ export async function syncExpenses(entryId: string, expenses: ExpenseLine[]) {
   return raw.map(mapExpense);
 }
 
+/** Re-read the file into memory right before upload so the browser doesn't
+ *  hit ERR_UPLOAD_FILE_CHANGED when the on-disk copy moved or was rewritten
+ *  (common with camera temp files on mobile). */
+async function materializeForUpload(file: File): Promise<File> {
+  try {
+    const buf = await file.arrayBuffer();
+    return new File([buf], file.name, {
+      type: file.type || "application/octet-stream",
+      lastModified: file.lastModified,
+    });
+  } catch {
+    return file;
+  }
+}
+
 export async function uploadExpenseInvoice(expenseId: string, file: File) {
+  const payload = await materializeForUpload(file);
   const fd = new FormData();
-  fd.append("invoice", file);
-  const raw = await api<Record<string, unknown>>(`/expenses/${expenseId}/invoice`, {
-    method: "POST",
-    body: fd,
-  });
-  return mapExpense(raw);
+  fd.append("invoice", payload);
+  try {
+    const raw = await api<Record<string, unknown>>(`/expenses/${expenseId}/invoice`, {
+      method: "POST",
+      body: fd,
+    });
+    return mapExpense(raw);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/ERR_UPLOAD_FILE_CHANGED|file.*chang|NotReadableError/i.test(msg)) {
+      throw new Error(
+        `Could not upload "${file.name}" — the file changed or was moved. Please pick it again.`
+      );
+    }
+    throw e;
+  }
 }
 
 export async function uploadPendingInvoices(before: ExpenseLine[], synced: ExpenseLine[]) {

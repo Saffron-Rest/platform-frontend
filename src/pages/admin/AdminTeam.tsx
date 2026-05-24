@@ -338,7 +338,7 @@ export function AdminTeam() {
                   type="text"
                   required
                   autoCapitalize="none"
-                  pattern="[a-zA-Z0-9._-]+"
+                  pattern="[-a-zA-Z0-9._]+"
                   title="Letters, numbers, dots, underscores, hyphens"
                   value={newUser.username}
                   onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
@@ -513,7 +513,7 @@ export function AdminTeam() {
                   type="text"
                   required
                   autoCapitalize="none"
-                  pattern="[a-zA-Z0-9._-]+"
+                  pattern="[-a-zA-Z0-9._]+"
                   value={editForm.username}
                   onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
                   className="field-input"

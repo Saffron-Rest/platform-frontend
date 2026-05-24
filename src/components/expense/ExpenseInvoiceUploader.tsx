@@ -8,6 +8,20 @@ function isImageFile(file: File) {
   return file.type.startsWith("image/") || /\.(jpe?g|png|webp|gif)$/i.test(file.name);
 }
 
+/** Read the file into memory so later uploads don't depend on the on-disk copy
+ *  (which can vanish or change on mobile — causing ERR_UPLOAD_FILE_CHANGED). */
+async function snapshotFile(file: File): Promise<File> {
+  try {
+    const buf = await file.arrayBuffer();
+    return new File([buf], file.name, {
+      type: file.type || "application/octet-stream",
+      lastModified: file.lastModified,
+    });
+  } catch {
+    return file;
+  }
+}
+
 type Props = {
   expenseId?: string;
   invoices: ExpenseInvoice[];
@@ -39,11 +53,21 @@ export function ExpenseInvoiceUploader({
     if (!files.length || !canAdd) return;
     setError("");
 
+    // Snapshot to in-memory File objects immediately so the bytes can't
+    // change or disappear (camera/OS temp files, backgrounded tabs, etc.).
+    let snapshots: File[];
+    try {
+      snapshots = await Promise.all(files.map(snapshotFile));
+    } catch {
+      setError("Could not read that file. Please pick it again.");
+      return;
+    }
+
     if (shouldUploadNow && expenseId) {
       setUploading(true);
       try {
         let nextInvoices = invoices;
-        for (const file of files) {
+        for (const file of snapshots) {
           const updated = await uploadExpenseInvoice(expenseId, file);
           nextInvoices = updated.invoices ?? nextInvoices;
         }
@@ -56,7 +80,7 @@ export function ExpenseInvoiceUploader({
       return;
     }
 
-    onChange({ pendingFiles: [...pendingFiles, ...files] });
+    onChange({ pendingFiles: [...pendingFiles, ...snapshots] });
   };
 
   const removePending = (index: number) => {
