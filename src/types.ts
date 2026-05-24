@@ -160,11 +160,17 @@ export type TreasurySettings = {
 
 export type TreasuryOverview = {
   settings: TreasurySettings;
-  /** Cash actually in the drawer — most recent locked actual count (falls back
-   *  to initial balance when no locked report exists yet). */
+  /** Cash in the drawer — latest locked actual count MINUS salaries paid after
+   *  that count (so the displayed balance always reflects salary payouts).
+   *  Falls back to the initial balance when no locked report exists yet. */
   cashBalance: number;
-  /** Cumulative card / bank balance (no physical count). */
+  /** Cumulative card / bank balance, salaries already subtracted. */
   cardBalance: number;
+  /** Same as cashBalance but without subtracting salaries paid after the
+   *  latest count — i.e. the raw drawer count. */
+  cashBalanceBeforeSalary?: number;
+  /** Same as cardBalance but without subtracting salary payouts. */
+  cardBalanceBeforeSalary?: number;
   /** Where `cashBalance` came from. */
   cashSource?: "LATEST_COUNT" | "INITIAL";
   cashLatestCountDate?: string;
@@ -185,6 +191,9 @@ export type TreasuryOverview = {
   standaloneCashExpenses?: number;
   standaloneCardExpenses?: number;
   salaryPaidFromCash: number;
+  /** Subset of salaryPaidFromCash that has not yet been reflected in a
+   *  physical cash count (i.e. paid after the latest locked count). */
+  salaryPaidFromCashPostCount?: number;
   salaryPaidFromCard: number;
   currency: string;
 };

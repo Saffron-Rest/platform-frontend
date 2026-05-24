@@ -14,10 +14,20 @@ type Props = {
   tourId?: string;
 };
 
+const INCLUDE_SALARY_KEY = "treasury.includeSalary";
+
+function readIncludeSalary(): boolean {
+  if (typeof window === "undefined") return true;
+  const raw = window.localStorage.getItem(INCLUDE_SALARY_KEY);
+  if (raw == null) return true;
+  return raw !== "false";
+}
+
 export function TreasurySummaryCards({ className = "", compact = false, tourId }: Props) {
   const { user } = useAuth();
   const [treasury, setTreasury] = useState<TreasuryOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [includeSalary, setIncludeSalary] = useState<boolean>(readIncludeSalary);
 
   useEffect(() => {
     setLoading(true);
@@ -26,6 +36,12 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
       .catch(() => setTreasury(null))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(INCLUDE_SALARY_KEY, includeSalary ? "true" : "false");
+    }
+  }, [includeSalary]);
 
   if (loading) {
     return (
@@ -43,6 +59,12 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
   if (!treasury) return null;
 
   const cardClass = compact ? "!p-3" : "!p-4";
+  const cashRaw = treasury.cashBalanceBeforeSalary ?? treasury.cashBalance;
+  const cardRaw = treasury.cardBalanceBeforeSalary ?? treasury.cardBalance + treasury.salaryPaidFromCard;
+  const cashDisplay = includeSalary ? treasury.cashBalance : cashRaw;
+  const cardDisplay = includeSalary ? treasury.cardBalance : cardRaw;
+  const salaryCashPost = treasury.salaryPaidFromCashPostCount ?? 0;
+  const hasAnySalary = treasury.salaryPaidFromCash > 0 || treasury.salaryPaidFromCard > 0;
 
   return (
     <div className={`space-y-2 ${className}`} data-tour={tourId}>
@@ -50,14 +72,27 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
         <h3 className={`font-semibold text-[var(--color-ink)] ${compact ? "text-sm" : ""}`}>
           Treasury balances
         </h3>
-        {isAdmin(user?.role) && (
-          <Link
-            to="/admin/settings"
-            className="text-xs font-medium text-[var(--color-saffron)] hover:underline"
-          >
-            Settings →
-          </Link>
-        )}
+        <div className="flex items-center gap-3">
+          {hasAnySalary && (
+            <label className="flex items-center gap-1.5 text-xs text-[var(--color-muted)] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={includeSalary}
+                onChange={(e) => setIncludeSalary(e.target.checked)}
+                className="w-3.5 h-3.5 accent-[var(--color-saffron)]"
+              />
+              <span>Include salary payouts</span>
+            </label>
+          )}
+          {isAdmin(user?.role) && (
+            <Link
+              to="/admin/settings"
+              className="text-xs font-medium text-[var(--color-saffron)] hover:underline"
+            >
+              Settings →
+            </Link>
+          )}
+        </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Link
@@ -81,9 +116,15 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
                 compact ? "text-xl" : "text-2xl"
               }`}
             >
-              {fmt(treasury.cashBalance)}
+              {fmt(cashDisplay)}
             </p>
-            {!compact && <CashOnHandMeta treasury={treasury} />}
+            {!compact && (
+              <CashOnHandMeta
+                treasury={treasury}
+                includeSalary={includeSalary}
+                salaryPostCount={salaryCashPost}
+              />
+            )}
           </Card>
         </Link>
         <Link
@@ -107,7 +148,7 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
                 compact ? "text-xl" : "text-2xl"
               }`}
             >
-              {fmt(treasury.cardBalance)}
+              {fmt(cardDisplay)}
             </p>
             {!compact && (
               <BalanceBreakdown
@@ -122,14 +163,22 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
                   ["Settlement adjustments", treasury.cardFromManualSettlement ?? 0],
                   ["Bank deposit adjustments", treasury.cardFromBankDeposits ?? 0],
                   ["Finance expenses (card)", -(treasury.standaloneCardExpenses ?? 0)],
-                  ["Salary paid by card", -treasury.salaryPaidFromCard],
+                  ...(includeSalary
+                    ? ([["Salary paid by card", -treasury.salaryPaidFromCard]] as [string, number][])
+                    : []),
                 ]}
               />
             )}
           </Card>
         </Link>
       </div>
-      {compact && (
+      {!includeSalary && hasAnySalary && (
+        <p className="text-xs text-amber-700/90">
+          Showing balances <strong>before</strong> salary payouts ({fmt(treasury.salaryPaidFromCash)}{" "}
+          cash, {fmt(treasury.salaryPaidFromCard)} card). Toggle on to include them.
+        </p>
+      )}
+      {compact && includeSalary && (
         <p className="text-xs text-[var(--color-muted)]">
           Card includes settled delivery from reports + manual delivery income (Finance) − salary payouts.
         </p>
@@ -138,11 +187,20 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
   );
 }
 
-function CashOnHandMeta({ treasury }: { treasury: TreasuryOverview }) {
+function CashOnHandMeta({
+  treasury,
+  includeSalary,
+  salaryPostCount,
+}: {
+  treasury: TreasuryOverview;
+  includeSalary: boolean;
+  salaryPostCount: number;
+}) {
   const fromLatest = treasury.cashSource === "LATEST_COUNT" && treasury.cashLatestCountDate;
   const computed = treasury.cashComputedBalance;
+  const displayValue = includeSalary ? treasury.cashBalance : treasury.cashBalanceBeforeSalary ?? treasury.cashBalance;
   const showVariance =
-    typeof computed === "number" && Math.abs(computed - treasury.cashBalance) > 0.005;
+    typeof computed === "number" && Math.abs(computed - displayValue) > 0.005;
 
   if (!fromLatest) {
     return (
@@ -164,19 +222,22 @@ function CashOnHandMeta({ treasury }: { treasury: TreasuryOverview }) {
           </>
         )}
       </p>
+      {includeSalary && salaryPostCount > 0.005 && (
+        <p className="text-emerald-900/70">
+          − salary paid since last count: <strong>{fmt(salaryPostCount)}</strong>
+        </p>
+      )}
       {showVariance && (
         <p className="text-emerald-900/60">
           Expected from movements: <strong>{fmt(computed!)}</strong>
           {" · "}variance{" "}
           <strong
             className={
-              computed! - treasury.cashBalance > 0
-                ? "text-amber-700"
-                : "text-rose-700"
+              computed! - displayValue > 0 ? "text-amber-700" : "text-rose-700"
             }
           >
-            {computed! - treasury.cashBalance > 0 ? "+" : "−"}
-            {fmt(Math.abs(computed! - treasury.cashBalance))}
+            {computed! - displayValue > 0 ? "+" : "−"}
+            {fmt(Math.abs(computed! - displayValue))}
           </strong>
         </p>
       )}
