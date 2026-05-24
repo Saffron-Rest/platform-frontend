@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
+import { addPayRate, deletePayRate, listPayRates } from "../../api/payRates";
 import type { PayRateHistoryEntry, PayType, Role, User } from "../../types";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
@@ -61,14 +62,18 @@ export function AdminTeam() {
     email: "",
     password: "",
     startDate: todayIso(),
-    payType: "HOURLY" as PayType,
-    payAmount: "",
-    payEffectiveFrom: todayIso(),
-    payChangeNote: "",
     active: true,
   });
-  const [originalPay, setOriginalPay] = useState<{ payType: PayType; payAmount: string } | null>(null);
   const [payHistory, setPayHistory] = useState<PayRateHistoryEntry[]>([]);
+  const [payHistoryLoading, setPayHistoryLoading] = useState(false);
+  const [addPayOpen, setAddPayOpen] = useState(false);
+  const [payDraft, setPayDraft] = useState({
+    payType: "HOURLY" as PayType,
+    payAmount: "",
+    effectiveFrom: todayIso(),
+    notes: "",
+  });
+  const [payBusy, setPayBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -126,39 +131,37 @@ export function AdminTeam() {
 
   const openEdit = (u: User) => {
     setEditing(u);
-    const payAmountStr =
-      u.payAmount != null
-        ? String(u.payAmount)
-        : u.hourlyRate != null
-          ? String(u.hourlyRate)
-          : "";
-    setOriginalPay({ payType: u.payType ?? "HOURLY", payAmount: payAmountStr });
     setEditForm({
       name: u.name,
       username: u.username,
       email: u.email ?? "",
       password: "",
-      payType: u.payType ?? "HOURLY",
-      payAmount: payAmountStr,
-      payEffectiveFrom: todayIso(),
-      payChangeNote: "",
       startDate: u.startDate ?? todayIso(),
       active: u.active !== false,
     });
     setPayHistory([]);
+    setAddPayOpen(false);
+    setPayDraft({
+      payType: u.payType ?? "HOURLY",
+      payAmount:
+        u.payAmount != null
+          ? String(u.payAmount)
+          : u.hourlyRate != null
+            ? String(u.hourlyRate)
+            : "",
+      effectiveFrom: todayIso(),
+      notes: "",
+    });
     if (u.role === "CASHIER") {
-      api<PayRateHistoryEntry[]>(`/users/${u.id}/pay-rates`)
+      setPayHistoryLoading(true);
+      listPayRates(u.id)
         .then(setPayHistory)
-        .catch(() => setPayHistory([]));
+        .catch(() => setPayHistory([]))
+        .finally(() => setPayHistoryLoading(false));
     }
     setMsg("");
     setErr("");
   };
-
-  const payChangedInEdit =
-    editing?.role === "CASHIER" &&
-    originalPay != null &&
-    (editForm.payType !== originalPay.payType || editForm.payAmount !== originalPay.payAmount);
 
   const saveEdit = async (e: FormEvent) => {
     e.preventDefault();
@@ -167,23 +170,15 @@ export function AdminTeam() {
     setMsg("");
     setErr("");
     try {
-      const amount = editForm.payAmount === "" ? 0 : Number(editForm.payAmount);
       const body: Record<string, unknown> = {
         name: editForm.name,
         username: editForm.username.trim(),
         active: editForm.active,
         startDate: editForm.startDate,
-        payType: editForm.payType,
-        payAmount: amount,
-        hourlyRate: amount,
       };
       if (editForm.email.trim()) body.email = editForm.email.trim();
       else body.email = null;
       if (editForm.password.trim()) body.password = editForm.password;
-      if (payChangedInEdit) {
-        body.payEffectiveFrom = editForm.payEffectiveFrom;
-        if (editForm.payChangeNote.trim()) body.payChangeNote = editForm.payChangeNote.trim();
-      }
       await api(`/users/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       setMsg(`${editForm.name} updated`);
       setEditing(null);
@@ -194,6 +189,72 @@ export function AdminTeam() {
       setSaving(false);
     }
   };
+
+  const submitPayDraft = async () => {
+    if (!editing) return;
+    const amount = payDraft.payAmount === "" ? NaN : Number(payDraft.payAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setErr("Pay amount must be a number ≥ 0");
+      return;
+    }
+    if (!payDraft.effectiveFrom) {
+      setErr("Pick an effective date");
+      return;
+    }
+    setPayBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const updated = await addPayRate(editing.id, {
+        payType: payDraft.payType,
+        payAmount: amount,
+        effectiveFrom: payDraft.effectiveFrom,
+        notes: payDraft.notes.trim() || undefined,
+      });
+      setPayHistory(updated);
+      setAddPayOpen(false);
+      setPayDraft({
+        payType: payDraft.payType,
+        payAmount: "",
+        effectiveFrom: todayIso(),
+        notes: "",
+      });
+      setMsg("Pay change added");
+      await loadUsers();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to add pay change");
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+  const removePayEntry = async (entry: PayRateHistoryEntry) => {
+    if (!editing) return;
+    if (!confirm(`Remove pay change of ${entry.payAmount} ${amountSuffix(entry.payType)} from ${formatStartDate(entry.effectiveFrom)}?`)) return;
+    setPayBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const updated = await deletePayRate(editing.id, entry.id);
+      setPayHistory(updated);
+      setMsg("Pay change removed");
+      await loadUsers();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to remove");
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+  const currentPayEntry = useMemo(() => {
+    if (!editing || editing.role !== "CASHIER") return null;
+    const today = todayIso();
+    return (
+      payHistory.find((h) => h.effectiveFrom <= today) ??
+      payHistory[payHistory.length - 1] ??
+      null
+    );
+  }, [editing, payHistory]);
 
   const toggleActive = async (u: User, active: boolean) => {
     const label = active ? "Reactivate" : "Deactivate";
@@ -490,68 +551,152 @@ export function AdminTeam() {
               </label>
 
               {editing.role === "CASHIER" && (
-                <>
-                  <PayFields
-                    payType={editForm.payType}
-                    payAmount={editForm.payAmount}
-                    onType={(payType) => setEditForm({ ...editForm, payType })}
-                    onAmount={(payAmount) => setEditForm({ ...editForm, payAmount })}
-                  />
-                  {payChangedInEdit && (
-                    <div className="space-y-3 p-3 rounded-xl border border-[var(--color-saffron)]/30 bg-[var(--color-saffron)]/5">
-                      <p className="text-sm font-medium text-[var(--color-ink)]">
-                        Pay change — applies from this date onward
-                      </p>
-                      <label className="field-label">
-                        Effective from
-                        <input
-                          type="date"
-                          required
-                          value={editForm.payEffectiveFrom}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, payEffectiveFrom: e.target.value })
-                          }
-                          className="field-input"
-                        />
-                      </label>
+                <div className="space-y-2 p-3 rounded-xl border border-black/5 bg-[var(--color-cream)]/50">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                      Pay
+                    </p>
+                    {!addPayOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setAddPayOpen(true)}
+                        className="text-sm font-medium text-[var(--color-saffron-dark)]"
+                      >
+                        + Add pay change
+                      </button>
+                    )}
+                  </div>
+
+                  {currentPayEntry ? (
+                    <p className="text-sm">
+                      <span className="font-semibold">Current:</span>{" "}
+                      {payLabel(currentPayEntry.payType)} · {currentPayEntry.payAmount}{" "}
+                      {amountSuffix(currentPayEntry.payType)}
+                      <span className="text-[var(--color-muted)]">
+                        {" "}
+                        — since {formatStartDate(currentPayEntry.effectiveFrom)}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="text-sm text-[var(--color-muted)]">
+                      {payHistoryLoading ? "Loading pay history…" : "No pay set yet — add a pay change below."}
+                    </p>
+                  )}
+
+                  {addPayOpen && (
+                    <div className="space-y-3 p-3 rounded-lg border border-[var(--color-saffron)]/30 bg-white">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">New pay change</p>
+                        <button
+                          type="button"
+                          onClick={() => setAddPayOpen(false)}
+                          className="text-xs text-[var(--color-muted)]"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {PAY_TYPES.map((p) => (
+                          <button
+                            key={p.value}
+                            type="button"
+                            onClick={() => setPayDraft({ ...payDraft, payType: p.value })}
+                            className={`py-2 px-1 rounded-lg text-xs font-medium border transition ${
+                              payDraft.payType === p.value
+                                ? "bg-[var(--color-saffron)] text-white border-[var(--color-saffron)]"
+                                : "bg-white border-black/10"
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <label className="field-label">
+                          Amount ({amountSuffix(payDraft.payType)})
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.5}
+                            value={payDraft.payAmount}
+                            onChange={(e) => setPayDraft({ ...payDraft, payAmount: e.target.value })}
+                            className="field-input"
+                          />
+                        </label>
+                        <label className="field-label">
+                          Effective from
+                          <input
+                            type="date"
+                            value={payDraft.effectiveFrom}
+                            onChange={(e) =>
+                              setPayDraft({ ...payDraft, effectiveFrom: e.target.value })
+                            }
+                            className="field-input"
+                          />
+                        </label>
+                      </div>
                       <label className="field-label">
                         Note <span className="font-normal text-[var(--color-muted)]">(optional)</span>
                         <input
                           type="text"
-                          value={editForm.payChangeNote}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, payChangeNote: e.target.value })
-                          }
+                          value={payDraft.notes}
+                          onChange={(e) => setPayDraft({ ...payDraft, notes: e.target.value })}
                           className="field-input"
                           placeholder="e.g. raise, seasonal adjustment"
                         />
                       </label>
+                      <Button
+                        type="button"
+                        onClick={submitPayDraft}
+                        disabled={payBusy}
+                        fullWidth
+                      >
+                        {payBusy ? "Adding…" : "Add pay change"}
+                      </Button>
                       <p className="text-xs text-[var(--color-muted)]">
-                        Shifts before this date keep the previous rate in Salaries. Past payroll is not
-                        recalculated retroactively.
+                        Shifts on or after this date use the new rate. Earlier shifts keep the
+                        previous rate.
                       </p>
                     </div>
                   )}
+
                   {payHistory.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
-                        Pay history
-                      </p>
-                      <ul className="text-sm space-y-1 max-h-36 overflow-y-auto rounded-lg bg-[var(--color-cream)] p-2">
-                        {payHistory.map((h) => (
-                          <li key={h.id} className="flex justify-between gap-2">
-                            <span>
-                              {payLabel(h.payType)} · {h.payAmount} {amountSuffix(h.payType)}
-                            </span>
-                            <span className="text-[var(--color-muted)] shrink-0">
-                              from {formatStartDate(h.effectiveFrom)}
-                            </span>
-                          </li>
-                        ))}
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-[var(--color-muted)]">Pay history</p>
+                      <ul className="space-y-1 text-sm rounded-lg bg-white border border-black/5 divide-y divide-black/5">
+                        {payHistory.map((h) => {
+                          const isCurrent = currentPayEntry?.id === h.id;
+                          return (
+                            <li key={h.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                              <div className="min-w-0">
+                                <p className={isCurrent ? "font-semibold" : ""}>
+                                  {payLabel(h.payType)} · {h.payAmount} {amountSuffix(h.payType)}
+                                  {isCurrent && (
+                                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-[var(--color-saffron-dark)]">
+                                      current
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-xs text-[var(--color-muted)]">
+                                  from {formatStartDate(h.effectiveFrom)}
+                                  {h.notes && ` · ${h.notes}`}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removePayEntry(h)}
+                                disabled={payBusy}
+                                className="text-xs font-medium text-[var(--color-danger)] shrink-0 px-2 py-1 rounded hover:bg-[var(--color-danger)]/10"
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   )}
-                </>
+                </div>
               )}
 
               <label className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-cream)]">

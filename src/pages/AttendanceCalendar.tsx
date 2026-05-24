@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import type { ScheduleRow, User } from "../types";
+import type { ScheduleRow, User, WeeklyHours } from "../types";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
@@ -15,6 +16,7 @@ import {
   monthRange,
   shiftMonth,
 } from "../lib/calendar";
+import { closeForDate, hoursBetween } from "../lib/restaurantHours";
 
 const DEFAULT_START = "09:00";
 const DEFAULT_END = "17:00";
@@ -89,6 +91,7 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
   const [addTillClose, setAddTillClose] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [weeklyHours, setWeeklyHours] = useState<WeeklyHours | null>(null);
 
   const activeCashiers = useMemo(
     () => allCashiers.filter((u) => u.active !== false),
@@ -128,6 +131,11 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
         .then((list) => setAllCashiers(list.filter((u) => u.role === "CASHIER")))
         .catch(() => {});
     }
+    api<{ weeklyHours?: WeeklyHours }>("/settings/payroll")
+      .then((data) => {
+        if (data.weeklyHours) setWeeklyHours(data.weeklyHours);
+      })
+      .catch(() => {});
     loadMonth();
   }, [loadMonth, readOnly]);
 
@@ -213,6 +221,30 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
   };
 
   const availableToAdd = activeCashiers.filter((c) => !dayShifts.some((s) => s.userId === c.id));
+
+  const closeForSelectedDate = selectedDate ? closeForDate(selectedDate, weeklyHours) : null;
+  const previewHours =
+    closeForSelectedDate && addStart
+      ? hoursBetween(addStart, addTillClose ? closeForSelectedDate : addEnd)
+      : addStart && addEnd
+        ? hoursBetween(addStart, addEnd)
+        : 0;
+
+  const shiftHoursLabel = (s: ScheduleRow): string => {
+    if (!s.startTime) return s.hoursLabel;
+    if (s.endTime) {
+      const h = hoursBetween(s.startTime, s.endTime);
+      return `${s.startTime} – ${s.endTime}${h ? ` · ${h.toFixed(2).replace(/\.?0+$/, "")} h` : ""}`;
+    }
+    if (selectedDate) {
+      const close = closeForDate(selectedDate, weeklyHours);
+      if (close) {
+        const h = hoursBetween(s.startTime, close);
+        return `${s.startTime} – close (${close})${h ? ` · ${h.toFixed(2).replace(/\.?0+$/, "")} h` : ""}`;
+      }
+    }
+    return s.hoursLabel;
+  };
 
   const goMonth = (delta: number) => {
     const next = shiftMonth(viewYear, viewMonth, delta);
@@ -480,6 +512,13 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
               ★ = final cash count for the day.
               {!readOnly &&
                 " If more than one person is marked until close, the system picks one closer automatically."}
+              {closeForSelectedDate && (
+                <>
+                  {" "}
+                  Restaurant closes <span className="font-medium">≈ {closeForSelectedDate}</span> on this
+                  day — that&apos;s the time used for &quot;until close&quot; shifts in payroll.
+                </>
+              )}
             </p>
 
             <ul className={`space-y-2 ${readOnly ? "" : "mb-4"}`}>
@@ -509,7 +548,7 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
                         </span>
                       )}
                     </p>
-                    <p className="text-sm text-[var(--color-muted)]">{s.hoursLabel}</p>
+                    <p className="text-sm text-[var(--color-muted)]">{shiftHoursLabel(s)}</p>
                   </div>
                   {!readOnly && (
                     <button
@@ -571,15 +610,36 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
                         />
                       </label>
                     </div>
-                    <label className="flex items-center gap-2 text-sm">
+                    <label className="flex items-start gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={addTillClose}
                         onChange={(e) => setAddTillClose(e.target.checked)}
-                        className="w-4 h-4"
+                        className="w-4 h-4 mt-0.5"
                       />
-                      Until close — final cash count for the day
+                      <span>
+                        Until close
+                        {closeForSelectedDate && (
+                          <span className="text-[var(--color-muted)]"> (≈ {closeForSelectedDate})</span>
+                        )}
+                        <span className="block text-xs text-[var(--color-muted)]">
+                          Final cash count for the day. Uses restaurant closing time —{" "}
+                          <Link
+                            to="/admin/hours"
+                            className="underline hover:text-[var(--color-saffron-dark)]"
+                          >
+                            change in Hours
+                          </Link>
+                          .
+                        </span>
+                      </span>
                     </label>
+                    {previewHours > 0 && (
+                      <p className="text-xs text-[var(--color-muted)] -mt-1">
+                        ≈ {previewHours.toFixed(2).replace(/\.?0+$/, "")} h
+                        {addTillClose && closeForSelectedDate ? ` (${addStart} – ${closeForSelectedDate})` : ""}
+                      </p>
+                    )}
                     <Button fullWidth onClick={addEmployee} disabled={saving || !addUserId}>
                       {saving ? "Adding…" : "Add to this day"}
                     </Button>
