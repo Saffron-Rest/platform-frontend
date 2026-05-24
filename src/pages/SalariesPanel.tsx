@@ -187,15 +187,25 @@ export function SalariesPanel() {
 
   return (
     <div className="space-y-4">
+      {/* "How pay works" — the previous copy ("Earned is calculated from
+          attendance") implied we tracked clock-in/clock-out, which we
+          don't. The new copy spells out the actual algorithm so the user
+          can predict the number before opening the breakdown. */}
       <Card className="space-y-2 text-sm text-[var(--color-muted)]">
-        <h3 className="font-semibold text-[var(--color-ink)]">How pay works</h3>
+        <h3 className="font-semibold text-[var(--color-ink)]">How pay is calculated</h3>
         <p>
-          <strong>Earned</strong> is calculated from attendance. <strong>Paid</strong> is what you recorded
-          as payouts (reduces treasury cash/card). P&amp;L uses amounts actually paid in the selected dates.
+          <strong>Earned</strong> is computed from each cashier's <strong>scheduled shifts</strong>{" "}
+          (this app does not track clock-in / clock-out) and their pay setting:
         </p>
+        <ul className="list-disc pl-5 space-y-0.5">
+          <li><strong>Hourly</strong> — (shift end − shift start) × hourly rate, per day.</li>
+          <li><strong>Daily</strong> — day rate × (shift hours ÷ open hours), capped at one full day.</li>
+          <li><strong>Monthly</strong> — monthly salary × (days worked ÷ days in period).</li>
+        </ul>
         <p>
+          <strong>Paid</strong> is what you recorded as payouts (reduces treasury cash/card).{" "}
           <Link to="/admin/payouts" className="text-[var(--color-saffron)] font-medium">
-            View all payouts with filters →
+            View all payouts →
           </Link>
         </p>
       </Card>
@@ -238,13 +248,33 @@ export function SalariesPanel() {
             </div>
           </div>
           <p className="text-xs text-center text-[var(--color-muted)]">
-            {report.grandTotalHours.toFixed(1)} hours logged this period
+            {report.grandTotalHours.toFixed(1)} <strong>scheduled</strong> hours this period
+            {" · "}
+            <Link to="/admin/attendance" className="text-[var(--color-saffron)] font-medium">
+              View schedule
+            </Link>
           </p>
 
           <ul className="space-y-3">
             {report.employees.map((e) => {
               const paid = e.paidAmount ?? 0;
               const remaining = e.remainingPay ?? Math.max(0, e.totalPay - paid);
+              const isMonthly = e.payType === "MONTHLY";
+              const isHourly = e.payType === "HOURLY";
+
+              // What to show under the cashier's name. Hours genuinely
+              // matter for HOURLY pay; for MONTHLY they don't drive the
+              // total at all (only "days worked" does — see
+              // SalaryCalculator.monthlyPayForPeriod). For DAILY they
+              // matter partially (fraction of a day). Showing the right
+              // metric next to the right pay type is the single biggest
+              // clarity win in this page.
+              const subline = isMonthly
+                ? `${e.shiftCount} day${e.shiftCount === 1 ? "" : "s"} worked of ${report.calendarDays} in period`
+                : isHourly
+                  ? `${e.shiftCount} day${e.shiftCount === 1 ? "" : "s"} · ${e.totalHours.toFixed(1)} scheduled h`
+                  : `${e.shiftCount} day${e.shiftCount === 1 ? "" : "s"} · ${e.totalHours.toFixed(1)} h scheduled`;
+
               return (
                 <li key={e.userId} className="bg-white rounded-2xl border border-black/5 overflow-hidden">
                   <button
@@ -261,12 +291,24 @@ export function SalariesPanel() {
                         {paid > 0 && remaining > 0.01 && (
                           <Badge variant="neutral">Partial</Badge>
                         )}
+                        {!e.active && (
+                          <Badge variant="neutral">Inactive</Badge>
+                        )}
+                        {e.usesPayHistory && (
+                          <Badge variant="neutral" title="Pay rate changed during this period — totals below honour each shift's effective rate.">
+                            Rate changed
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-sm text-[var(--color-muted)]">
+                        {/* Show the CURRENT rate prefixed with "Now" when
+                            history is in play, so the user understands the
+                            headline rate is not what every shift used. */}
+                        {e.usesPayHistory ? "Now: " : ""}
                         {e.payTypeLabel} · {e.payAmount} {e.payAmountLabel}
                       </p>
                       <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                        {e.shiftCount} day{e.shiftCount === 1 ? "" : "s"} · {e.totalHours.toFixed(1)} h
+                        {subline}
                         {paid > 0 && (
                           <span>
                             {" "}
@@ -312,25 +354,56 @@ export function SalariesPanel() {
                       )}
                       {e.shifts.length > 0 ? (
                         <ul className="space-y-1">
-                          {e.shifts.map((s) => (
-                            <li
-                              key={s.date}
-                              className="flex justify-between text-sm py-1.5 px-2 rounded-lg bg-white/80"
-                            >
-                              <span>
-                                {s.date} · {s.hoursLabel}
-                              </span>
-                              <span className="tabular-nums text-right text-[var(--color-muted)]">
-                                {s.hours.toFixed(1)} h · {fmt(s.pay)}
-                                {s.payNote && (
-                                  <span className="block text-[10px]">{s.payNote}</span>
-                                )}
-                              </span>
-                            </li>
-                          ))}
+                          {e.shifts.map((s) => {
+                            // For monthly pay, the per-shift "pay" field is
+                            // bandTotal / daysInBand (purely so the column
+                            // sums to the period total). Showing it next to
+                            // the hours figure for that day mis-suggests
+                            // "this many hours produced this much pay" —
+                            // which is false for monthly. Render the hours
+                            // figure only when the user can meaningfully
+                            // act on it.
+                            const showHours = (s.payType ?? e.payType) !== "MONTHLY";
+                            return (
+                              <li
+                                key={s.date}
+                                className="flex justify-between text-sm py-1.5 px-2 rounded-lg bg-white/80 gap-3"
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span className="font-medium">{s.date}</span>{" "}
+                                  · {s.hoursLabel}
+                                  {s.tillCloseAssumed && (
+                                    <span
+                                      className="ml-2 inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-semibold"
+                                      title="No end time was set — hours estimated using restaurant close. Set an end time on the schedule for an exact figure."
+                                    >
+                                      est.
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="tabular-nums text-right text-[var(--color-muted)] flex-shrink-0">
+                                  {showHours && <>{s.hours.toFixed(1)} h · </>}
+                                  {fmt(s.pay)}
+                                  {s.payNote && (
+                                    <span className="block text-[10px]">{s.payNote}</span>
+                                  )}
+                                </span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : (
-                        <p className="text-sm text-[var(--color-muted)]">No attendance this period.</p>
+                        <p className="text-sm text-[var(--color-muted)]">
+                          {e.active
+                            ? "Not scheduled this period."
+                            : "Inactive employee — no shifts in this period."}{" "}
+                          <Link
+                            to="/admin/attendance"
+                            className="text-[var(--color-saffron)] font-medium"
+                          >
+                            Edit schedule →
+                          </Link>
+                        </p>
                       )}
                       <PaySalaryForm
                         employee={e}

@@ -227,9 +227,12 @@ export function ProfitLoss() {
             {new Date(data.generatedAt).toLocaleString()}
             {data.includeLabor && data.laborUsesPaidAmounts && data.laborPaid != null && (
               <span className="block mt-1">
-                Labor line uses salary paid in this range ({fmt(data.laborPaid)}).
+                Labor line uses salary <strong>paid</strong> in this range ({fmt(data.laborPaid)}).
                 {data.laborAccrued != null && data.laborAccrued > data.laborPaid + 0.01 && (
-                  <span> Accrued from attendance: {fmt(data.laborAccrued)}.</span>
+                  <span>
+                    {" "}Accrued from <strong>scheduled shifts</strong>:{" "}
+                    {fmt(data.laborAccrued)}.
+                  </span>
                 )}
               </span>
             )}

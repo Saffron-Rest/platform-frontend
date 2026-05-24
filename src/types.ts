@@ -73,6 +73,16 @@ export type PayrollShiftRow = {
   hoursLabel: string;
   pay: number;
   payNote?: string;
+  payType?: PayType;
+  payAmount?: number;
+  /** ISO date the per-shift pay rate started — present when honouring a
+   * historical PayRateChange row. The frontend uses this to flag rows
+   * that don't match the cashier's CURRENT rate. */
+  rateEffectiveFrom?: string;
+  /** True when the shift was scheduled as "till close" (endTime null)
+   * and the system inferred end-of-day from restaurant operating hours
+   * instead of measuring it. Frontend should label these as estimated. */
+  tillCloseAssumed?: boolean;
 };
 
 export type PayrollPaymentRef = {
@@ -96,9 +106,16 @@ export type PayrollEmployee = {
   payAmount: number;
   payAmountLabel: string;
   calculationSummary: string;
+  /** True when one or more shifts in the period were paid at a rate
+   * different from the cashier's current pay (i.e. PayRateChange history
+   * applied). The frontend renders a "Rate changed mid-period" badge so
+   * the headline rate next to the cashier's name can be trusted. */
+  usesPayHistory?: boolean;
   shiftCount: number;
   totalHours: number;
-  /** Earned from attendance this period */
+  /** Earned from the cashier's scheduled shifts this period (no
+   * clock-in / clock-out tracking is performed yet — see SalaryService
+   * in the backend for the algorithm). */
   totalPay: number;
   /** Already recorded as paid for this period */
   paidAmount: number;

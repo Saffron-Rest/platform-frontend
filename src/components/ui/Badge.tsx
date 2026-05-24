@@ -11,13 +11,20 @@ export function Badge({
   children,
   variant = "neutral",
   className = "",
+  title,
 }: {
   children: React.ReactNode;
   variant?: Variant;
   className?: string;
+  /** Optional native tooltip — useful for status badges that need
+   * a one-line explanation on hover (e.g. "Rate changed"). */
+  title?: string;
 }) {
   return (
-    <span className={`inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ${styles[variant]} ${className}`}>
+    <span
+      className={`inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ${styles[variant]} ${className}`}
+      title={title}
+    >
       {children}
     </span>
   );

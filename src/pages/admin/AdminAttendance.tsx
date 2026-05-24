@@ -6,8 +6,8 @@ export function AdminAttendance() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Attendance"
-        subtitle="Calendar by day or list by cashier — tap a shift to edit"
+        title="Schedule"
+        subtitle="Plan who works which days — these shifts drive the Salaries calculation"
         action={
           <Link
             to="/admin/hours"

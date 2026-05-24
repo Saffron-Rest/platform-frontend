@@ -10,10 +10,10 @@ export function Schedule() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={editable ? "Attendance" : "Schedule"}
+        title="Schedule"
         subtitle={
           editable
-            ? "Calendar by day or cashier — tap a day to schedule staff"
+            ? "Plan who works which days — these shifts drive Salaries"
             : user
               ? `Team shifts for the month — your rows are highlighted (${user.name})`
               : "Team shifts for the month"

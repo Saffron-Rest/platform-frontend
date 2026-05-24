@@ -7,7 +7,7 @@ export function AdminSalaries() {
     <div className="space-y-4">
       <PageHeader
         title="Salaries"
-        subtitle="Monthly payroll from attendance and pay settings"
+        subtitle="Payroll calculated from each cashier's scheduled shifts and pay settings"
         action={
           <Link
             to="/admin/team"
