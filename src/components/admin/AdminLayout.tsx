@@ -2,12 +2,14 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { PageHeader } from "../ui/PageHeader";
 
 const tabs = [
+  { to: "/admin/inbox", label: "Inbox", desc: "Open issues" },
   { to: "/admin/team", label: "Team", desc: "People & pay rates" },
   { to: "/admin/attendance", label: "Schedule", desc: "Who works when" },
   { to: "/admin/salaries", label: "Payroll", desc: "Calculate pay" },
   { to: "/admin/payouts", label: "Manage pay", desc: "Rates & payouts" },
   { to: "/admin/hours", label: "Hours", desc: "Opening times" },
   { to: "/admin/settings", label: "Treasury", desc: "Balances & %" },
+  { to: "/admin/tags", label: "Tags", desc: "Custom labels" },
 ];
 
 export function AdminLayout() {

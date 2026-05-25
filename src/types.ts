@@ -105,6 +105,7 @@ export type PayrollPaymentRef = {
   notes?: string;
   /** When true the payment is bookkeeping-only and does NOT affect treasury balances. */
   excludeFromTreasury?: boolean;
+  tags?: { id: string; name: string; color?: string | null }[];
 };
 
 export type PayrollEmployee = {
@@ -245,6 +246,8 @@ export type SalaryPaymentRecord = {
   /** When true the payment is bookkeeping-only and does NOT affect treasury balances. */
   excludeFromTreasury?: boolean;
   createdAt: string;
+  tags?: { id: string; name: string; color?: string | null }[];
+  commentCount?: number;
 };
 
 export type ExpenseInvoice = {
@@ -290,6 +293,8 @@ export type ManualDeliveryIncome = {
   settledOverridden?: boolean;
   notes?: string;
   createdAt?: string;
+  tags?: { id: string; name: string; color?: string | null }[];
+  commentCount?: number;
 };
 
 /** Manual reconciliation of POS card sales: how much was rung up vs how much the bank credited.
@@ -381,6 +386,10 @@ export type DailyEntry = {
   schedule?: WorkSchedule;
   /** Files attached directly to this entry (e.g. POS card sales report). */
   files?: EntryFile[];
+  /** Tags currently attached to this entry. */
+  tags?: { id: string; name: string; color?: string | null }[];
+  /** Active (non-deleted) comments on this entry. */
+  commentCount?: number;
 };
 
 /** Payout fields + sales/refunds/notes — expense lines are separate */

@@ -12,6 +12,7 @@ import { SidebarNav } from "./SidebarNav";
 import { BottomNav } from "./BottomNav";
 import { MoreMenu } from "./MoreMenu";
 import { OnboardingProvider, useOnboarding } from "../../context/OnboardingContext";
+import { CommandPalette } from "../search/CommandPalette";
 
 function AppShellInner({
   moreOpen,
@@ -136,6 +137,7 @@ function AppShellInner({
             primaryPaths={primaryPaths}
           />
         )}
+        <CommandPalette />
       </div>
     </div>
   );

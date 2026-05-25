@@ -26,6 +26,14 @@ import { Alert } from "../components/ui/Alert";
 import { Badge } from "../components/ui/Badge";
 import { Spinner } from "../components/ui/Spinner";
 import { FinanceAddPanel } from "../components/finance/FinanceAddPanel";
+import { TagFilterDropdown } from "../components/tags/TagFilterDropdown";
+import { TagPicker } from "../components/tags/TagPicker";
+import {
+  CommentsDrawer,
+  CommentsTrigger,
+} from "../components/comments/CommentsDrawer";
+import { ExportButton } from "../components/export/ExportButton";
+import type { TaggedEntityType } from "../api/tags";
 import type { ManualDeliveryIncome } from "../types";
 
 const DELIVERY_PLATFORMS = [
@@ -86,14 +94,29 @@ export function FinanceLedger() {
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<StandaloneExpensePayload | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+  // Tag filter is shared across both tabs; each tab independently calls the
+  // backend with the selected ids so server-side AND-filtering applies.
+  const [filterTagIds, setFilterTagIds] = useState<string[]>([]);
+  // Single-drawer state — open one record at a time so the right rail
+  // doesn't get crowded with stale comment lists.
+  const [commentsFor, setCommentsFor] = useState<{
+    type: TaggedEntityType;
+    id: string;
+    title: string;
+  } | null>(null);
+
+  // Local count overrides so the trigger badge stays in sync after the
+  // drawer's onCountChange fires without re-fetching the page.
+  const [expenseCounts, setExpenseCounts] = useState<Record<string, number>>({});
+  const [deliveryCounts, setDeliveryCounts] = useState<Record<string, number>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const [expRows, delRows] = await Promise.all([
-        listAllExpenses(from, to),
-        listDeliveryIncome(from, to),
+        listAllExpenses(from, to, filterTagIds),
+        listDeliveryIncome(from, to, filterTagIds),
       ]);
       setExpenses(expRows);
       setDelivery(delRows);
@@ -104,7 +127,7 @@ export function FinanceLedger() {
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, to, filterTagIds]);
 
   useEffect(() => {
     void load();
@@ -287,6 +310,20 @@ export function FinanceLedger() {
             To
             <input type="date" className="field-input" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
+        </div>
+        <TagFilterDropdown
+          selectedTagIds={filterTagIds}
+          onChange={setFilterTagIds}
+          label="Filter by tag"
+        />
+        <div className="flex justify-end">
+          <ExportButton
+            config={{
+              type: viewTab === "expenses" ? "expenses" : "deliveries",
+              from,
+              to,
+            }}
+          />
         </div>
         <Button variant="dark" fullWidth onClick={() => void load()} disabled={loading}>
           {loading ? "Loading…" : "Refresh"}
@@ -500,7 +537,7 @@ export function FinanceLedger() {
             <ul className="divide-y divide-black/5">
               {delivery.map((d) => (
                 <li key={d.id} className="py-3 flex flex-wrap items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium">
                       {d.platformLabel} · {fmt(d.grossAmount)}
                     </p>
@@ -509,6 +546,29 @@ export function FinanceLedger() {
                       {d.settledOverridden ? " (manual)" : ""}
                     </p>
                     {d.notes && <p className="text-sm mt-1">{d.notes}</p>}
+                    <div className="mt-2 flex items-center gap-3 flex-wrap">
+                      <TagPicker
+                        entityType="MANUAL_DELIVERY"
+                        entityId={d.id}
+                        initialTags={d.tags ?? []}
+                        size="sm"
+                        onChange={(next) =>
+                          setDelivery((rows) =>
+                            rows.map((r) => (r.id === d.id ? { ...r, tags: next } : r))
+                          )
+                        }
+                      />
+                      <CommentsTrigger
+                        count={deliveryCounts[d.id] ?? d.commentCount ?? 0}
+                        onClick={() =>
+                          setCommentsFor({
+                            type: "MANUAL_DELIVERY",
+                            id: d.id,
+                            title: `${d.platformLabel} · ${d.effectiveDate}`,
+                          })
+                        }
+                      />
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -567,6 +627,35 @@ export function FinanceLedger() {
                             </Link>
                           ) : null}
                         </div>
+                        {row.id && (
+                          <div className="mt-2 flex items-center gap-3 flex-wrap">
+                            <TagPicker
+                              entityType="EXPENSE"
+                              entityId={row.id}
+                              initialTags={row.tags ?? []}
+                              size="sm"
+                              onChange={(next) =>
+                                setExpenses((rows) =>
+                                  rows.map((r) =>
+                                    r.id === row.id ? { ...r, tags: next } : r
+                                  )
+                                )
+                              }
+                            />
+                            <CommentsTrigger
+                              count={expenseCounts[row.id] ?? row.commentCount ?? 0}
+                              onClick={() =>
+                                setCommentsFor({
+                                  type: "EXPENSE",
+                                  id: row.id!,
+                                  title:
+                                    row.description ||
+                                    categoryLabel(row.category),
+                                })
+                              }
+                            />
+                          </div>
+                        )}
                       </div>
                       {row.standalone && row.id && !isEditing && (
                         <div className="flex items-center gap-3 shrink-0">
@@ -687,6 +776,20 @@ export function FinanceLedger() {
           )}
         </Card>
       )}
+      <CommentsDrawer
+        open={commentsFor != null}
+        entityType={commentsFor?.type ?? null}
+        entityId={commentsFor?.id ?? null}
+        title={commentsFor?.title}
+        onClose={() => setCommentsFor(null)}
+        onCountChange={(entityId, count) => {
+          if (commentsFor?.type === "EXPENSE") {
+            setExpenseCounts((m) => ({ ...m, [entityId]: count }));
+          } else if (commentsFor?.type === "MANUAL_DELIVERY") {
+            setDeliveryCounts((m) => ({ ...m, [entityId]: count }));
+          }
+        }}
+      />
     </div>
   );
 }

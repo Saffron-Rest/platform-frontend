@@ -17,6 +17,14 @@ import { Spinner } from "../components/ui/Spinner";
 import { Alert } from "../components/ui/Alert";
 import { AdminHistory } from "./AdminHistory";
 import { TreasurySummaryCards } from "../components/admin/TreasurySummaryCards";
+import { TagFilterDropdown } from "../components/tags/TagFilterDropdown";
+import { TagPicker } from "../components/tags/TagPicker";
+import {
+  CommentsDrawer,
+  CommentsTrigger,
+} from "../components/comments/CommentsDrawer";
+import { ExportButton } from "../components/export/ExportButton";
+import type { Tag } from "../api/tags";
 
 const todayIso = todayLocalIso;
 
@@ -38,12 +46,22 @@ type Tab = "list" | "summary";
 function ReportListCard({
   report,
   onDelete,
+  onTagsChange,
+  onOpenComments,
+  commentCountOverride,
 }: {
   report: DailyEntry;
   /** Set only for admin/manager — when present, renders the inline Remove
    * action. The backend already gates on operations role and requires a
    * delete reason, this is purely a UI affordance. */
   onDelete?: (report: DailyEntry) => void;
+  /** Notified when tags change so the parent can keep its list in sync
+   *  without re-fetching. */
+  onTagsChange?: (id: string, tags: Tag[]) => void;
+  onOpenComments?: (report: DailyEntry) => void;
+  /** Live count fed back from the drawer; falls back to the value the
+   *  list endpoint returned at first load. */
+  commentCountOverride?: number;
 }) {
   const sales = totalSalesFromEntry(report);
   const submitted = report.status === "LOCKED";
@@ -51,13 +69,16 @@ function ReportListCard({
   const canDelete = !submitted && onDelete != null;
 
   return (
-    <Link
-      to={entryEditorUrl(report.date, report.cashierId)}
-      className={`block rounded-2xl border bg-white p-4 hover:shadow-md transition group ${
+    <div
+      className={`rounded-2xl border bg-white hover:shadow-md transition group ${
         submitted
           ? "border-black/8 hover:border-[var(--color-success)]/35"
           : "border-[var(--color-saffron)]/25 hover:border-[var(--color-saffron)]/50"
       }`}
+    >
+    <Link
+      to={entryEditorUrl(report.date, report.cashierId)}
+      className="block p-4 rounded-t-2xl"
     >
       <div className="flex gap-3">
         <div
@@ -111,6 +132,22 @@ function ReportListCard({
         </div>
       </div>
     </Link>
+    <div className="px-4 pb-3 -mt-1 border-t border-black/5 pt-2 flex items-center gap-3 flex-wrap">
+      <TagPicker
+        entityType="ENTRY"
+        entityId={report.id}
+        initialTags={report.tags ?? []}
+        size="sm"
+        onChange={(next) => onTagsChange?.(report.id, next)}
+      />
+      {onOpenComments && (
+        <CommentsTrigger
+          count={commentCountOverride ?? report.commentCount ?? 0}
+          onClick={() => onOpenComments(report)}
+        />
+      )}
+    </div>
+    </div>
   );
 }
 
@@ -127,6 +164,9 @@ export function ShiftReports() {
   const [to, setTo] = useState(todayIso);
   const [filterCashierId, setFilterCashierId] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterTagIds, setFilterTagIds] = useState<string[]>([]);
+  const [commentsFor, setCommentsFor] = useState<DailyEntry | null>(null);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -159,6 +199,7 @@ export function ShiftReports() {
       const params = new URLSearchParams({ from, to });
       if (filterCashierId) params.set("cashierId", filterCashierId);
       if (filterStatus) params.set("status", filterStatus);
+      for (const id of filterTagIds) params.append("tagId", id);
       const list = await api<DailyEntry[]>(`/entries?${params}`);
       setReports(list);
     } catch (err) {
@@ -167,7 +208,7 @@ export function ShiftReports() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, filterCashierId, filterStatus, tab]);
+  }, [from, to, filterCashierId, filterStatus, filterTagIds, tab]);
 
   useEffect(() => {
     void loadList();
@@ -231,6 +272,10 @@ export function ShiftReports() {
     }
     navigate(entryEditorUrl(newDate, newCashierId));
   };
+
+  const handleReportTagsChange = useCallback((id: string, tags: Tag[]) => {
+    setReports((prev) => prev.map((r) => (r.id === id ? { ...r, tags } : r)));
+  }, []);
 
   const handleDeleteReport = useCallback(
     async (report: DailyEntry) => {
@@ -370,6 +415,9 @@ export function ShiftReports() {
                 key={r.id}
                 report={r}
                 onDelete={canRemove ? handleDeleteReport : undefined}
+                onTagsChange={handleReportTagsChange}
+                onOpenComments={setCommentsFor}
+                commentCountOverride={commentCounts[r.id]}
               />
             ))}
           </div>
@@ -445,6 +493,24 @@ export function ShiftReports() {
               <option value="DRAFT">Draft</option>
             </select>
           </label>
+          <div className="field-label">
+            <span className="invisible">Tag filter</span>
+            <TagFilterDropdown
+              selectedTagIds={filterTagIds}
+              onChange={setFilterTagIds}
+              label="Tags"
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <ExportButton
+            config={{
+              type: "entries",
+              from,
+              to,
+              cashierId: filterCashierId || undefined,
+            }}
+          />
         </div>
       </Card>
 
@@ -485,6 +551,9 @@ export function ShiftReports() {
                       key={r.id}
                       report={r}
                       onDelete={canRemove ? handleDeleteReport : undefined}
+                      onTagsChange={handleReportTagsChange}
+                      onOpenComments={setCommentsFor}
+                      commentCountOverride={commentCounts[r.id]}
                     />
                   ))}
                 </div>
@@ -492,6 +561,20 @@ export function ShiftReports() {
             ))}
         </section>
       )}
+      <CommentsDrawer
+        open={commentsFor != null}
+        entityType={commentsFor ? "ENTRY" : null}
+        entityId={commentsFor?.id ?? null}
+        title={
+          commentsFor
+            ? `${commentsFor.cashier?.name ?? "Cashier"} · ${commentsFor.date}`
+            : undefined
+        }
+        onClose={() => setCommentsFor(null)}
+        onCountChange={(entityId, count) =>
+          setCommentCounts((prev) => ({ ...prev, [entityId]: count }))
+        }
+      />
     </div>
   );
 }

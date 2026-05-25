@@ -2,6 +2,7 @@ import { api } from "./client";
 import { num } from "../lib/numbers";
 import { parsePaymentSource } from "../lib/paymentSource";
 import type { ExpenseInvoice, ExpenseLine } from "../types";
+import type { Tag } from "./tags";
 
 function mapInvoice(raw: Record<string, unknown>): ExpenseInvoice {
   return { id: String(raw.id), filename: String(raw.filename) };
@@ -126,7 +127,18 @@ export type LedgerExpense = ExpenseLine & {
   standalone?: boolean;
   entryId?: string;
   entryDate?: string;
+  tags?: Tag[];
+  commentCount?: number;
 };
+
+function mapTags(raw: unknown): Tag[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as Record<string, unknown>[]).map((r) => ({
+    id: String(r.id),
+    name: String(r.name),
+    color: r.color != null ? String(r.color) : null,
+  }));
+}
 
 function mapLedgerExpense(raw: Record<string, unknown>): LedgerExpense {
   const base = mapExpense(raw);
@@ -136,13 +148,15 @@ function mapLedgerExpense(raw: Record<string, unknown>): LedgerExpense {
     standalone: Boolean(raw.standalone),
     entryId: raw.entryId != null ? String(raw.entryId) : undefined,
     entryDate: raw.entryDate != null ? String(raw.entryDate) : undefined,
+    tags: mapTags(raw.tags),
+    commentCount: typeof raw.commentCount === "number" ? raw.commentCount : 0,
   };
 }
 
-export async function listAllExpenses(from: string, to: string) {
-  const raw = await api<Record<string, unknown>[]>(
-    `/expenses?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
-  );
+export async function listAllExpenses(from: string, to: string, tagIds?: string[]) {
+  const params = new URLSearchParams({ from, to });
+  for (const id of tagIds ?? []) params.append("tagId", id);
+  const raw = await api<Record<string, unknown>[]>(`/expenses?${params}`);
   return raw.map(mapLedgerExpense);
 }
 

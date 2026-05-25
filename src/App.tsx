@@ -20,6 +20,8 @@ import { AdminPayouts } from "./pages/admin/AdminPayouts";
 import { AdminRestaurantHours } from "./pages/admin/AdminRestaurantHours";
 import { AdminSettings } from "./pages/admin/AdminSettings";
 import { AdminAudit } from "./pages/admin/AdminAudit";
+import { AdminTagLibrary } from "./pages/admin/AdminTagLibrary";
+import { AdminDataHealth } from "./pages/admin/AdminDataHealth";
 import { FinanceLedger } from "./pages/FinanceLedger";
 import { TreasuryHistory } from "./pages/TreasuryHistory";
 
@@ -53,6 +55,8 @@ export default function App() {
                 <Route path="payouts" element={<AdminPayouts />} />
                 <Route path="hours" element={<AdminRestaurantHours />} />
                 <Route path="settings" element={<AdminSettings />} />
+                <Route path="tags" element={<AdminTagLibrary />} />
+                <Route path="inbox" element={<AdminDataHealth />} />
               </Route>
             </Route>
           </Route>

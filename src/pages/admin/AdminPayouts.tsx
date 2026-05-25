@@ -14,6 +14,12 @@ import { Button } from "../../components/ui/Button";
 import { Alert } from "../../components/ui/Alert";
 import { Badge } from "../../components/ui/Badge";
 import { PayRatesPanel } from "../../components/admin/PayRatesPanel";
+import { TagPicker } from "../../components/tags/TagPicker";
+import {
+  CommentsDrawer,
+  CommentsTrigger,
+} from "../../components/comments/CommentsDrawer";
+import { ExportButton } from "../../components/export/ExportButton";
 
 type Tab = "payouts" | "rates";
 
@@ -42,6 +48,8 @@ export function AdminPayouts() {
   const [message, setMessage] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [commentsFor, setCommentsFor] = useState<SalaryPaymentRecord | null>(null);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     api<User[]>("/users")
@@ -224,7 +232,7 @@ export function AdminPayouts() {
             </select>
           </label>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           <Button variant="dark" onClick={() => void load()}>
             Apply filters
           </Button>
@@ -240,6 +248,17 @@ export function AdminPayouts() {
           >
             Reset
           </Button>
+          <span className="ml-auto">
+            <ExportButton
+              config={{
+                type: "payouts",
+                from,
+                to,
+                cashierId: userId || undefined,
+                paymentSource: source || undefined,
+              }}
+            />
+          </span>
         </div>
         <p className="text-xs text-[var(--color-muted)]">
           {matchMode === "payroll"
@@ -293,6 +312,23 @@ export function AdminPayouts() {
                     {p.notes && (
                       <p className="text-xs text-[var(--color-muted)] mt-0.5">{p.notes}</p>
                     )}
+                    <div className="mt-2 flex items-center gap-3 flex-wrap">
+                      <TagPicker
+                        entityType="SALARY_PAYMENT"
+                        entityId={p.id}
+                        initialTags={p.tags ?? []}
+                        size="sm"
+                        onChange={(next) =>
+                          setPayments((rows) =>
+                            rows.map((r) => (r.id === p.id ? { ...r, tags: next } : r))
+                          )
+                        }
+                      />
+                      <CommentsTrigger
+                        count={commentCounts[p.id] ?? p.commentCount ?? 0}
+                        onClick={() => setCommentsFor(p)}
+                      />
+                    </div>
                   </div>
                   <div className="text-right shrink-0 flex flex-col items-end gap-1">
                     <p className="font-bold tabular-nums">{fmt(p.amount)}</p>
@@ -338,6 +374,20 @@ export function AdminPayouts() {
       </Card>
       </>
       )}
+      <CommentsDrawer
+        open={commentsFor != null}
+        entityType={commentsFor ? "SALARY_PAYMENT" : null}
+        entityId={commentsFor?.id ?? null}
+        title={
+          commentsFor
+            ? `${commentsFor.employeeName} · ${commentsFor.paidDate}`
+            : undefined
+        }
+        onClose={() => setCommentsFor(null)}
+        onCountChange={(entityId, count) =>
+          setCommentCounts((prev) => ({ ...prev, [entityId]: count }))
+        }
+      />
     </div>
   );
 }
