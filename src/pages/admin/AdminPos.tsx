@@ -7,6 +7,7 @@ import {
   listPosIntegrations,
   registerDotyposWebhook,
   rotatePosSecret,
+  sendTestReceipt,
   setPosIntegrationActive,
   syncDotykacka,
   unregisterDotyposWebhook,
@@ -282,6 +283,29 @@ export function AdminPos() {
     }
   };
 
+  const sendTest = async (i: PosIntegration) => {
+    setRowBusy(i.id, "testing");
+    setError("");
+    setMessage("");
+    try {
+      const r = await sendTestReceipt(i.id);
+      if (r.ok) {
+        setMessage(
+          `Test receipt processed for "${i.name}" — ${r.inserted ?? 0} inserted${
+            r.unmatched ? `, ${r.unmatched} unmatched (expected, it isn't on the menu)` : ""
+          }. The activity panel should refresh in a few seconds.`,
+        );
+      } else {
+        setError(`Test failed: ${r.error ?? "unknown error"}`);
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Test failed");
+    } finally {
+      setRowBusy(i.id, null);
+    }
+  };
+
   const runSync = async (i: PosIntegration) => {
     setRowBusy(i.id, "syncing");
     setError("");
@@ -504,6 +528,7 @@ export function AdminPos() {
               onChangeField={(field, value) => updateDotyForm(i.id, field, value)}
               onSaveDotykacka={() => void saveDotykacka(i)}
               onSync={() => void runSync(i)}
+              onSendTest={() => void sendTest(i)}
               onEnableWebhook={() => void enableWebhook(i)}
               onDisableWebhook={() => void disableWebhook(i)}
               onRotate={() => void rotate(i)}
@@ -528,6 +553,7 @@ function IntegrationCard({
   onChangeField,
   onSaveDotykacka,
   onSync,
+  onSendTest,
   onEnableWebhook,
   onDisableWebhook,
   onRotate,
@@ -553,6 +579,7 @@ function IntegrationCard({
   ) => void;
   onSaveDotykacka: () => void;
   onSync: () => void;
+  onSendTest: () => void;
   onEnableWebhook: () => void;
   onDisableWebhook: () => void;
   onRotate: () => void;
@@ -596,6 +623,14 @@ function IntegrationCard({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={onSendTest}
+            disabled={busy !== null}
+            title="Inject a fake receipt to confirm ingestion + analytics work end-to-end"
+          >
+            {busy === "testing" ? "Sending…" : "Send test receipt"}
+          </Button>
           {isDotykacka ? (
             <>
               <Button

@@ -312,3 +312,10 @@ export type PosActivity = {
 export async function getPosActivity(id: string) {
   return api<PosActivity>(`/pos/integrations/${id}/activity`);
 }
+
+export async function sendTestReceipt(id: string) {
+  return api<{ ok: boolean; inserted?: number; skipped?: number; unmatched?: number; error?: string }>(
+    `/pos/integrations/${id}/test-receipt`,
+    { method: "POST" },
+  );
+}
