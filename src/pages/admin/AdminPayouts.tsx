@@ -13,6 +13,9 @@ import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Alert } from "../../components/ui/Alert";
 import { Badge } from "../../components/ui/Badge";
+import { PayRatesPanel } from "../../components/admin/PayRatesPanel";
+
+type Tab = "payouts" | "rates";
 
 function monthStartIso() {
   const d = new Date();
@@ -26,6 +29,7 @@ function todayIso() {
 type MatchMode = "paidDate" | "payroll";
 
 export function AdminPayouts() {
+  const [tab, setTab] = useState<Tab>("payouts");
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState(todayIso());
   const [userId, setUserId] = useState("");
@@ -112,15 +116,41 @@ export function AdminPayouts() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Salary payouts"
-        subtitle="All recorded salary payments — filter by date, employee, or source"
+        title="Payroll"
+        subtitle="Pay rate changes and salary payouts — all in one place"
         action={
           <Link to="/admin/salaries" className="text-sm font-medium text-[var(--color-saffron)]">
-            Payroll →
+            View calculation →
           </Link>
         }
       />
 
+      <div className="flex gap-2 p-1 rounded-xl bg-[var(--color-cream)] w-fit">
+        {(
+          [
+            { id: "payouts" as const, label: "Payouts" },
+            { id: "rates" as const, label: "Pay rates" },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              tab === t.id
+                ? "bg-white shadow-sm text-[var(--color-ink)]"
+                : "text-[var(--color-muted)]"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "rates" ? (
+        <PayRatesPanel />
+      ) : (
+      <>
       <Card className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {(
@@ -294,6 +324,8 @@ export function AdminPayouts() {
           </ul>
         )}
       </Card>
+      </>
+      )}
     </div>
   );
 }

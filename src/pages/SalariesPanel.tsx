@@ -220,7 +220,7 @@ export function SalariesPanel() {
         <p>
           <strong>Paid</strong> is what you recorded as payouts (reduces treasury cash/card).{" "}
           <Link to="/admin/payouts" className="text-[var(--color-saffron)] font-medium">
-            View all payouts →
+            Manage pay rates & payouts →
           </Link>
         </p>
       </Card>
@@ -359,7 +359,7 @@ export function SalariesPanel() {
                               to="/admin/payouts"
                               className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
                             >
-                              Manage →
+                              Manage pay →
                             </Link>
                           </div>
                           <ul className="text-sm space-y-1">

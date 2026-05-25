@@ -8,13 +8,35 @@ export type PayRateInput = {
   notes?: string;
 };
 
+export type PayRateUpdate = Partial<PayRateInput>;
+
+export type PayRateHistoryEntryWithUser = PayRateHistoryEntry & {
+  userId: string;
+  employeeName: string;
+};
+
 export function listPayRates(userId: string): Promise<PayRateHistoryEntry[]> {
   return api<PayRateHistoryEntry[]>(`/users/${userId}/pay-rates`);
+}
+
+export function listAllPayRates(): Promise<PayRateHistoryEntryWithUser[]> {
+  return api<PayRateHistoryEntryWithUser[]>(`/users/pay-rates`);
 }
 
 export function addPayRate(userId: string, input: PayRateInput): Promise<PayRateHistoryEntry[]> {
   return api<PayRateHistoryEntry[]>(`/users/${userId}/pay-rates`, {
     method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updatePayRate(
+  userId: string,
+  entryId: string,
+  input: PayRateUpdate
+): Promise<PayRateHistoryEntry[]> {
+  return api<PayRateHistoryEntry[]>(`/users/${userId}/pay-rates/${entryId}`, {
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }

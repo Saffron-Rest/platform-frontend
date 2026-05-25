@@ -5,7 +5,7 @@ const tabs = [
   { to: "/admin/team", label: "Team", desc: "People & pay rates" },
   { to: "/admin/attendance", label: "Schedule", desc: "Who works when" },
   { to: "/admin/salaries", label: "Payroll", desc: "Calculate pay" },
-  { to: "/admin/payouts", label: "Payouts", desc: "Money paid out" },
+  { to: "/admin/payouts", label: "Manage pay", desc: "Rates & payouts" },
   { to: "/admin/hours", label: "Hours", desc: "Opening times" },
   { to: "/admin/settings", label: "Treasury", desc: "Balances & %" },
 ];

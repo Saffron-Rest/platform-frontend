@@ -392,7 +392,7 @@ function adminTour(): TourStep[] {
       route: "/admin/team",
       category: "Administration",
       title: "Admin sections",
-      body: "Switch tabs for Team, Schedule, Payroll, Payouts, Hours, and Treasury settings.",
+      body: "Switch tabs for Team, Schedule, Payroll, Manage pay, Hours, and Treasury settings.",
       tips: ["Treasury % affects how delivery and card sales flow to the card pool"],
       placement: "bottom",
     },
