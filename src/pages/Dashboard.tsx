@@ -29,6 +29,8 @@ type DashboardData = {
   totalSales: number;
   cashSales: number;
   cardSales: number;
+  /** Manual delivery income recorded via Finance for today (already included in totalSales). */
+  manualDeliverySales?: number;
   platforms: { wolt: number; bolt: number; uber: number; glovo: number; other: number };
   expenses: number;
   difference: number;
@@ -148,16 +150,37 @@ export function Dashboard() {
       )}
 
       <HubSection title="Today’s numbers" tourId="tour-today-numbers">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <StatTile label="Total sales" value={data.totalSales} highlight />
           <StatTile label="Cash" value={data.cashSales} />
           <StatTile label="Card" value={data.cardSales} />
+          <StatTile
+            label="Platforms"
+            value={
+              data.platforms.wolt +
+              data.platforms.bolt +
+              data.platforms.uber +
+              data.platforms.glovo +
+              data.platforms.other
+            }
+          />
           <StatTile
             label="Drawer diff."
             value={data.difference}
             warn={data.difference < -0.01}
           />
         </div>
+        {canOperate(user?.role) && (
+          <p className="text-xs text-[var(--color-muted)] mt-2">
+            Total sales = Cash + Card + Platforms (Wolt, Bolt, Uber, Glovo, other).
+            {(data.manualDeliverySales ?? 0) > 0 && (
+              <>
+                {" "}
+                Includes {fmt(data.manualDeliverySales ?? 0)} recorded via Finance.
+              </>
+            )}
+          </p>
+        )}
       </HubSection>
 
       {canOperate(user?.role) && monthTotals && (
