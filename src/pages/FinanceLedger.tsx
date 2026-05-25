@@ -7,6 +7,7 @@ import {
   type ManualDeliveryPayload,
 } from "../api/deliveryIncome";
 import {
+  bulkDeleteStandaloneExpenses,
   createStandaloneExpense,
   deleteStandaloneExpense,
   listAllExpenses,
@@ -33,6 +34,14 @@ import {
   CommentsTrigger,
 } from "../components/comments/CommentsDrawer";
 import { ExportButton } from "../components/export/ExportButton";
+import { SavedViewsBar } from "../components/savedViews/SavedViewsBar";
+
+type FinanceFilters = {
+  from: string;
+  to: string;
+  filterTagIds: string[];
+  viewTab: ViewTab;
+};
 import type { TaggedEntityType } from "../api/tags";
 import type { ManualDeliveryIncome } from "../types";
 
@@ -109,6 +118,10 @@ export function FinanceLedger() {
   // drawer's onCountChange fires without re-fetching the page.
   const [expenseCounts, setExpenseCounts] = useState<Record<string, number>>({});
   const [deliveryCounts, setDeliveryCounts] = useState<Record<string, number>>({});
+  // Multi-select for standalone expenses — bulk actions only apply to
+  // standalone rows (entry-attached ones live on the report itself).
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -315,6 +328,20 @@ export function FinanceLedger() {
           selectedTagIds={filterTagIds}
           onChange={setFilterTagIds}
           label="Filter by tag"
+        />
+        <SavedViewsBar<FinanceFilters>
+          page="finance"
+          currentFilters={{ from, to, filterTagIds, viewTab }}
+          onApply={(f) => {
+            // Defensive — every field optional in case a view was saved
+            // under an older shape.
+            if (typeof f.from === "string") setFrom(f.from);
+            if (typeof f.to === "string") setTo(f.to);
+            if (Array.isArray(f.filterTagIds)) setFilterTagIds(f.filterTagIds);
+            if (f.viewTab === "expenses" || f.viewTab === "delivery") {
+              setViewTab(f.viewTab);
+            }
+          }}
         />
         <div className="flex justify-end">
           <ExportButton
@@ -590,6 +617,31 @@ export function FinanceLedger() {
             <h3 className="font-semibold">All expenses</h3>
             <span className="text-sm font-medium">{fmt(expenseTotal)} PLN</span>
           </div>
+          {selectedExpenseIds.size > 0 && (
+            <BulkExpenseActionBar
+              count={selectedExpenseIds.size}
+              busy={bulkBusy}
+              onClear={() => setSelectedExpenseIds(new Set())}
+              onDelete={async () => {
+                const ids = Array.from(selectedExpenseIds);
+                if (!confirm(`Delete ${ids.length} standalone expense(s)? This cannot be undone.`)) return;
+                setBulkBusy(true);
+                try {
+                  const res = await bulkDeleteStandaloneExpenses(ids);
+                  setExpenses((rows) => rows.filter((r) => !r.id || !res.deleted.includes(r.id)));
+                  setSelectedExpenseIds(new Set());
+                  if (res.failed.length > 0) {
+                    alert(
+                      `Could not delete ${res.failed.length} expense(s):\n` +
+                        res.failed.map((f) => `· ${f.reason}`).join("\n")
+                    );
+                  }
+                } finally {
+                  setBulkBusy(false);
+                }
+              }}
+            />
+          )}
           {expenses.length === 0 ? (
             <div className="text-center py-8 space-y-3">
               <p className="text-sm text-[var(--color-muted)]">No expenses in this range.</p>
@@ -609,7 +661,25 @@ export function FinanceLedger() {
                 return (
                   <li key={row.id ?? `${row.effectiveDate}-${row.description}`} className="border-b border-black/5 pb-4 last:border-0">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
+                      <div className="flex items-start gap-3 min-w-0">
+                        {row.standalone && row.id && (
+                          <input
+                            type="checkbox"
+                            checked={selectedExpenseIds.has(row.id)}
+                            onChange={(e) => {
+                              const id = row.id!;
+                              setSelectedExpenseIds((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(id);
+                                else next.delete(id);
+                                return next;
+                              });
+                            }}
+                            className="mt-1.5 accent-[var(--color-saffron)]"
+                            aria-label={`Select expense ${row.description ?? row.id}`}
+                          />
+                        )}
+                        <div className="min-w-0">
                         <p className="font-medium">{row.description || categoryLabel(row.category)}</p>
                         <p className="text-sm text-[var(--color-muted)]">
                           {row.effectiveDate ?? row.entryDate} · {categoryLabel(row.category)} · {fmt(row.amount)} ·{" "}
@@ -656,6 +726,7 @@ export function FinanceLedger() {
                             />
                           </div>
                         )}
+                        </div>
                       </div>
                       {row.standalone && row.id && !isEditing && (
                         <div className="flex items-center gap-3 shrink-0">
@@ -790,6 +861,46 @@ export function FinanceLedger() {
           }
         }}
       />
+    </div>
+  );
+}
+
+/** Bulk action toolbar that surfaces above the expense list when one or
+ *  more rows are selected. Lives at module scope so it can be reused on
+ *  other list pages later without duplication. */
+function BulkExpenseActionBar({
+  count,
+  busy,
+  onClear,
+  onDelete,
+}: {
+  count: number;
+  busy: boolean;
+  onClear: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="mb-3 rounded-xl border border-[var(--color-saffron)]/40 bg-[var(--color-saffron)]/10 px-3 py-2 flex items-center gap-3 flex-wrap">
+      <span className="text-sm font-medium text-[var(--color-saffron-dark)]">
+        {count} selected
+      </span>
+      <button
+        type="button"
+        onClick={onClear}
+        className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
+      >
+        Clear
+      </button>
+      <span className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={busy}
+          className="px-3 py-1 rounded-md bg-red-600 text-white text-xs font-medium hover:bg-red-700 disabled:opacity-60"
+        >
+          {busy ? "Deleting…" : "Delete selected"}
+        </button>
+      </span>
     </div>
   );
 }

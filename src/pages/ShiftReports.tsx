@@ -24,6 +24,15 @@ import {
   CommentsTrigger,
 } from "../components/comments/CommentsDrawer";
 import { ExportButton } from "../components/export/ExportButton";
+import { SavedViewsBar } from "../components/savedViews/SavedViewsBar";
+
+type ShiftReportFilters = {
+  from: string;
+  to: string;
+  filterCashierId: string;
+  filterStatus: string;
+  filterTagIds: string[];
+};
 import type { Tag } from "../api/tags";
 
 const todayIso = todayLocalIso;
@@ -502,7 +511,24 @@ export function ShiftReports() {
             />
           </div>
         </div>
-        <div className="mt-3 flex justify-end">
+        <div className="mt-3 flex items-center justify-between flex-wrap gap-3">
+          <SavedViewsBar<ShiftReportFilters>
+            page="reports"
+            currentFilters={{
+              from,
+              to,
+              filterCashierId,
+              filterStatus,
+              filterTagIds,
+            }}
+            onApply={(f) => {
+              if (typeof f.from === "string") setFrom(f.from);
+              if (typeof f.to === "string") setTo(f.to);
+              if (typeof f.filterCashierId === "string") setFilterCashierId(f.filterCashierId);
+              if (typeof f.filterStatus === "string") setFilterStatus(f.filterStatus);
+              if (Array.isArray(f.filterTagIds)) setFilterTagIds(f.filterTagIds);
+            }}
+          />
           <ExportButton
             config={{
               type: "entries",

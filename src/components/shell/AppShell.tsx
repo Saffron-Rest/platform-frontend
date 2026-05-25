@@ -13,6 +13,7 @@ import { BottomNav } from "./BottomNav";
 import { MoreMenu } from "./MoreMenu";
 import { OnboardingProvider, useOnboarding } from "../../context/OnboardingContext";
 import { CommandPalette } from "../search/CommandPalette";
+import { NotificationCenter } from "../notifications/NotificationCenter";
 
 function AppShellInner({
   moreOpen,
@@ -62,12 +63,13 @@ function AppShellInner({
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-saffron)] text-sm font-bold">
               {user.name.charAt(0).toUpperCase()}
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold truncate">{user.name}</p>
               <p className="text-[10px] font-bold uppercase tracking-wider text-white/45">
                 {roleLabel(user.role)}
               </p>
             </div>
+            <NotificationCenter />
           </div>
         </div>
         <SidebarNav groups={groups} pathname={loc.pathname} />
@@ -98,6 +100,7 @@ function AppShellInner({
               <p className="text-white/55 text-xs truncate">{user.name}</p>
             </Link>
             <div className="flex shrink-0 items-center gap-2">
+              <NotificationCenter />
               <button
                 type="button"
                 onClick={openQuickGuide}

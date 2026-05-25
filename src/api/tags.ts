@@ -15,7 +15,9 @@ export type TaggedEntityType =
   | "ENTRY"
   | "EXPENSE"
   | "SALARY_PAYMENT"
-  | "MANUAL_DELIVERY";
+  | "MANUAL_DELIVERY"
+  | "BANK_DEPOSIT"
+  | "CARD_SETTLEMENT";
 
 export type TagPayload = {
   name?: string;

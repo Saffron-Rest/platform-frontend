@@ -1,16 +1,7 @@
 import { api } from "./client";
 import { num } from "../lib/numbers";
 import type { ManualDeliveryIncome } from "../types";
-import type { Tag } from "./tags";
-
-function mapTags(raw: unknown): Tag[] {
-  if (!Array.isArray(raw)) return [];
-  return (raw as Record<string, unknown>[]).map((r) => ({
-    id: String(r.id),
-    name: String(r.name),
-    color: r.color != null ? String(r.color) : null,
-  }));
-}
+import { mapTags } from "./expenses";
 
 function mapRow(raw: Record<string, unknown>): ManualDeliveryIncome {
   return {

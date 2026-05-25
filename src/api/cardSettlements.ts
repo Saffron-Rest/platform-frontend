@@ -1,6 +1,7 @@
 import { api } from "./client";
 import { num } from "../lib/numbers";
 import type { CardSettlement } from "../types";
+import { mapTags } from "./expenses";
 
 function mapSettlement(raw: Record<string, unknown>): CardSettlement {
   return {
@@ -11,6 +12,8 @@ function mapSettlement(raw: Record<string, unknown>): CardSettlement {
     delta: num(raw.delta),
     notes: raw.notes != null ? String(raw.notes) : undefined,
     createdAt: raw.createdAt != null ? String(raw.createdAt) : undefined,
+    tags: mapTags(raw.tags),
+    commentCount: typeof raw.commentCount === "number" ? raw.commentCount : 0,
   };
 }
 

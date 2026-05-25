@@ -131,7 +131,21 @@ export type LedgerExpense = ExpenseLine & {
   commentCount?: number;
 };
 
-function mapTags(raw: unknown): Tag[] {
+/** Bulk-delete a list of standalone expenses. The backend returns an
+ *  itemised report so the UI can surface partial failures. */
+export async function bulkDeleteStandaloneExpenses(ids: string[]) {
+  return api<{ deleted: string[]; failed: { id: string; reason: string }[] }>(
+    "/expenses/standalone/bulk-delete",
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }
+  );
+}
+
+/** Tag list returned alongside a record. Exported so other endpoints
+ *  (deposits, settlements, …) can use the same shape. */
+export function mapTags(raw: unknown): Tag[] {
   if (!Array.isArray(raw)) return [];
   return (raw as Record<string, unknown>[]).map((r) => ({
     id: String(r.id),

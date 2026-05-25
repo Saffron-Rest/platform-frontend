@@ -20,6 +20,15 @@ import {
   CommentsTrigger,
 } from "../../components/comments/CommentsDrawer";
 import { ExportButton } from "../../components/export/ExportButton";
+import { SavedViewsBar } from "../../components/savedViews/SavedViewsBar";
+
+type PayoutFilters = {
+  from: string;
+  to: string;
+  userId: string;
+  source: "" | PaymentSource;
+  matchMode: "paidDate" | "payroll";
+};
 
 type Tab = "payouts" | "rates";
 
@@ -260,6 +269,21 @@ export function AdminPayouts() {
             />
           </span>
         </div>
+        <SavedViewsBar<PayoutFilters>
+          page="payouts"
+          currentFilters={{ from, to, userId, source, matchMode }}
+          onApply={(f) => {
+            if (typeof f.from === "string") setFrom(f.from);
+            if (typeof f.to === "string") setTo(f.to);
+            if (typeof f.userId === "string") setUserId(f.userId);
+            if (f.source === "" || f.source === "CASH" || f.source === "CARD") {
+              setSource(f.source);
+            }
+            if (f.matchMode === "paidDate" || f.matchMode === "payroll") {
+              setMatchMode(f.matchMode);
+            }
+          }}
+        />
         <p className="text-xs text-[var(--color-muted)]">
           {matchMode === "payroll"
             ? "Shows payments tagged for a payroll period that overlaps your date range (even if paid on another day)."

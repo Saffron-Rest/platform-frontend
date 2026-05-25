@@ -308,6 +308,8 @@ export type CardSettlement = {
   delta: number;
   notes?: string;
   createdAt?: string;
+  tags?: { id: string; name: string; color?: string | null }[];
+  commentCount?: number;
 };
 
 /** A single bank credit that reconciles one or more source rows (multi-day batches). */
@@ -331,6 +333,8 @@ export type BankDeposit = {
   notes?: string;
   createdAt?: string;
   links: BankDepositLink[];
+  tags?: { id: string; name: string; color?: string | null }[];
+  commentCount?: number;
 };
 
 export type DailyEntry = {

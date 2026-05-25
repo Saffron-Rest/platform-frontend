@@ -1,6 +1,7 @@
 import { api } from "./client";
 import { num } from "../lib/numbers";
 import type { BankDeposit, BankDepositLink } from "../types";
+import { mapTags } from "./expenses";
 
 function mapLink(raw: Record<string, unknown>): BankDepositLink {
   return {
@@ -26,6 +27,8 @@ function mapDeposit(raw: Record<string, unknown>): BankDeposit {
     links: Array.isArray(raw.links)
       ? (raw.links as Record<string, unknown>[]).map(mapLink)
       : [],
+    tags: mapTags(raw.tags),
+    commentCount: typeof raw.commentCount === "number" ? raw.commentCount : 0,
   };
 }
 
