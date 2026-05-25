@@ -5,6 +5,8 @@ import { fmt, totalSalesFromEntry } from "../lib/calc";
 import { todayLocalIso } from "../lib/dates";
 import { entryEditorUrl } from "../lib/reportNav";
 import { formatReportDateShort, reportDateRelativeLabel } from "../lib/reportDates";
+import { canOperate } from "../lib/roles";
+import { useAuth } from "../context/AuthContext";
 import type { DailyEntry, User } from "../types";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
@@ -33,10 +35,20 @@ function weekStartIso() {
 
 type Tab = "list" | "summary";
 
-function ReportListCard({ report }: { report: DailyEntry }) {
+function ReportListCard({
+  report,
+  onDelete,
+}: {
+  report: DailyEntry;
+  /** Set only for admin/manager — when present, renders the inline Remove
+   * action. The backend already gates on operations role and requires a
+   * delete reason, this is purely a UI affordance. */
+  onDelete?: (report: DailyEntry) => void;
+}) {
   const sales = totalSalesFromEntry(report);
   const submitted = report.status === "LOCKED";
   const short = report.difference < -0.01;
+  const canDelete = !submitted && onDelete != null;
 
   return (
     <Link
@@ -69,7 +81,7 @@ function ReportListCard({ report }: { report: DailyEntry }) {
               {report.closingOnly && " · closing shift"}
             </p>
           </div>
-          <div className="text-right shrink-0">
+          <div className="text-right shrink-0 flex flex-col items-end gap-1">
             <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Difference</p>
             <p
               className={`text-xl font-bold tabular-nums ${
@@ -81,6 +93,20 @@ function ReportListCard({ report }: { report: DailyEntry }) {
             <p className="text-xs text-[var(--color-saffron)] font-medium mt-1 opacity-0 group-hover:opacity-100 transition">
               Open →
             </p>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onDelete!(report);
+                }}
+                className="mt-1 text-xs font-medium text-red-600 hover:underline"
+                title="Remove this draft report"
+              >
+                Remove draft
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -90,6 +116,8 @@ function ReportListCard({ report }: { report: DailyEntry }) {
 
 export function ShiftReports() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canRemove = canOperate(user?.role);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab: Tab = searchParams.get("view") === "summary" ? "summary" : "list";
 
@@ -101,6 +129,7 @@ export function ShiftReports() {
   const [filterStatus, setFilterStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   const [newDate, setNewDate] = useState(todayIso);
   const [newCashierId, setNewCashierId] = useState("");
@@ -203,6 +232,41 @@ export function ShiftReports() {
     navigate(entryEditorUrl(newDate, newCashierId));
   };
 
+  const handleDeleteReport = useCallback(
+    async (report: DailyEntry) => {
+      if (report.status === "LOCKED") {
+        setError("Submitted reports must be unlocked before removal.");
+        return;
+      }
+      // Backend requires a reason ≥ 3 chars; a native prompt keeps this
+      // pleasant for the rare admin-only flow without dragging in a modal.
+      const who = report.cashier?.name ?? "this cashier";
+      const reason = window.prompt(
+        `Remove the draft report for ${who} on ${report.date}?\n\nThis cannot be undone. Enter a short reason for the audit log (min 3 chars):`,
+        ""
+      );
+      if (reason == null) return;
+      const trimmed = reason.trim();
+      if (trimmed.length < 3) {
+        setError("Delete reason must be at least 3 characters.");
+        return;
+      }
+      setError("");
+      setMessage("");
+      try {
+        await api(`/entries/${report.id}`, {
+          method: "DELETE",
+          body: JSON.stringify({ reason: trimmed }),
+        });
+        setMessage(`Draft report for ${who} removed.`);
+        setReports((prev) => prev.filter((r) => r.id !== report.id));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not remove report");
+      }
+    },
+    []
+  );
+
   if (tab === "summary") {
     return (
       <div className="space-y-6">
@@ -302,7 +366,11 @@ export function ShiftReports() {
           <h2 className="section-title mb-3">Today</h2>
           <div className="space-y-2">
             {todayReports.map((r) => (
-              <ReportListCard key={r.id} report={r} />
+              <ReportListCard
+                key={r.id}
+                report={r}
+                onDelete={canRemove ? handleDeleteReport : undefined}
+              />
             ))}
           </div>
         </section>
@@ -383,6 +451,7 @@ export function ShiftReports() {
       {error && (
         <Alert variant="error">{error}</Alert>
       )}
+      {message && <Alert variant="success">{message}</Alert>}
 
       {loading ? (
         <Spinner label="Loading reports…" />
@@ -412,7 +481,11 @@ export function ShiftReports() {
                 </div>
                 <div className="space-y-2">
                   {dayReports.map((r) => (
-                    <ReportListCard key={r.id} report={r} />
+                    <ReportListCard
+                      key={r.id}
+                      report={r}
+                      onDelete={canRemove ? handleDeleteReport : undefined}
+                    />
                   ))}
                 </div>
               </div>
