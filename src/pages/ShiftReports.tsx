@@ -25,6 +25,7 @@ import {
 } from "../components/comments/CommentsDrawer";
 import { ExportButton } from "../components/export/ExportButton";
 import { SavedViewsBar } from "../components/savedViews/SavedViewsBar";
+import { syncEntry } from "../api/entries";
 
 type ShiftReportFilters = {
   from: string;
@@ -55,6 +56,8 @@ type Tab = "list" | "summary";
 function ReportListCard({
   report,
   onDelete,
+  onSync,
+  syncing,
   onTagsChange,
   onOpenComments,
   commentCountOverride,
@@ -64,6 +67,12 @@ function ReportListCard({
    * action. The backend already gates on operations role and requires a
    * delete reason, this is purely a UI affordance. */
   onDelete?: (report: DailyEntry) => void;
+  /** Force-recompute totals for this report on the server and refresh the
+   *  card. Available to every role — the backend allows cashiers to sync
+   *  their own entry and ops to sync any entry. */
+  onSync?: (report: DailyEntry) => void;
+  /** True while this card's sync is in-flight (parent owns the spinner). */
+  syncing?: boolean;
   /** Notified when tags change so the parent can keep its list in sync
    *  without re-fetching. */
   onTagsChange?: (id: string, tags: Tag[]) => void;
@@ -76,6 +85,7 @@ function ReportListCard({
   const submitted = report.status === "LOCKED";
   const short = report.difference < -0.01;
   const canDelete = !submitted && onDelete != null;
+  const canSync = onSync != null;
 
   return (
     <div
@@ -123,6 +133,22 @@ function ReportListCard({
             <p className="text-xs text-[var(--color-saffron)] font-medium mt-1 opacity-0 group-hover:opacity-100 transition">
               Open →
             </p>
+            {canSync && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSync!(report);
+                }}
+                disabled={syncing}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-[var(--color-saffron-dark)] hover:underline disabled:opacity-60 disabled:no-underline"
+                title="Recompute totals from the latest data (expenses, manual deliveries, salary payments, treasury %)"
+              >
+                <span aria-hidden className={syncing ? "inline-block animate-spin" : "inline-block"}>↻</span>
+                {syncing ? "Syncing…" : "Sync"}
+              </button>
+            )}
             {canDelete && (
               <button
                 type="button"
@@ -179,6 +205,8 @@ export function ShiftReports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
 
   const [newDate, setNewDate] = useState(todayIso);
   const [newCashierId, setNewCashierId] = useState("");
@@ -321,6 +349,72 @@ export function ShiftReports() {
     []
   );
 
+  /**
+   * Re-sync a single report: hits {@code POST /entries/{id}/sync} to force a
+   * server-side recompute, then patches that row in local state with the
+   * fresh DTO. Available to every role — the backend enforces who can sync
+   * what. Used when the user just edited an expense / manual delivery /
+   * salary payment elsewhere and the difference column looks stale.
+   */
+  const handleSyncReport = useCallback(async (report: DailyEntry) => {
+    setSyncingId(report.id);
+    setError("");
+    try {
+      const fresh = await syncEntry(report.id);
+      setReports((prev) => prev.map((r) => (r.id === report.id ? { ...r, ...fresh } : r)));
+      setMessage(
+        `Recomputed totals for ${report.cashier?.name ?? "cashier"} (${report.date}).`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not sync report");
+    } finally {
+      setSyncingId(null);
+    }
+  }, []);
+
+  /**
+   * Bulk "Sync all" — re-fetches the list and runs {@code syncEntry} for
+   * every visible report in parallel. Bounded by the number of reports in
+   * the current filter so it stays snappy.
+   */
+  const handleSyncAll = useCallback(async () => {
+    if (syncingAll || loading) return;
+    setSyncingAll(true);
+    setError("");
+    setMessage("");
+    try {
+      await loadList();
+      // Snapshot the current list *after* the reload so we sync exactly the
+      // rows the user can see right now.
+      const targets = (await api<DailyEntry[]>(
+        `/entries?${(() => {
+          const params = new URLSearchParams({ from, to });
+          if (filterCashierId) params.set("cashierId", filterCashierId);
+          if (filterStatus) params.set("status", filterStatus);
+          for (const id of filterTagIds) params.append("tagId", id);
+          return params.toString();
+        })()}`,
+      )) ?? [];
+      const synced = await Promise.allSettled(
+        targets.map((r) => syncEntry(r.id)),
+      );
+      const ok = synced.filter((s) => s.status === "fulfilled").length;
+      setReports(
+        targets.map((r, i) => {
+          const result = synced[i];
+          return result.status === "fulfilled"
+            ? { ...r, ...(result.value as Partial<DailyEntry>) }
+            : r;
+        }),
+      );
+      setMessage(`Recomputed ${ok}/${targets.length} reports.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not sync");
+    } finally {
+      setSyncingAll(false);
+    }
+  }, [filterCashierId, filterStatus, filterTagIds, from, loadList, loading, syncingAll, to]);
+
   if (tab === "summary") {
     return (
       <div className="space-y-6">
@@ -341,6 +435,18 @@ export function ShiftReports() {
       <PageHeader
         title="Shift reports"
         subtitle="Find, create, and edit cashier daily reports"
+        action={
+          <button
+            type="button"
+            onClick={() => void handleSyncAll()}
+            disabled={syncingAll || loading}
+            className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-white border border-black/10 hover:bg-[var(--color-cream)]/60 disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Re-fetch the list and recompute totals for every visible report"
+          >
+            <span aria-hidden className={syncingAll ? "inline-block animate-spin" : "inline-block"}>↻</span>
+            {syncingAll ? "Syncing…" : "Sync all"}
+          </button>
+        }
       />
 
       <div className="flex gap-2 flex-wrap">
@@ -424,6 +530,8 @@ export function ShiftReports() {
                 key={r.id}
                 report={r}
                 onDelete={canRemove ? handleDeleteReport : undefined}
+                onSync={handleSyncReport}
+                syncing={syncingId === r.id}
                 onTagsChange={handleReportTagsChange}
                 onOpenComments={setCommentsFor}
                 commentCountOverride={commentCounts[r.id]}
@@ -577,6 +685,8 @@ export function ShiftReports() {
                       key={r.id}
                       report={r}
                       onDelete={canRemove ? handleDeleteReport : undefined}
+                      onSync={handleSyncReport}
+                      syncing={syncingId === r.id}
                       onTagsChange={handleReportTagsChange}
                       onOpenComments={setCommentsFor}
                       commentCountOverride={commentCounts[r.id]}

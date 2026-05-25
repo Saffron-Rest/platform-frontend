@@ -41,6 +41,8 @@ import { reportDateRelativeLabel } from "../lib/reportDates";
 import { ReportContextBanner } from "../components/report/ReportContextBanner";
 import { ReportValidationPanel } from "../components/report/ReportValidationPanel";
 import { ReportActionBar } from "../components/report/ReportActionBar";
+import { EntryHistoryDrawer } from "../components/entry/EntryHistoryDrawer";
+import { syncEntry } from "../api/entries";
 
 import { todayLocalIso } from "../lib/dates";
 
@@ -77,6 +79,8 @@ export function EntryPage() {
   const [openingHint, setOpeningHint] = useState<OpeningHint | null>(null);
   const [shiftType, setShiftType] = useState<ShiftType>("FULL");
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   /** True while the user has unsaved edits; pauses focus/visibility auto-refresh
    *  so opening the file picker or switching tabs never wipes work in progress. */
   const dirtyRef = useRef(false);
@@ -259,6 +263,43 @@ export function EntryPage() {
       if (!opts?.silent) setLoading(false);
     }
   }, [canManageReports, selectedCashierId, entryDate, loadShift]);
+
+  /**
+   * Force the backend to recompute every derived field (closing balance,
+   * cash difference, treasury splits) and then refresh the editor.
+   *
+   * <p>Used when something we touched indirectly (expense edit, manual
+   * delivery, salary payment, treasury %, an edit by another device) didn't
+   * propagate into the totals here. If the form has unsaved typing we
+   * warn the user first — sync overwrites local form state with whatever
+   * the server has on record.</p>
+   */
+  const handleSync = useCallback(async () => {
+    if (!entry?.id) {
+      await loadEntry();
+      return;
+    }
+    if (dirtyRef.current) {
+      const proceed = window.confirm(
+        "You have unsaved changes. Sync will replace what's on screen with the latest values from the server. Continue?",
+      );
+      if (!proceed) return;
+    }
+    setSyncing(true);
+    setMessage("");
+    setMessageError(false);
+    try {
+      await syncEntry(entry.id);
+      await loadEntry({ silent: true });
+      setMessage("Totals recomputed from the latest data.");
+      setMessageError(false);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Sync failed");
+      setMessageError(true);
+    } finally {
+      setSyncing(false);
+    }
+  }, [entry?.id, loadEntry]);
 
   useEffect(() => {
     if (canManageReports) {
@@ -550,6 +591,32 @@ export function EntryPage() {
             ? `${selectedCashier?.name ?? "Cashier"} · ${reportDateRelativeLabel(entryDate)}`
             : undefined
         }
+        action={
+          entry?.id ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleSync()}
+                disabled={syncing || loading}
+                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-white border border-black/10 hover:bg-[var(--color-cream)]/60 disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Recompute totals from the latest data on the server (useful after editing expenses, manual deliveries, salary payments, or treasury settings)"
+              >
+                <span aria-hidden className={syncing ? "inline-block animate-spin" : "inline-block"}>↻</span>{" "}
+                {syncing ? "Syncing…" : "Sync"}
+              </button>
+              {canManageReports && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-white border border-black/10 hover:bg-[var(--color-cream)]/60"
+                  title="See every edit on this report and roll back individual changes"
+                >
+                  <span aria-hidden>⟲</span> View history
+                </button>
+              )}
+            </>
+          ) : undefined
+        }
       />
 
       {canManageReports && (
@@ -723,11 +790,11 @@ export function EntryPage() {
                   <Button
                     variant="secondary"
                     fullWidth
-                    onClick={() => void loadEntry()}
-                    disabled={loading}
+                    onClick={() => void handleSync()}
+                    disabled={loading || syncing}
                     className="py-3.5 text-base"
                   >
-                    {loading ? "Refreshing…" : "Refresh report"}
+                    {syncing ? "Syncing…" : loading ? "Refreshing…" : "Sync report"}
                   </Button>
                 </div>
               </div>
@@ -735,6 +802,23 @@ export function EntryPage() {
           )}
         </>
       )}
+
+      <EntryHistoryDrawer
+        open={historyOpen && !!entry?.id}
+        entryId={entry?.id ?? null}
+        title={
+          entry
+            ? `${selectedCashier?.name ?? entry.cashier?.name ?? "Cashier"} · ${entry.date}`
+            : undefined
+        }
+        canRevert={canManageReports}
+        onClose={() => setHistoryOpen(false)}
+        onReverted={() => {
+          void loadEntry({ silent: true });
+          setMessage("Report reverted. The fields below now show the rolled-back values.");
+          setMessageError(false);
+        }}
+      />
     </div>
   );
 }
