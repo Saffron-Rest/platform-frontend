@@ -292,3 +292,23 @@ export async function unregisterDotyposWebhook(id: string) {
     method: "DELETE",
   });
 }
+
+export type PosActivity = {
+  totalSales: number;
+  lastHour: number;
+  last24h: number;
+  recent: {
+    externalId: string;
+    itemName: string | null;
+    sku: string | null;
+    quantity: number;
+    unitPrice: number;
+    matched: boolean;
+    occurredAt: string | null;
+    receivedAt: string | null;
+  }[];
+};
+
+export async function getPosActivity(id: string) {
+  return api<PosActivity>(`/pos/integrations/${id}/activity`);
+}

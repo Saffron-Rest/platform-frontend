@@ -3,12 +3,14 @@ import {
   configureDotykacka,
   createPosIntegration,
   deletePosIntegration,
+  getPosActivity,
   listPosIntegrations,
   registerDotyposWebhook,
   rotatePosSecret,
   setPosIntegrationActive,
   syncDotykacka,
   unregisterDotyposWebhook,
+  type PosActivity,
   type PosIntegration,
 } from "../../api/menu";
 import { Card } from "../../components/ui/Card";
@@ -34,6 +36,8 @@ export function AdminPos() {
   } | null>(null);
   /** Per-integration in-flight state — keyed by id. */
   const [busy, setBusy] = useState<Record<string, string | null>>({});
+  /** Per-integration activity snapshot, refreshed every 10s while the card is open. */
+  const [activity, setActivity] = useState<Record<string, PosActivity | null>>({});
   /** Per-integration Dotykačka form state. */
   const [dotyForm, setDotyForm] = useState<
     Record<
@@ -63,6 +67,33 @@ export function AdminPos() {
   useEffect(() => {
     void load();
   }, []);
+
+  // Poll the activity snapshot for every integration every 10s. Lets the
+  // admin see "Last received" tick over when Dotypos pushes a new receipt
+  // without having to refresh the page.
+  useEffect(() => {
+    if (integrations.length === 0) return;
+    let cancelled = false;
+    const tick = async () => {
+      const next: Record<string, PosActivity | null> = {};
+      await Promise.all(
+        integrations.map(async (i) => {
+          try {
+            next[i.id] = await getPosActivity(i.id);
+          } catch {
+            next[i.id] = null;
+          }
+        }),
+      );
+      if (!cancelled) setActivity(next);
+    };
+    void tick();
+    const handle = window.setInterval(() => void tick(), 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+  }, [integrations]);
 
   const create = async () => {
     if (!name.trim()) {
@@ -479,6 +510,7 @@ export function AdminPos() {
               onToggleActive={() => void toggleActive(i)}
               onDelete={() => void remove(i)}
               onCopy={(text) => void copy(text)}
+              activity={activity[i.id] ?? null}
             />
           ))}
         </div>
@@ -502,6 +534,7 @@ function IntegrationCard({
   onToggleActive,
   onDelete,
   onCopy,
+  activity,
 }: {
   integration: PosIntegration;
   baseUrl: string;
@@ -526,6 +559,7 @@ function IntegrationCard({
   onToggleActive: () => void;
   onDelete: () => void;
   onCopy: (text: string) => void;
+  activity: PosActivity | null;
 }) {
   const isDotykacka = (i.vendor ?? "").toLowerCase() === "dotykacka";
   const credentialsReady =
@@ -591,6 +625,8 @@ function IntegrationCard({
           </Button>
         </div>
       </div>
+
+      <ActivityPanel activity={activity} />
 
       {!isDotykacka && (
         <div className="mt-3 space-y-3 text-sm">
@@ -753,5 +789,79 @@ function IntegrationCard({
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * Live "is this thing receiving anything?" panel. Refreshes every 10s in the
+ * parent. Shows three counters (total / last 24h / last hour) and the most
+ * recent five payloads with timestamps.
+ */
+function ActivityPanel({ activity }: { activity: PosActivity | null }) {
+  if (!activity) {
+    return (
+      <div className="mt-3 text-xs text-[var(--color-muted)]">Loading activity…</div>
+    );
+  }
+  const liveDot = activity.lastHour > 0;
+  return (
+    <div className="mt-3 border-t border-black/5 pt-3 space-y-3">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className={`inline-block w-2 h-2 rounded-full ${
+              liveDot ? "bg-emerald-500 animate-pulse" : "bg-gray-400"
+            }`}
+          />
+          <span className="font-semibold">
+            {liveDot ? "Receiving" : "Waiting for first receipt"}
+          </span>
+        </div>
+        <span className="text-[var(--color-muted)]">
+          <strong>{activity.lastHour}</strong> in last hour
+        </span>
+        <span className="text-[var(--color-muted)]">
+          <strong>{activity.last24h}</strong> in last 24h
+        </span>
+        <span className="text-[var(--color-muted)]">
+          <strong>{activity.totalSales}</strong> total
+        </span>
+      </div>
+
+      {activity.recent.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-[var(--color-muted)] hover:text-[var(--color-text)]">
+            Last {activity.recent.length} receipt{activity.recent.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {activity.recent.map((r) => (
+              <li
+                key={r.externalId}
+                className="flex flex-wrap items-center gap-2 px-2 py-1 rounded bg-black/5 font-mono"
+              >
+                <span className="text-[var(--color-muted)]">
+                  {r.receivedAt
+                    ? new Date(r.receivedAt).toLocaleString()
+                    : "—"}
+                </span>
+                <span className="truncate">{r.itemName ?? r.sku ?? "(no name)"}</span>
+                <span>×{r.quantity}</span>
+                <span>{r.unitPrice.toFixed(2)} PLN</span>
+                {r.matched ? (
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                    matched
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                    unmatched
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   );
 }
