@@ -231,9 +231,11 @@ export function AdminPos() {
   };
 
   const enableWebhook = async (i: PosIntegration) => {
-    let baseUrl: string | undefined = undefined;
-    // If the app is running locally, Dotypos won't be able to reach localhost
-    // — prompt for a public URL (e.g. an ngrok or production origin).
+    // The frontend and the API share the same public origin behind Kong, so
+    // window.location.origin is the URL Dotypos should call. If we're running
+    // on localhost we still ask the user for a tunnel URL since Dotypos can't
+    // reach loopback.
+    let baseUrl: string | undefined = window.location.origin;
     if (
       /^https?:\/\/(localhost|127\.|0\.|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(
         window.location.origin,
