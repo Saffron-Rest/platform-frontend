@@ -202,9 +202,34 @@ export type PosIntegration = {
   active: boolean;
   lastSeenAt: string | null;
   lastExternalId: string | null;
+  lastSyncedAt: string | null;
   webhookUrl: string;
   createdAt: string | null;
   webhookSecret?: string;
+  dotykacka?: {
+    cloudId: string | null;
+    hasClientId: boolean;
+    hasClientSecret: boolean;
+    hasRefreshToken: boolean;
+    syncCursor: string | null;
+    webhookId: number | null;
+    webhookRegistered: boolean;
+  };
+};
+
+export type DotykackaConfigPayload = {
+  cloudId?: string;
+  clientId?: string;
+  clientSecret?: string;
+  refreshToken?: string;
+};
+
+export type DotykackaSyncResult = {
+  inserted: number;
+  skipped: number;
+  unmatched: number;
+  pagesFetched: number;
+  cursor: string;
 };
 
 export async function listPosIntegrations() {
@@ -232,4 +257,33 @@ export async function setPosIntegrationActive(id: string, active: boolean) {
 
 export async function deletePosIntegration(id: string) {
   return api<void>(`/pos/integrations/${id}`, { method: "DELETE" });
+}
+
+export async function configureDotykacka(id: string, payload: DotykackaConfigPayload) {
+  return api<PosIntegration>(`/pos/integrations/${id}/dotykacka`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function syncDotykacka(id: string) {
+  return api<DotykackaSyncResult>(`/pos/integrations/${id}/dotykacka/sync`, {
+    method: "POST",
+  });
+}
+
+export async function registerDotyposWebhook(id: string, baseUrl?: string) {
+  return api<PosIntegration>(
+    `/pos/integrations/${id}/dotykacka/webhook/register`,
+    {
+      method: "POST",
+      body: JSON.stringify(baseUrl ? { baseUrl } : {}),
+    },
+  );
+}
+
+export async function unregisterDotyposWebhook(id: string) {
+  return api<PosIntegration>(`/pos/integrations/${id}/dotykacka/webhook`, {
+    method: "DELETE",
+  });
 }

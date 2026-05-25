@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import {
+  configureDotykacka,
   createPosIntegration,
   deletePosIntegration,
   listPosIntegrations,
+  registerDotyposWebhook,
   rotatePosSecret,
   setPosIntegrationActive,
+  syncDotykacka,
+  unregisterDotyposWebhook,
   type PosIntegration,
 } from "../../api/menu";
 import { Card } from "../../components/ui/Card";
@@ -14,20 +18,35 @@ import { Spinner } from "../../components/ui/Spinner";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { PageHeader } from "../../components/ui/PageHeader";
 
+type Vendor = "generic" | "dotykacka";
+
 export function AdminPos() {
   const [integrations, setIntegrations] = useState<PosIntegration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [name, setName] = useState("");
-  const [vendor, setVendor] = useState("");
+  const [vendor, setVendor] = useState<Vendor>("dotykacka");
   const [creating, setCreating] = useState(false);
-  /** When we create or rotate, the server returns the secret exactly once.
-   *  Keep it visible for a moment so the admin can copy it. */
   const [revealedSecret, setRevealedSecret] = useState<{
     integrationId: string;
     secret: string;
   } | null>(null);
+  /** Per-integration in-flight state — keyed by id. */
+  const [busy, setBusy] = useState<Record<string, string | null>>({});
+  /** Per-integration Dotykačka form state. */
+  const [dotyForm, setDotyForm] = useState<
+    Record<
+      string,
+      {
+        cloudId: string;
+        clientId: string;
+        clientSecret: string;
+        refreshToken: string;
+        expanded: boolean;
+      }
+    >
+  >({});
 
   const load = async () => {
     setLoading(true);
@@ -54,20 +73,34 @@ export function AdminPos() {
     setError("");
     setMessage("");
     try {
-      const created = await createPosIntegration(name.trim(), vendor.trim() || undefined);
+      const created = await createPosIntegration(name.trim(), vendor);
       setMessage(`Integration "${created.name}" created`);
-      if (created.webhookSecret) {
+      if (vendor === "generic" && created.webhookSecret) {
         setRevealedSecret({ integrationId: created.id, secret: created.webhookSecret });
       }
       setName("");
-      setVendor("");
       await load();
+      if (vendor === "dotykacka") {
+        setDotyForm((f) => ({
+          ...f,
+          [created.id]: {
+            cloudId: "",
+            clientId: "",
+            clientSecret: "",
+            refreshToken: "",
+            expanded: true,
+          },
+        }));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create integration");
     } finally {
       setCreating(false);
     }
   };
+
+  const setRowBusy = (id: string, label: string | null) =>
+    setBusy((b) => ({ ...b, [id]: label }));
 
   const rotate = async (i: PosIntegration) => {
     if (
@@ -76,6 +109,7 @@ export function AdminPos() {
       )
     )
       return;
+    setRowBusy(i.id, "rotating");
     try {
       const updated = await rotatePosSecret(i.id);
       if (updated.webhookSecret) {
@@ -85,15 +119,20 @@ export function AdminPos() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Rotation failed");
+    } finally {
+      setRowBusy(i.id, null);
     }
   };
 
   const toggleActive = async (i: PosIntegration) => {
+    setRowBusy(i.id, i.active ? "deactivating" : "activating");
     try {
       await setPosIntegrationActive(i.id, !i.active);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update");
+    } finally {
+      setRowBusy(i.id, null);
     }
   };
 
@@ -104,13 +143,146 @@ export function AdminPos() {
       )
     )
       return;
+    setRowBusy(i.id, "deleting");
     try {
       await deletePosIntegration(i.id);
       setMessage(`Deleted "${i.name}"`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setRowBusy(i.id, null);
     }
+  };
+
+  const saveDotykacka = async (i: PosIntegration) => {
+    const f = dotyForm[i.id];
+    if (!f) return;
+    if (!f.cloudId.trim() || !f.refreshToken.trim()) {
+      setError("Cloud ID and refresh token are required");
+      return;
+    }
+    setRowBusy(i.id, "saving");
+    setError("");
+    setMessage("");
+    try {
+      await configureDotykacka(i.id, {
+        cloudId: f.cloudId.trim(),
+        clientId: f.clientId.trim() || undefined,
+        clientSecret: f.clientSecret.trim() || undefined,
+        refreshToken: f.refreshToken.trim(),
+      });
+      setMessage(`Dotykačka credentials saved for "${i.name}"`);
+      setDotyForm((all) => ({
+        ...all,
+        [i.id]: { ...f, clientSecret: "", refreshToken: "", expanded: false },
+      }));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setRowBusy(i.id, null);
+    }
+  };
+
+  const enableWebhook = async (i: PosIntegration) => {
+    let baseUrl: string | undefined = undefined;
+    // If the app is running locally, Dotypos won't be able to reach localhost
+    // — prompt for a public URL (e.g. an ngrok or production origin).
+    if (
+      /^https?:\/\/(localhost|127\.|0\.|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(
+        window.location.origin,
+      )
+    ) {
+      const entered = window.prompt(
+        "Dotypos needs a publicly reachable URL to push receipts to.\nEnter the public origin of this backend (e.g. https://api.yourdomain.com)",
+        "",
+      );
+      if (!entered) return;
+      baseUrl = entered.trim();
+    }
+    setRowBusy(i.id, "registering");
+    setError("");
+    setMessage("");
+    try {
+      await registerDotyposWebhook(i.id, baseUrl);
+      setMessage(
+        `Real-time webhook enabled for "${i.name}". Receipts will arrive within seconds.`,
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not enable webhook");
+    } finally {
+      setRowBusy(i.id, null);
+    }
+  };
+
+  const disableWebhook = async (i: PosIntegration) => {
+    if (
+      !confirm(
+        `Disable real-time webhook for "${i.name}"? Polling will continue every 5 minutes.`,
+      )
+    )
+      return;
+    setRowBusy(i.id, "unregistering");
+    setError("");
+    setMessage("");
+    try {
+      await unregisterDotyposWebhook(i.id);
+      setMessage(`Webhook removed from "${i.name}"`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not disable webhook");
+    } finally {
+      setRowBusy(i.id, null);
+    }
+  };
+
+  const runSync = async (i: PosIntegration) => {
+    setRowBusy(i.id, "syncing");
+    setError("");
+    setMessage("");
+    try {
+      const r = await syncDotykacka(i.id);
+      setMessage(
+        `${i.name}: ${r.inserted} new line${r.inserted === 1 ? "" : "s"}, ${r.skipped} skipped, ${r.unmatched} unmatched`
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sync failed");
+    } finally {
+      setRowBusy(i.id, null);
+    }
+  };
+
+  const toggleDotyForm = (i: PosIntegration) => {
+    setDotyForm((f) => {
+      const current = f[i.id] ?? {
+        cloudId: i.dotykacka?.cloudId ?? "",
+        clientId: "",
+        clientSecret: "",
+        refreshToken: "",
+        expanded: false,
+      };
+      return { ...f, [i.id]: { ...current, expanded: !current.expanded } };
+    });
+  };
+
+  const updateDotyForm = (
+    id: string,
+    field: keyof (typeof dotyForm)[string],
+    value: string,
+  ) => {
+    setDotyForm((f) => {
+      const current = f[id] ?? {
+        cloudId: "",
+        clientId: "",
+        clientSecret: "",
+        refreshToken: "",
+        expanded: true,
+      };
+      return { ...f, [id]: { ...current, [field]: value } };
+    });
   };
 
   const copy = async (text: string) => {
@@ -118,7 +290,7 @@ export function AdminPos() {
       await navigator.clipboard.writeText(text);
       setMessage("Copied to clipboard");
     } catch {
-      // Clipboard not available — fall back to inline display.
+      /* clipboard unavailable */
     }
   };
 
@@ -128,7 +300,7 @@ export function AdminPos() {
     <div className="space-y-6">
       <PageHeader
         title="POS integrations"
-        subtitle="Receive item-level sales from your POS via signed webhooks. Each integration has its own secret."
+        subtitle="Connect your POS so menu analytics and engineering use real receipt data."
       />
 
       {error && <Alert variant="error">{error}</Alert>}
@@ -148,14 +320,15 @@ export function AdminPos() {
             />
           </label>
           <label className="field-label">
-            Vendor (optional)
-            <input
+            Vendor
+            <select
               className="field-input"
-              maxLength={40}
               value={vendor}
-              onChange={(e) => setVendor(e.target.value)}
-              placeholder="syrve, shoper, …"
-            />
+              onChange={(e) => setVendor(e.target.value as Vendor)}
+            >
+              <option value="dotykacka">Dotykačka (auto-pull)</option>
+              <option value="generic">Generic (HMAC webhook)</option>
+            </select>
           </label>
           <div>
             <Button onClick={() => void create()} disabled={creating}>
@@ -163,6 +336,11 @@ export function AdminPos() {
             </Button>
           </div>
         </div>
+        <p className="text-xs text-[var(--color-muted)] mt-3">
+          {vendor === "dotykacka"
+            ? "After creating, paste your Dotykačka cloud ID and refresh token below. Receipts will sync every 5 minutes."
+            : "Generates a webhook URL and HMAC secret you paste into a custom POS or middleware."}
+        </p>
       </Card>
 
       {revealedSecret && (
@@ -186,36 +364,33 @@ export function AdminPos() {
       )}
 
       <Card>
-        <h3 className="font-semibold mb-3">How it works</h3>
-        <p className="text-sm text-[var(--color-muted)]">
-          Your POS sends a <code>POST</code> for every closed receipt to:
-        </p>
-        <code className="block mt-2 px-3 py-2 rounded-lg bg-black/5 text-sm font-mono break-all">
-          {baseUrl}/api/pos/webhook/&#123;integrationId&#125;
-        </code>
-        <p className="text-sm text-[var(--color-muted)] mt-3">
-          The body must be JSON; include header{" "}
-          <code className="font-mono">X-Pos-Signature: sha256=&lt;hmac&gt;</code> where the
-          HMAC-SHA256 is computed over the raw body using your integration's secret.
-        </p>
-        <details className="mt-3">
-          <summary className="text-sm font-medium cursor-pointer text-[var(--color-saffron-dark)]">
-            Example payload
-          </summary>
-          <pre className="mt-2 p-3 bg-black/5 rounded-lg text-xs overflow-x-auto">
-{`{
-  "externalId": "order-12345",
-  "occurredAt": "2026-05-25T14:32:00Z",
-  "paymentMethod": "CARD",
-  "items": [
-    { "sku": "PLOV-LAMB", "name": "Lamb Plov",
-      "quantity": 2, "unitPrice": 38.00, "discount": 0 },
-    { "sku": "CHAI-BLK", "name": "Black Tea",
-      "quantity": 4, "unitPrice": 8.00 }
-  ]
-}`}
-          </pre>
-        </details>
+        <h3 className="font-semibold mb-2">How to connect Dotykačka</h3>
+        <ol className="list-decimal pl-5 text-sm space-y-1 text-[var(--color-muted)]">
+          <li>
+            Request API credentials from Dotykačka (the "Client ID / Client Secret" form
+            on their API page). Mention <em>"reading receipts for an external analytics
+            tool"</em>.
+          </li>
+          <li>
+            Open in a browser, replacing the placeholders:{" "}
+            <code className="font-mono text-xs break-all">
+              https://admin.dotykacka.cz/client/connect?client_id=&#123;CLIENT_ID&#125;&client_secret=&#123;CLIENT_SECRET&#125;&scope=*&redirect_uri=https://dotykacka.cz
+            </code>
+          </li>
+          <li>
+            Log in, allow access. You'll be redirected to a URL like{" "}
+            <code className="font-mono text-xs">…?token=…&cloudid=…</code> — copy both
+            the <strong>token</strong> (refresh token) and the <strong>cloudid</strong>.
+          </li>
+          <li>
+            Paste them below and click <strong>Save credentials</strong>. Sync runs
+            automatically every 5 minutes, or click <strong>Sync now</strong> to backfill.
+          </li>
+          <li>
+            After credentials are saved, click <strong>Enable webhook</strong> to register a real-time push from Dotypos.
+            Receipts will then arrive within seconds instead of waiting for the next poll.
+          </li>
+        </ol>
       </Card>
 
       {loading ? (
@@ -225,72 +400,241 @@ export function AdminPos() {
       ) : integrations.length === 0 ? (
         <EmptyState
           title="No integrations yet"
-          description="Add one above. You'll get a webhook URL and secret to plug into your POS."
+          description="Add one above. Dotykačka pulls receipts on a schedule; generic vendors push via webhook."
         />
       ) : (
-        <Card className="!p-0 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-black/5 text-[var(--color-muted)] text-xs uppercase tracking-wide">
-              <tr>
-                <th className="text-left px-4 py-2">Name</th>
-                <th className="text-left px-4 py-2">Vendor</th>
-                <th className="text-left px-4 py-2">Webhook URL</th>
-                <th className="text-left px-4 py-2">Last received</th>
-                <th className="text-left px-4 py-2">Status</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {integrations.map((i) => (
-                <tr key={i.id} className="border-t border-black/5">
-                  <td className="px-4 py-2 font-medium">{i.name}</td>
-                  <td className="px-4 py-2 text-[var(--color-muted)]">{i.vendor ?? "—"}</td>
-                  <td className="px-4 py-2 font-mono text-xs break-all">
-                    {baseUrl}/api/pos/webhook/{i.id}
-                  </td>
-                  <td className="px-4 py-2 text-[var(--color-muted)]">
-                    {i.lastSeenAt ? new Date(i.lastSeenAt).toLocaleString() : "never"}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                        i.active
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-gray-200 text-gray-600"
-                      }`}
-                    >
-                      {i.active ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-right whitespace-nowrap">
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline mr-2"
-                      onClick={() => void rotate(i)}
-                    >
-                      Rotate secret
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-[var(--color-muted)] hover:underline mr-2"
-                      onClick={() => void toggleActive(i)}
-                    >
-                      {i.active ? "Deactivate" : "Activate"}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-red-600 hover:underline"
-                      onClick={() => void remove(i)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <div className="space-y-4">
+          {integrations.map((i) => (
+            <IntegrationCard
+              key={i.id}
+              integration={i}
+              baseUrl={baseUrl}
+              busy={busy[i.id] ?? null}
+              dotyForm={
+                dotyForm[i.id] ?? {
+                  cloudId: i.dotykacka?.cloudId ?? "",
+                  clientId: "",
+                  clientSecret: "",
+                  refreshToken: "",
+                  expanded: false,
+                }
+              }
+              onToggleForm={() => toggleDotyForm(i)}
+              onChangeField={(field, value) => updateDotyForm(i.id, field, value)}
+              onSaveDotykacka={() => void saveDotykacka(i)}
+              onSync={() => void runSync(i)}
+              onEnableWebhook={() => void enableWebhook(i)}
+              onDisableWebhook={() => void disableWebhook(i)}
+              onRotate={() => void rotate(i)}
+              onToggleActive={() => void toggleActive(i)}
+              onDelete={() => void remove(i)}
+            />
+          ))}
+        </div>
       )}
     </div>
+  );
+}
+
+function IntegrationCard({
+  integration: i,
+  baseUrl,
+  busy,
+  dotyForm,
+  onToggleForm,
+  onChangeField,
+  onSaveDotykacka,
+  onSync,
+  onEnableWebhook,
+  onDisableWebhook,
+  onRotate,
+  onToggleActive,
+  onDelete,
+}: {
+  integration: PosIntegration;
+  baseUrl: string;
+  busy: string | null;
+  dotyForm: {
+    cloudId: string;
+    clientId: string;
+    clientSecret: string;
+    refreshToken: string;
+    expanded: boolean;
+  };
+  onToggleForm: () => void;
+  onChangeField: (
+    field: "cloudId" | "clientId" | "clientSecret" | "refreshToken" | "expanded",
+    value: string,
+  ) => void;
+  onSaveDotykacka: () => void;
+  onSync: () => void;
+  onEnableWebhook: () => void;
+  onDisableWebhook: () => void;
+  onRotate: () => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
+  const isDotykacka = (i.vendor ?? "").toLowerCase() === "dotykacka";
+  const credentialsReady =
+    isDotykacka &&
+    !!i.dotykacka?.cloudId &&
+    !!i.dotykacka?.hasRefreshToken;
+  const webhookOn = !!i.dotykacka?.webhookRegistered;
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start gap-4 justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold">{i.name}</h3>
+            <span
+              className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                i.active
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "bg-gray-200 text-gray-600"
+              }`}
+            >
+              {i.active ? "Active" : "Inactive"}
+            </span>
+            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-black/5 text-[var(--color-muted)]">
+              {isDotykacka ? "Dotykačka" : i.vendor ?? "Generic"}
+            </span>
+          </div>
+          <p className="text-xs text-[var(--color-muted)] mt-1">
+            {isDotykacka
+              ? credentialsReady
+                ? `Last synced ${i.lastSyncedAt ? new Date(i.lastSyncedAt).toLocaleString() : "never"}`
+                : "Credentials not configured"
+              : `Last received ${i.lastSeenAt ? new Date(i.lastSeenAt).toLocaleString() : "never"}`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {isDotykacka ? (
+            <>
+              <Button
+                variant="secondary"
+                onClick={onSync}
+                disabled={!credentialsReady || busy !== null}
+              >
+                {busy === "syncing" ? "Syncing…" : "Sync now"}
+              </Button>
+              <Button variant="ghost" onClick={onToggleForm}>
+                {dotyForm.expanded ? "Hide credentials" : credentialsReady ? "Update credentials" : "Add credentials"}
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost" onClick={onRotate} disabled={busy !== null}>
+              {busy === "rotating" ? "Rotating…" : "Rotate secret"}
+            </Button>
+          )}
+          <Button variant="ghost" onClick={onToggleActive} disabled={busy !== null}>
+            {i.active ? "Deactivate" : "Activate"}
+          </Button>
+          <Button variant="ghost" onClick={onDelete} disabled={busy !== null}>
+            Delete
+          </Button>
+        </div>
+      </div>
+
+      {!isDotykacka && (
+        <div className="mt-3 text-sm">
+          <p className="text-[var(--color-muted)]">Webhook URL</p>
+          <code className="block mt-1 px-3 py-2 rounded-lg bg-black/5 font-mono text-xs break-all">
+            {baseUrl}/api/pos/webhook/{i.id}
+          </code>
+        </div>
+      )}
+
+      {isDotykacka && credentialsReady && (
+        <div className="mt-4 border-t border-black/5 pt-4">
+          <div className="flex flex-wrap items-start gap-3 justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-sm">Real-time webhook</h4>
+                <span
+                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                    webhookOn
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-gray-200 text-gray-600"
+                  }`}
+                >
+                  {webhookOn ? "Active" : "Not registered"}
+                </span>
+              </div>
+              <p className="text-xs text-[var(--color-muted)] mt-1 max-w-xl">
+                {webhookOn
+                  ? "Dotypos pushes new receipts to us within seconds. The 5-minute poll still runs as a safety net."
+                  : "Without a webhook, receipts arrive only via the 5-minute background poll. Enable for near-real-time analytics."}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {webhookOn ? (
+                <Button
+                  variant="ghost"
+                  onClick={onDisableWebhook}
+                  disabled={busy !== null}
+                >
+                  {busy === "unregistering" ? "Removing…" : "Disable webhook"}
+                </Button>
+              ) : (
+                <Button
+                  onClick={onEnableWebhook}
+                  disabled={busy !== null}
+                >
+                  {busy === "registering" ? "Enabling…" : "Enable webhook"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDotykacka && dotyForm.expanded && (
+        <div className="mt-4 grid gap-3 md:grid-cols-2 border-t border-black/5 pt-4">
+          <label className="field-label">
+            Cloud ID
+            <input
+              className="field-input"
+              value={dotyForm.cloudId}
+              onChange={(e) => onChangeField("cloudId", e.target.value)}
+              placeholder="e.g. 124567"
+            />
+          </label>
+          <label className="field-label">
+            Refresh token
+            <input
+              className="field-input font-mono text-xs"
+              value={dotyForm.refreshToken}
+              onChange={(e) => onChangeField("refreshToken", e.target.value)}
+              placeholder={i.dotykacka?.hasRefreshToken ? "(stored — paste to replace)" : "Paste long token"}
+            />
+          </label>
+          <label className="field-label">
+            Client ID (optional, only needed to re-obtain refresh token)
+            <input
+              className="field-input"
+              value={dotyForm.clientId}
+              onChange={(e) => onChangeField("clientId", e.target.value)}
+              placeholder={i.dotykacka?.hasClientId ? "(stored)" : ""}
+            />
+          </label>
+          <label className="field-label">
+            Client secret (optional)
+            <input
+              className="field-input font-mono text-xs"
+              type="password"
+              value={dotyForm.clientSecret}
+              onChange={(e) => onChangeField("clientSecret", e.target.value)}
+              placeholder={i.dotykacka?.hasClientSecret ? "(stored — paste to replace)" : ""}
+            />
+          </label>
+          <div className="md:col-span-2 flex justify-end gap-2">
+            <Button onClick={onSaveDotykacka} disabled={busy !== null}>
+              {busy === "saving" ? "Saving…" : "Save credentials"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
