@@ -289,9 +289,17 @@ export function EntryPage() {
     setMessage("");
     setMessageError(false);
     try {
-      await syncEntry(entry.id);
+      const prevOpening = entry.openingBalance ?? 0;
+      const fresh = await syncEntry(entry.id);
+      const nextOpening = fresh.openingBalance ?? 0;
       await loadEntry({ silent: true });
-      setMessage("Totals recomputed from the latest data.");
+      if (Math.abs(nextOpening - prevOpening) > 0.005) {
+        setMessage(
+          `Opening cash updated from ${fmt(prevOpening)} to ${fmt(nextOpening)} based on the latest prior shift. Totals recomputed.`,
+        );
+      } else {
+        setMessage("Totals recomputed from the latest data.");
+      }
       setMessageError(false);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Sync failed");
@@ -299,7 +307,7 @@ export function EntryPage() {
     } finally {
       setSyncing(false);
     }
-  }, [entry?.id, loadEntry]);
+  }, [entry?.id, entry?.openingBalance, loadEntry]);
 
   useEffect(() => {
     if (canManageReports) {
