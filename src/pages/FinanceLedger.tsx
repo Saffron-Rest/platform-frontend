@@ -10,6 +10,7 @@ import {
   createStandaloneExpense,
   deleteStandaloneExpense,
   listAllExpenses,
+  updateStandaloneExpense,
   type LedgerExpense,
   type StandaloneExpensePayload,
 } from "../api/expenses";
@@ -80,6 +81,11 @@ export function FinanceLedger() {
   });
   const [invoiceFiles, setInvoiceFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
+  // Inline edit state — only one row open at a time so the page stays calm
+  // and the user can't lose unsaved changes by switching rows.
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<StandaloneExpensePayload | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -221,6 +227,46 @@ export function FinanceLedger() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  };
+
+  const startEditExpense = (row: LedgerExpense) => {
+    if (!row.id || !row.standalone) return;
+    setEditingExpenseId(row.id);
+    setEditForm({
+      effectiveDate: row.effectiveDate ?? row.entryDate ?? todayIso(),
+      category: row.category,
+      description: row.description ?? "",
+      amount: row.amount,
+      paymentSource: row.paymentSource ?? "CASH",
+    });
+    setError("");
+    setMessage("");
+  };
+
+  const cancelEditExpense = () => {
+    setEditingExpenseId(null);
+    setEditForm(null);
+  };
+
+  const handleSaveEditExpense = async () => {
+    if (!editingExpenseId || !editForm) return;
+    if (editForm.amount <= 0) {
+      setError("Enter an expense amount greater than zero");
+      return;
+    }
+    setEditSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await updateStandaloneExpense(editingExpenseId, editForm);
+      setMessage("Expense updated");
+      cancelEditExpense();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -499,10 +545,11 @@ export function FinanceLedger() {
                   : row.invoice
                     ? [row.invoice]
                     : [];
+                const isEditing = editingExpenseId === row.id && row.id != null;
                 return (
                   <li key={row.id ?? `${row.effectiveDate}-${row.description}`} className="border-b border-black/5 pb-4 last:border-0">
                     <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-medium">{row.description || categoryLabel(row.category)}</p>
                         <p className="text-sm text-[var(--color-muted)]">
                           {row.effectiveDate ?? row.entryDate} · {categoryLabel(row.category)} · {fmt(row.amount)} ·{" "}
@@ -521,16 +568,115 @@ export function FinanceLedger() {
                           ) : null}
                         </div>
                       </div>
-                      {row.standalone && row.id && (
-                        <button
-                          type="button"
-                          className="text-xs text-red-600 font-medium"
-                          onClick={() => void handleDeleteExpense(row)}
-                        >
-                          Remove
-                        </button>
+                      {row.standalone && row.id && !isEditing && (
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
+                            onClick={() => startEditExpense(row)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs text-red-600 font-medium hover:underline"
+                            onClick={() => void handleDeleteExpense(row)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                      {!row.standalone && row.entryId && (
+                        <span className="text-[11px] text-[var(--color-muted)] shrink-0" title="To edit this line, open the shift report it belongs to.">
+                          Edit on report
+                        </span>
                       )}
                     </div>
+                    {isEditing && editForm && (
+                      <div className="mt-3 p-3 rounded-xl bg-white border border-black/10 space-y-3">
+                        <p className="text-sm font-semibold">Edit expense</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <label className="field-label">
+                            Date
+                            <input
+                              type="date"
+                              className="field-input"
+                              value={editForm.effectiveDate}
+                              onChange={(e) =>
+                                setEditForm((f) => (f ? { ...f, effectiveDate: e.target.value } : f))
+                              }
+                            />
+                          </label>
+                          <label className="field-label">
+                            Category
+                            <select
+                              className="field-input"
+                              value={editForm.category}
+                              onChange={(e) =>
+                                setEditForm((f) => (f ? { ...f, category: e.target.value } : f))
+                              }
+                            >
+                              {EXPENSE_CATEGORIES.map((c) => (
+                                <option key={c.value} value={c.value}>
+                                  {c.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <label className="field-label">
+                          Description
+                          <input
+                            type="text"
+                            className="field-input"
+                            value={editForm.description}
+                            onChange={(e) =>
+                              setEditForm((f) => (f ? { ...f, description: e.target.value } : f))
+                            }
+                          />
+                        </label>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <AmountField
+                            label="Amount (PLN)"
+                            className="field-label"
+                            inputClassName="field-input"
+                            value={editForm.amount}
+                            onChange={(v) =>
+                              setEditForm((f) => (f ? { ...f, amount: v } : f))
+                            }
+                          />
+                          <label className="field-label">
+                            Paid from
+                            <select
+                              className="field-input"
+                              value={editForm.paymentSource}
+                              onChange={(e) =>
+                                setEditForm((f) => (f ? { ...f, paymentSource: e.target.value } : f))
+                              }
+                            >
+                              <option value="CASH">Cash</option>
+                              <option value="CARD">Card / bank</option>
+                            </select>
+                          </label>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="dark"
+                            disabled={editSaving}
+                            onClick={() => void handleSaveEditExpense()}
+                          >
+                            {editSaving ? "Saving…" : "Save changes"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            disabled={editSaving}
+                            onClick={cancelEditExpense}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {invoices.length > 0 && (
                       <InvoiceGallery invoices={invoices} />
                     )}

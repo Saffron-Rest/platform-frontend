@@ -177,6 +177,17 @@ export async function createStandaloneExpense(
   return row;
 }
 
+export async function updateStandaloneExpense(
+  id: string,
+  payload: StandaloneExpensePayload
+) {
+  const raw = await api<Record<string, unknown>>(`/expenses/standalone/${id}/json`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return mapLedgerExpense(raw);
+}
+
 export async function deleteStandaloneExpense(id: string) {
   await api(`/expenses/standalone/${id}`, { method: "DELETE" });
 }
