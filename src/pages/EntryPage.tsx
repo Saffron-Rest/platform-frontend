@@ -160,6 +160,8 @@ export function EntryPage() {
     try {
       const s = await api<{
         openingBalance: number;
+        rawCountedBalance?: number;
+        postCountCashOut?: number;
         previousDate: string | null;
         source?: OpeningHint["source"];
         handoverCashierName?: string | null;
@@ -176,6 +178,10 @@ export function EntryPage() {
               handoverCashierName: s.handoverCashierName,
               handoverEndTime: s.handoverEndTime,
               handoverPending: s.handoverPending,
+              rawCountedBalance:
+                s.rawCountedBalance != null ? num(s.rawCountedBalance) : undefined,
+              postCountCashOut:
+                s.postCountCashOut != null ? num(s.postCountCashOut) : undefined,
             }
           : null;
       return { form: { ...emptyEntryForm(), openingBalance: opening }, hint };

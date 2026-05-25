@@ -29,12 +29,21 @@ export type WorkSchedule = {
 };
 
 export type OpeningHint = {
+  /** Adjusted opening = previous raw count − post-count cash out. This is
+   * what we pre-fill into the form because it matches the actual physical
+   * drawer right now (lines up with Treasury "Cash on hand"). */
   amount: number;
   fromDate: string;
   source?: "PREVIOUS_DAY" | "SAME_DAY_HANDOVER" | "NONE";
   handoverCashierName?: string | null;
   handoverEndTime?: string | null;
   handoverPending?: boolean;
+  /** The original raw cash count from the previous shift. Shown only when
+   * it differs from the adjusted opening so the user understands why. */
+  rawCountedBalance?: number;
+  /** Sum of cash that left the drawer after the previous count was locked
+   * (post-close expenses + cash salary payouts). */
+  postCountCashOut?: number;
 };
 
 export type ScheduleRow = WorkSchedule & {
