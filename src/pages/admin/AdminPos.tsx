@@ -103,19 +103,32 @@ export function AdminPos() {
     setBusy((b) => ({ ...b, [id]: label }));
 
   const rotate = async (i: PosIntegration) => {
-    if (
-      !confirm(
-        `Rotate the webhook secret for "${i.name}"? The current secret will stop working immediately.`
-      )
-    )
-      return;
+    const isDoty = (i.vendor ?? "").toLowerCase() === "dotykacka";
+    const wasWebhookOn = !!i.dotykacka?.webhookRegistered;
+    const warning = isDoty && wasWebhookOn
+      ? `Rotate the webhook token for "${i.name}"? The currently registered Dotypos webhook will be re-registered automatically with the new token.`
+      : `Rotate the webhook secret for "${i.name}"? The current secret will stop working immediately.`;
+    if (!confirm(warning)) return;
     setRowBusy(i.id, "rotating");
     try {
       const updated = await rotatePosSecret(i.id);
       if (updated.webhookSecret) {
         setRevealedSecret({ integrationId: updated.id, secret: updated.webhookSecret });
       }
-      setMessage(`Rotated secret for "${i.name}"`);
+      // If Dotypos was pushing via webhook before the rotate, re-register
+      // immediately so the new token is what Dotypos sends. The endpoint is
+      // idempotent — it deletes the stale registration first.
+      if (isDoty && wasWebhookOn) {
+        try {
+          await registerDotyposWebhook(updated.id);
+        } catch (e) {
+          setError(
+            (e instanceof Error ? e.message : "Re-register failed") +
+              " — token rotated but webhook is now stale; click Enable webhook to fix.",
+          );
+        }
+      }
+      setMessage(`Rotated ${isDoty ? "token" : "secret"} for "${i.name}"`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Rotation failed");
@@ -521,6 +534,9 @@ function IntegrationCard({
               <Button variant="ghost" onClick={onToggleForm}>
                 {dotyForm.expanded ? "Hide credentials" : credentialsReady ? "Update credentials" : "Add credentials"}
               </Button>
+              <Button variant="ghost" onClick={onRotate} disabled={busy !== null}>
+                {busy === "rotating" ? "Rotating…" : "Rotate token"}
+              </Button>
             </>
           ) : (
             <Button variant="ghost" onClick={onRotate} disabled={busy !== null}>
@@ -546,7 +562,7 @@ function IntegrationCard({
       )}
 
       {isDotykacka && credentialsReady && (
-        <div className="mt-4 border-t border-black/5 pt-4">
+        <div className="mt-4 border-t border-black/5 pt-4 space-y-4">
           <div className="flex flex-wrap items-start gap-3 justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -558,7 +574,7 @@ function IntegrationCard({
                       : "bg-gray-200 text-gray-600"
                   }`}
                 >
-                  {webhookOn ? "Active" : "Not registered"}
+                  {webhookOn ? "Active (auto-registered)" : "Not registered"}
                 </span>
               </div>
               <p className="text-xs text-[var(--color-muted)] mt-1 max-w-xl">
@@ -586,6 +602,31 @@ function IntegrationCard({
               )}
             </div>
           </div>
+
+          <details className="text-xs">
+            <summary className="cursor-pointer text-[var(--color-muted)] hover:text-[var(--color-text)]">
+              Prefer to register the webhook manually in Dotypos Cloud?
+            </summary>
+            <div className="mt-2 space-y-2 text-[var(--color-muted)]">
+              <p>
+                Open <strong>Dotypos Cloud → Cloud settings → Webhook</strong>, click
+                <em> Add webhook</em>, choose entity <strong>Realized sales</strong>{" "}
+                (<code>ORDERBEAN</code>), method <strong>POST</strong>, and paste the URL
+                below.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-3 py-2 rounded-lg bg-black/5 font-mono break-all">
+                  {baseUrl}/api/pos/dotypos-webhook/{i.id}?token=&lt;secret&gt;
+                </code>
+              </div>
+              <p>
+                Replace <code>&lt;secret&gt;</code> with the per-integration token. To
+                view or rotate it, click <strong>Update credentials → Show webhook
+                token</strong>. If your backend isn't publicly reachable from Dotypos,
+                use your production origin instead of <code>{baseUrl}</code>.
+              </p>
+            </div>
+          </details>
         </div>
       )}
 
