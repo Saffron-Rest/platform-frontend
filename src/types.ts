@@ -114,15 +114,27 @@ export type PayrollEmployee = {
    * the headline rate next to the cashier's name can be trusted. */
   usesPayHistory?: boolean;
   shiftCount: number;
+  /** Days worked from the start of the period through today.
+   * Equals shiftCount once the period is over. */
+  daysWorkedToDate?: number;
   totalHours: number;
+  /** Hours accrued through today (shifts on or before today). */
+  hoursToDate?: number;
   /** Earned from the cashier's scheduled shifts this period (no
    * clock-in / clock-out tracking is performed yet — see SalaryService
    * in the backend for the algorithm). */
   totalPay: number;
+  /** Earned from shifts whose date is on or before today. Equals
+   * totalPay for past periods, zero for future periods, and shows
+   * progress for the current period. */
+  earnedToDate?: number;
   /** Already recorded as paid for this period */
   paidAmount: number;
-  /** Still owed (earned − paid) */
+  /** Still owed for the full period (totalPay − paidAmount) */
   remainingPay: number;
+  /** Owed RIGHT NOW = max(0, earnedToDate − paidAmount).
+   * Useful when paying partway through the period. */
+  owedNow?: number;
   fullyPaid?: boolean;
   payments?: PayrollPaymentRef[];
   shifts: PayrollShiftRow[];

@@ -45,7 +45,9 @@ export function AdminPayouts() {
 
   useEffect(() => {
     api<User[]>("/users")
-      .then((list) => setCashiers(list.filter((u) => u.role === "CASHIER")))
+      .then((list) =>
+        setCashiers(list.filter((u) => u.role === "CASHIER" && u.active !== false))
+      )
       .catch(() => setCashiers([]));
   }, []);
 

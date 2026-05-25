@@ -62,14 +62,24 @@ export function PayRatesPanel() {
   useEffect(() => {
     void load();
     api<User[]>("/users")
-      .then((list) => setCashiers(list.filter((u) => u.role === "CASHIER")))
+      .then((list) =>
+        setCashiers(list.filter((u) => u.role === "CASHIER" && u.active !== false))
+      )
       .catch(() => setCashiers([]));
   }, [load]);
 
-  const filtered = useMemo(
-    () => (filterUserId ? entries.filter((e) => e.userId === filterUserId) : entries),
-    [entries, filterUserId]
+  // Pay-rate entries belonging to deactivated cashiers are hidden by default —
+  // they'd just clutter the global list. They reappear if the admin filters to
+  // that specific cashier (selecting them from the dropdown requires showing
+  // them, so we keep historical access without surfacing them automatically).
+  const activeCashierIds = useMemo(
+    () => new Set(cashiers.map((c) => c.id)),
+    [cashiers]
   );
+  const filtered = useMemo(() => {
+    if (filterUserId) return entries.filter((e) => e.userId === filterUserId);
+    return entries.filter((e) => activeCashierIds.has(e.userId));
+  }, [entries, filterUserId, activeCashierIds]);
 
   const today = todayIso();
   // The "current effective" entry per cashier (most recent with effectiveFrom <= today)

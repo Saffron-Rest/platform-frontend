@@ -36,7 +36,13 @@ function PaySalaryForm({
   onPaid: () => void;
 }) {
   const remaining = employee.remainingPay ?? Math.max(0, employee.totalPay - (employee.paidAmount ?? 0));
-  const [amount, setAmount] = useState(String(remaining > 0 ? remaining : employee.totalPay));
+  // Default the payout amount to what's owed RIGHT NOW (earned-so-far
+  // minus already-paid). For past periods this equals `remaining`. For
+  // mid-period it stops the admin from accidentally pre-paying the full
+  // projected month before all shifts have been worked.
+  const owedNow = employee.owedNow ?? remaining;
+  const defaultAmount = owedNow > 0.005 ? owedNow : remaining > 0 ? remaining : employee.totalPay;
+  const [amount, setAmount] = useState(String(defaultAmount));
   const [source, setSource] = useState<PaymentSource>("CASH");
   const [paidDate, setPaidDate] = useState(todayIso());
   const [notes, setNotes] = useState("");
@@ -45,8 +51,8 @@ function PaySalaryForm({
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    setAmount(String(remaining > 0 ? remaining : employee.totalPay));
-  }, [employee.userId, remaining, employee.totalPay]);
+    setAmount(String(defaultAmount));
+  }, [employee.userId, defaultAmount]);
 
   const submit = async () => {
     setErr("");
@@ -93,6 +99,11 @@ function PaySalaryForm({
       {(employee.paidAmount ?? 0) > 0 && (
         <p className="text-xs text-[var(--color-muted)]">
           Already paid {fmt(employee.paidAmount ?? 0)} · remaining {fmt(remaining)}
+        </p>
+      )}
+      {owedNow > 0.005 && owedNow + 0.005 < remaining && (
+        <p className="text-xs text-amber-700">
+          Owed right now: <strong>{fmt(owedNow)}</strong> · full-period balance {fmt(remaining)}
         </p>
       )}
       <div className="grid gap-2 sm:grid-cols-2">
@@ -179,6 +190,7 @@ export function SalariesPanel() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [removingPaymentId, setRemovingPaymentId] = useState<string | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
 
   const removePayment = async (id: string, label: string) => {
     if (!confirm(`Remove this payment (${label})? Treasury balances will recalculate.`)) return;
@@ -220,6 +232,34 @@ export function SalariesPanel() {
 
   const grandPaid = report?.grandTotalPaid ?? 0;
   const grandRemaining = report?.grandTotalRemaining ?? Math.max(0, (report?.grandTotalPay ?? 0) - grandPaid);
+
+  // Hide deactivated cashiers UNLESS they have activity in this period (shifts
+  // or payments). A cashier deactivated mid-month must still appear for that
+  // month's payroll; once the period has nothing left for them, they drop off.
+  const visibleEmployees = useMemo(() => {
+    if (!report) return [] as typeof report extends null ? never[] : never[];
+    return report.employees.filter((e) => {
+      if (e.active) return true;
+      if (showInactive) return true;
+      const hasActivity =
+        e.shiftCount > 0 ||
+        (e.paidAmount ?? 0) > 0.005 ||
+        (e.payments && e.payments.length > 0);
+      return hasActivity;
+    });
+  }, [report, showInactive]);
+
+  const hiddenInactiveCount = useMemo(() => {
+    if (!report) return 0;
+    return report.employees.filter((e) => {
+      if (e.active) return false;
+      const hasActivity =
+        e.shiftCount > 0 ||
+        (e.paidAmount ?? 0) > 0.005 ||
+        (e.payments && e.payments.length > 0);
+      return !hasActivity;
+    }).length;
+  }, [report]);
 
   return (
     <div className="space-y-4">
@@ -291,10 +331,32 @@ export function SalariesPanel() {
             </Link>
           </p>
 
+          {hiddenInactiveCount > 0 && (
+            <label className="flex items-center justify-end gap-1.5 text-xs text-[var(--color-muted)] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                className="w-3.5 h-3.5 accent-[var(--color-saffron)]"
+              />
+              <span>
+                Show {hiddenInactiveCount} deactivated cashier
+                {hiddenInactiveCount === 1 ? "" : "s"}
+              </span>
+            </label>
+          )}
+
           <ul className="space-y-3">
-            {report.employees.map((e) => {
+            {visibleEmployees.map((e) => {
               const paid = e.paidAmount ?? 0;
               const remaining = e.remainingPay ?? Math.max(0, e.totalPay - paid);
+              const earnedToDate = e.earnedToDate ?? e.totalPay;
+              const owedNow = e.owedNow ?? Math.max(0, earnedToDate - paid);
+              // "In-flight" = current period that hasn't ended yet, where
+              // earned-so-far is meaningfully smaller than the total
+              // projected for the whole period. Past/future periods just
+              // render as before so we don't add visual noise.
+              const inFlight = earnedToDate + 0.005 < e.totalPay;
               const isMonthly = e.payType === "MONTHLY";
               const isHourly = e.payType === "HOURLY";
 
@@ -305,11 +367,14 @@ export function SalariesPanel() {
               // matter partially (fraction of a day). Showing the right
               // metric next to the right pay type is the single biggest
               // clarity win in this page.
+              const daysWorked = inFlight && e.daysWorkedToDate != null
+                ? `${e.daysWorkedToDate} of ${e.shiftCount} day${e.shiftCount === 1 ? "" : "s"} worked so far`
+                : `${e.shiftCount} day${e.shiftCount === 1 ? "" : "s"} worked`;
               const subline = isMonthly
-                ? `${e.shiftCount} day${e.shiftCount === 1 ? "" : "s"} worked of ${report.calendarDays} in period`
+                ? `${daysWorked} · ${report.calendarDays} in period`
                 : isHourly
-                  ? `${e.shiftCount} day${e.shiftCount === 1 ? "" : "s"} · ${e.totalHours.toFixed(1)} scheduled h`
-                  : `${e.shiftCount} day${e.shiftCount === 1 ? "" : "s"} · ${e.totalHours.toFixed(1)} h scheduled`;
+                  ? `${daysWorked} · ${(inFlight ? (e.hoursToDate ?? e.totalHours) : e.totalHours).toFixed(1)} h${inFlight ? " so far" : " scheduled"}${inFlight ? ` of ${e.totalHours.toFixed(1)} h` : ""}`
+                  : `${daysWorked} · ${e.totalHours.toFixed(1)} h scheduled`;
 
               return (
                 <li key={e.userId} className="bg-white rounded-2xl border border-black/5 overflow-hidden">
@@ -355,13 +420,20 @@ export function SalariesPanel() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide">Earned</p>
-                      <p className="text-lg font-bold tabular-nums text-[var(--color-saffron-dark)]">
-                        {fmt(e.totalPay)}
+                      <p className="text-xs text-[var(--color-muted)] uppercase tracking-wide">
+                        {inFlight ? "Earned till now" : "Earned"}
                       </p>
-                      {remaining > 0.01 && (
+                      <p className="text-lg font-bold tabular-nums text-[var(--color-saffron-dark)]">
+                        {fmt(earnedToDate)}
+                      </p>
+                      {inFlight && (
+                        <p className="text-xs text-[var(--color-muted)] tabular-nums">
+                          of {fmt(e.totalPay)} this period
+                        </p>
+                      )}
+                      {(inFlight ? owedNow : remaining) > 0.01 && (
                         <p className="text-sm font-medium text-amber-700 tabular-nums">
-                          Owed {fmt(remaining)}
+                          Owed {fmt(inFlight ? owedNow : remaining)}
                         </p>
                       )}
                     </div>
@@ -369,6 +441,50 @@ export function SalariesPanel() {
 
                   {expanded === e.userId && (
                     <div className="px-4 pb-4 border-t border-black/5 bg-[var(--color-cream)]/30">
+                      {/* Per-employee snapshot: Till now / Total period /
+                          Paid / Remaining. Renders for every employee so
+                          the user always has the four numbers they asked
+                          for, regardless of whether the period is current,
+                          past or future. */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 py-3">
+                        <div className="rounded-lg bg-white/80 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">
+                            Till now
+                          </p>
+                          <p className="text-base font-semibold tabular-nums text-[var(--color-saffron-dark)]">
+                            {fmt(earnedToDate)}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-white/80 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">
+                            Total period
+                          </p>
+                          <p className="text-base font-semibold tabular-nums">
+                            {fmt(e.totalPay)}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-white/80 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">
+                            Paid
+                          </p>
+                          <p className="text-base font-semibold tabular-nums text-emerald-700">
+                            {fmt(paid)}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-white/80 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">
+                            Remaining
+                          </p>
+                          <p className="text-base font-semibold tabular-nums text-amber-700">
+                            {fmt(remaining)}
+                          </p>
+                          {inFlight && owedNow > 0.01 && owedNow + 0.005 < remaining && (
+                            <p className="text-[10px] text-[var(--color-muted)] tabular-nums">
+                              {fmt(owedNow)} due now
+                            </p>
+                          )}
+                        </div>
+                      </div>
                       <p className="text-xs text-[var(--color-muted)] py-2">{e.calculationSummary}</p>
                       {(e.payments?.length ?? 0) > 0 && (
                         <div className="mb-3">
