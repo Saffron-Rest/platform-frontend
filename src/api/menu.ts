@@ -1,0 +1,235 @@
+import { api } from "./client";
+
+export type MenuCategory = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+  itemCount?: number;
+};
+
+export type MenuItem = {
+  id: string;
+  name: string;
+  sku: string | null;
+  description: string | null;
+  categoryId: string;
+  categoryName: string | null;
+  sellPrice: number;
+  foodCost: number | null;
+  vatRatePct: number;
+  active: boolean;
+  marginAmount?: number;
+  marginPct?: number;
+  foodCostPct?: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type MenuItemPayload = {
+  name?: string;
+  sku?: string | null;
+  description?: string | null;
+  categoryId?: string;
+  sellPrice?: number;
+  foodCost?: number | null;
+  vatRatePct?: number;
+  active?: boolean;
+};
+
+export type CategoryPayload = {
+  name?: string;
+  sortOrder?: number;
+  active?: boolean;
+};
+
+export type CsvImportResult = {
+  created: number;
+  updated: number;
+  errors: { line: number; error: string }[];
+};
+
+export async function listCategories(includeArchived = false) {
+  return api<MenuCategory[]>(`/menu/categories?includeArchived=${includeArchived}`);
+}
+
+export async function createCategory(payload: CategoryPayload) {
+  return api<MenuCategory>("/menu/categories", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCategory(id: string, payload: CategoryPayload) {
+  return api<MenuCategory>(`/menu/categories/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCategory(id: string) {
+  return api<void>(`/menu/categories/${id}`, { method: "DELETE" });
+}
+
+export async function listItems(opts: { categoryId?: string; includeArchived?: boolean } = {}) {
+  const q = new URLSearchParams();
+  if (opts.categoryId) q.set("categoryId", opts.categoryId);
+  if (opts.includeArchived) q.set("includeArchived", "true");
+  const qs = q.toString();
+  return api<MenuItem[]>(`/menu/items${qs ? `?${qs}` : ""}`);
+}
+
+export async function getItem(id: string) {
+  return api<MenuItem>(`/menu/items/${id}`);
+}
+
+export async function createItem(payload: MenuItemPayload) {
+  return api<MenuItem>("/menu/items", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateItem(id: string, payload: MenuItemPayload) {
+  return api<MenuItem>(`/menu/items/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteItem(id: string) {
+  return api<void>(`/menu/items/${id}`, { method: "DELETE" });
+}
+
+export async function importMenuCsv(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return api<CsvImportResult>("/menu/items/import", {
+    method: "POST",
+    body: form,
+  });
+}
+
+// ---------- Analytics + engineering ----------
+
+export type MenuAnalyticsTotals = {
+  quantity: number;
+  matchedQuantity: number;
+  receipts: number;
+  revenue: number;
+  foodCost: number;
+  margin: number;
+  marginPct: number;
+  foodCostPct: number;
+  avgTicket: number;
+};
+
+export type MenuAnalyticsItemRow = {
+  itemId: string | null;
+  name: string;
+  sku: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  sellPrice: number;
+  unitFoodCost: number;
+  quantity: number;
+  revenue: number;
+  foodCost: number;
+  margin: number;
+  marginPct: number;
+  foodCostPct: number;
+  share: number;
+  unmatched: boolean;
+  class?: "STAR" | "PLOWHORSE" | "PUZZLE" | "DOG" | "UNCLASSIFIED";
+};
+
+export type CategoryMixRow = {
+  categoryId: string;
+  name: string;
+  revenue: number;
+  quantity: number;
+  share: number;
+};
+
+export type MenuAnalytics = {
+  from: string;
+  to: string;
+  totals: MenuAnalyticsTotals;
+  items: MenuAnalyticsItemRow[];
+  categoryMix: CategoryMixRow[];
+  unmatched: number;
+};
+
+export type MenuSuggestion = {
+  type: string;
+  severity: "high" | "medium" | "low";
+  title: string;
+  detail: string;
+  itemId: string | null;
+  itemName: string | null;
+  categoryName: string | null;
+};
+
+export type MenuEngineering = MenuAnalytics & {
+  medianQty: number;
+  medianMarginPct: number;
+  classified: {
+    star: MenuAnalyticsItemRow[];
+    plowhorse: MenuAnalyticsItemRow[];
+    puzzle: MenuAnalyticsItemRow[];
+    dog: MenuAnalyticsItemRow[];
+    unclassified: MenuAnalyticsItemRow[];
+  };
+  suggestions: MenuSuggestion[];
+};
+
+export async function getMenuAnalytics(from: string, to: string) {
+  const q = new URLSearchParams({ from, to }).toString();
+  return api<MenuAnalytics>(`/menu/analytics?${q}`);
+}
+
+export async function getMenuEngineering(from: string, to: string) {
+  const q = new URLSearchParams({ from, to }).toString();
+  return api<MenuEngineering>(`/menu/analytics/engineering?${q}`);
+}
+
+// ---------- POS integrations ----------
+
+export type PosIntegration = {
+  id: string;
+  name: string;
+  vendor: string | null;
+  active: boolean;
+  lastSeenAt: string | null;
+  lastExternalId: string | null;
+  webhookUrl: string;
+  createdAt: string | null;
+  webhookSecret?: string;
+};
+
+export async function listPosIntegrations() {
+  return api<PosIntegration[]>("/pos/integrations");
+}
+
+export async function createPosIntegration(name: string, vendor?: string) {
+  return api<PosIntegration>("/pos/integrations", {
+    method: "POST",
+    body: JSON.stringify({ name, vendor }),
+  });
+}
+
+export async function rotatePosSecret(id: string) {
+  return api<PosIntegration>(`/pos/integrations/${id}/rotate-secret`, {
+    method: "POST",
+  });
+}
+
+export async function setPosIntegrationActive(id: string, active: boolean) {
+  return api<PosIntegration>(`/pos/integrations/${id}/${active ? "activate" : "deactivate"}`, {
+    method: "POST",
+  });
+}
+
+export async function deletePosIntegration(id: string) {
+  return api<void>(`/pos/integrations/${id}`, { method: "DELETE" });
+}

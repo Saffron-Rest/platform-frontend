@@ -121,6 +121,13 @@ function operationsGroups(includeAdmin: boolean): NavGroup[] {
           description: "Exports & summaries",
           icon: IconChart,
         },
+        {
+          kind: "link",
+          to: "/menu",
+          label: "Menu analytics",
+          description: "What sold, where the margin is",
+          icon: IconChart,
+        },
       ],
     },
     {

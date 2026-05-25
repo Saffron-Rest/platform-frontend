@@ -22,6 +22,10 @@ import { AdminSettings } from "./pages/admin/AdminSettings";
 import { AdminAudit } from "./pages/admin/AdminAudit";
 import { AdminTagLibrary } from "./pages/admin/AdminTagLibrary";
 import { AdminDataHealth } from "./pages/admin/AdminDataHealth";
+import { AdminMenu } from "./pages/admin/AdminMenu";
+import { AdminPos } from "./pages/admin/AdminPos";
+import { MenuAnalytics } from "./pages/MenuAnalytics";
+import { MenuEngineering } from "./pages/MenuEngineering";
 import { FinanceLedger } from "./pages/FinanceLedger";
 import { TreasuryHistory } from "./pages/TreasuryHistory";
 
@@ -45,6 +49,8 @@ export default function App() {
               <Route path="/audit" element={<AdminAudit />} />
               <Route path="/finance" element={<FinanceLedger />} />
               <Route path="/treasury/history" element={<TreasuryHistory />} />
+              <Route path="/menu" element={<MenuAnalytics />} />
+              <Route path="/menu/engineering" element={<MenuEngineering />} />
             </Route>
             <Route path="/admin" element={<AdminGuard />}>
               <Route element={<AdminLayout />}>
@@ -57,6 +63,8 @@ export default function App() {
                 <Route path="settings" element={<AdminSettings />} />
                 <Route path="tags" element={<AdminTagLibrary />} />
                 <Route path="inbox" element={<AdminDataHealth />} />
+                <Route path="menu" element={<AdminMenu />} />
+                <Route path="pos" element={<AdminPos />} />
               </Route>
             </Route>
           </Route>
