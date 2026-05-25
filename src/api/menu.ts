@@ -13,6 +13,12 @@ export type MenuItem = {
   name: string;
   sku: string | null;
   description: string | null;
+  longDescription: string | null;
+  imagePath: string | null;
+  imageUrl: string | null;
+  dietaryTags: string | null;
+  allergens: string | null;
+  featured: boolean;
   categoryId: string;
   categoryName: string | null;
   sellPrice: number;
@@ -30,10 +36,14 @@ export type MenuItemPayload = {
   name?: string;
   sku?: string | null;
   description?: string | null;
+  longDescription?: string | null;
+  dietaryTags?: string | null;
+  allergens?: string | null;
   categoryId?: string;
   sellPrice?: number;
   foodCost?: number | null;
   vatRatePct?: number;
+  featured?: boolean;
   active?: boolean;
 };
 
@@ -108,6 +118,54 @@ export async function importMenuCsv(file: File) {
     method: "POST",
     body: form,
   });
+}
+
+export async function uploadMenuItemPhoto(id: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return api<MenuItem>(`/menu/items/${id}/photo`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function deleteMenuItemPhoto(id: string) {
+  return api<MenuItem>(`/menu/items/${id}/photo`, { method: "DELETE" });
+}
+
+export type PrintMenuOptions = {
+  layout?: "grid" | "list" | "compact";
+  title?: string;
+  subtitle?: string;
+  showPrices?: boolean;
+  language?: "en" | "pl";
+};
+
+
+/** Fetch the menu PDF as a Blob so we can stuff it into an iframe via a
+ *  Blob URL — avoids leaking the JWT in the URL. */
+export async function fetchMenuPdfBlob(
+  apiBase: string,
+  opts: PrintMenuOptions = {},
+): Promise<Blob> {
+  const q = new URLSearchParams();
+  if (opts.layout) q.set("layout", opts.layout);
+  if (opts.title) q.set("title", opts.title);
+  if (opts.subtitle) q.set("subtitle", opts.subtitle);
+  if (opts.showPrices !== undefined) q.set("showPrices", String(opts.showPrices));
+  if (opts.language) q.set("language", opts.language);
+  const token = localStorage.getItem("token") ?? "";
+  const res = await fetch(`${apiBase}/menu/print?${q.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/pdf",
+    },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || `Menu PDF request failed (${res.status})`);
+  }
+  return res.blob();
 }
 
 // ---------- Analytics + engineering ----------
