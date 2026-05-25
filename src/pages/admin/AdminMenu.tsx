@@ -966,6 +966,39 @@ export function AdminMenu() {
                   Show prices on the menu
                 </label>
 
+                <div className="pt-4 border-t border-black/5 space-y-3">
+                  <p className="text-xs uppercase tracking-wider text-[var(--color-muted)] font-semibold">
+                    Editorial pages
+                  </p>
+                  <label className="field-label">
+                    "Our story" heading
+                    <input
+                      className="field-input"
+                      placeholder="Our story"
+                      value={printOpts.storyTitle ?? ""}
+                      onChange={(e) => setPrintOpts((o) => ({ ...o, storyTitle: e.target.value }))}
+                    />
+                  </label>
+                  <label className="field-label">
+                    "Our story" body
+                    <textarea
+                      className="field-input min-h-[120px]"
+                      placeholder="Leave blank to use the default Azerbaijani-heritage narrative. Separate paragraphs with a blank line."
+                      value={printOpts.storyBody ?? ""}
+                      onChange={(e) => setPrintOpts((o) => ({ ...o, storyBody: e.target.value }))}
+                    />
+                  </label>
+                  <label className="field-label">
+                    Contact block (closing page)
+                    <textarea
+                      className="field-input min-h-[80px]"
+                      placeholder={"Saffron Restaurant\nul. Marszałkowska 1, Warsaw\n+48 22 000 00 00 · saffron.waw.pl"}
+                      value={printOpts.contactBlock ?? ""}
+                      onChange={(e) => setPrintOpts((o) => ({ ...o, contactBlock: e.target.value }))}
+                    />
+                  </label>
+                </div>
+
                 <div className="pt-4 space-y-2 border-t border-black/5">
                   <Button
                     onClick={() => void generateMenu()}

@@ -139,6 +139,13 @@ export type PrintMenuOptions = {
   subtitle?: string;
   showPrices?: boolean;
   language?: "en" | "pl";
+  /** Optional title for the "Our story" page (defaults to "Our story"). */
+  storyTitle?: string;
+  /** Optional editorial body for the "Our story" page. Blank-line-separated
+   *  paragraphs render as separate paragraphs. */
+  storyBody?: string;
+  /** Optional address / phone block rendered on the closing page. */
+  contactBlock?: string;
 };
 
 
@@ -154,6 +161,9 @@ export async function fetchMenuPdfBlob(
   if (opts.subtitle) q.set("subtitle", opts.subtitle);
   if (opts.showPrices !== undefined) q.set("showPrices", String(opts.showPrices));
   if (opts.language) q.set("language", opts.language);
+  if (opts.storyTitle) q.set("storyTitle", opts.storyTitle);
+  if (opts.storyBody) q.set("storyBody", opts.storyBody);
+  if (opts.contactBlock) q.set("contactBlock", opts.contactBlock);
   const token = localStorage.getItem("token") ?? "";
   const res = await fetch(`${apiBase}/menu/print?${q.toString()}`, {
     headers: {
