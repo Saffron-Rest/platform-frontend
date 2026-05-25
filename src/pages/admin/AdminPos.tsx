@@ -26,7 +26,7 @@ export function AdminPos() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [name, setName] = useState("");
-  const [vendor, setVendor] = useState<Vendor>("dotykacka");
+  const [vendor, setVendor] = useState<Vendor>("generic");
   const [creating, setCreating] = useState(false);
   const [revealedSecret, setRevealedSecret] = useState<{
     integrationId: string;
@@ -339,8 +339,8 @@ export function AdminPos() {
               value={vendor}
               onChange={(e) => setVendor(e.target.value as Vendor)}
             >
-              <option value="dotykacka">Dotykačka (auto-pull)</option>
-              <option value="generic">Generic (HMAC webhook)</option>
+              <option value="generic">Generic (Dotypos webhook & most POS)</option>
+              <option value="dotykacka">Dotykačka (auto-pull via API)</option>
             </select>
           </label>
           <div>
@@ -351,59 +351,96 @@ export function AdminPos() {
         </div>
         <p className="text-xs text-[var(--color-muted)] mt-3">
           {vendor === "dotykacka"
-            ? "After creating, paste your Dotykačka cloud ID and refresh token below. Receipts will sync every 5 minutes."
-            : "Generates a webhook URL and HMAC secret you paste into a custom POS or middleware."}
+            ? "Pulls receipts via Dotykačka's API. Requires their cloud ID + refresh token (one-time OAuth). Best for fully hands-off setup."
+            : "Generates a ready-to-paste webhook URL with the token already embedded. Paste it into Dotypos Cloud (or any POS) and receipts start flowing — no headers, no signatures."}
         </p>
       </Card>
 
-      {revealedSecret && (
-        <Card className="border border-amber-300 bg-amber-50">
-          <h4 className="font-semibold text-amber-900">Copy this secret now</h4>
-          <p className="text-sm text-amber-900/80 mt-1">
-            It will not be shown again. Paste it into your POS webhook configuration.
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <code className="flex-1 px-3 py-2 rounded-lg bg-white border border-amber-200 font-mono text-sm break-all">
-              {revealedSecret.secret}
-            </code>
-            <Button variant="secondary" onClick={() => void copy(revealedSecret.secret)}>
-              Copy
-            </Button>
-            <Button variant="ghost" onClick={() => setRevealedSecret(null)}>
-              Hide
-            </Button>
-          </div>
-        </Card>
-      )}
+      {revealedSecret && (() => {
+        const integration = integrations.find((x) => x.id === revealedSecret.integrationId);
+        const fullUrl = integration
+          ? `${baseUrl}${integration.pushUrl.split("?token=")[0]}?token=${revealedSecret.secret}`
+          : null;
+        return (
+          <Card className="border border-amber-300 bg-amber-50">
+            <h4 className="font-semibold text-amber-900">
+              {fullUrl ? "Copy this webhook URL now" : "Copy this secret now"}
+            </h4>
+            <p className="text-sm text-amber-900/80 mt-1">
+              {fullUrl
+                ? "Paste it into Dotypos Cloud → Cloud settings → Webhook (entity: Realized sales, method: POST)."
+                : "It will not be shown again. Paste it into your POS webhook configuration."}
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 rounded-lg bg-white border border-amber-200 font-mono text-sm break-all">
+                {fullUrl ?? revealedSecret.secret}
+              </code>
+              <Button
+                variant="secondary"
+                onClick={() => void copy(fullUrl ?? revealedSecret.secret)}
+              >
+                Copy
+              </Button>
+              <Button variant="ghost" onClick={() => setRevealedSecret(null)}>
+                Hide
+              </Button>
+            </div>
+            {fullUrl && (
+              <p className="text-xs text-amber-900/70 mt-2">
+                Raw token (for advanced HMAC mode):{" "}
+                <code className="font-mono break-all">{revealedSecret.secret}</code>
+              </p>
+            )}
+          </Card>
+        );
+      })()}
 
       <Card>
-        <h3 className="font-semibold mb-2">How to connect Dotykačka</h3>
+        <h3 className="font-semibold mb-2">Easy setup — Dotypos Cloud webhook</h3>
         <ol className="list-decimal pl-5 text-sm space-y-1 text-[var(--color-muted)]">
           <li>
-            Request API credentials from Dotykačka (the "Client ID / Client Secret" form
-            on their API page). Mention <em>"reading receipts for an external analytics
-            tool"</em>.
+            Create a <strong>Generic</strong> integration above (e.g. name: "Dotypos").
+            We auto-generate the token for you.
           </li>
           <li>
-            Open in a browser, replacing the placeholders:{" "}
-            <code className="font-mono text-xs break-all">
-              https://admin.dotykacka.cz/client/connect?client_id=&#123;CLIENT_ID&#125;&client_secret=&#123;CLIENT_SECRET&#125;&scope=*&redirect_uri=https://dotykacka.cz
-            </code>
+            Copy the <strong>Webhook URL</strong> shown on the new card (the token is already in it — nothing else to add).
           </li>
           <li>
-            Log in, allow access. You'll be redirected to a URL like{" "}
-            <code className="font-mono text-xs">…?token=…&cloudid=…</code> — copy both
-            the <strong>token</strong> (refresh token) and the <strong>cloudid</strong>.
+            Open{" "}
+            <a
+              href="https://manual.dotykacka.pl/webhook.html"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[var(--color-primary)] hover:underline"
+            >
+              Dotypos Cloud → Cloud settings → Webhook
+            </a>
+            , click <em>Add webhook</em>.
           </li>
           <li>
-            Paste them below and click <strong>Save credentials</strong>. Sync runs
-            automatically every 5 minutes, or click <strong>Sync now</strong> to backfill.
+            Set entity <strong>Realized sales</strong>, method <strong>POST</strong>, paste the URL, save.
           </li>
-          <li>
-            After credentials are saved, click <strong>Enable webhook</strong> to register a real-time push from Dotypos.
-            Receipts will then arrive within seconds instead of waiting for the next poll.
-          </li>
+          <li>Ring up a test order — within seconds it shows up on Menu analytics.</li>
         </ol>
+        <details className="mt-4 text-sm">
+          <summary className="cursor-pointer font-semibold">
+            Alternative: Dotykačka API (hands-off, auto-registers webhook for you)
+          </summary>
+          <ol className="list-decimal pl-5 mt-2 space-y-1 text-[var(--color-muted)]">
+            <li>Request API credentials (Client ID / Secret) from Dotykačka.</li>
+            <li>
+              Visit{" "}
+              <code className="font-mono text-xs break-all">
+                https://admin.dotykacka.cz/client/connect?client_id=&#123;CLIENT_ID&#125;&client_secret=&#123;CLIENT_SECRET&#125;&scope=*&redirect_uri=https://dotykacka.cz
+              </code>
+              , approve, and copy <strong>token</strong> + <strong>cloudid</strong> from the redirect URL.
+            </li>
+            <li>Create a <strong>Dotykačka</strong> integration above, paste credentials, save.</li>
+            <li>
+              Click <strong>Enable webhook</strong> — we register the webhook with Dotypos automatically.
+            </li>
+          </ol>
+        </details>
       </Card>
 
       {loading ? (
@@ -441,6 +478,7 @@ export function AdminPos() {
               onRotate={() => void rotate(i)}
               onToggleActive={() => void toggleActive(i)}
               onDelete={() => void remove(i)}
+              onCopy={(text) => void copy(text)}
             />
           ))}
         </div>
@@ -463,6 +501,7 @@ function IntegrationCard({
   onRotate,
   onToggleActive,
   onDelete,
+  onCopy,
 }: {
   integration: PosIntegration;
   baseUrl: string;
@@ -486,6 +525,7 @@ function IntegrationCard({
   onRotate: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
+  onCopy: (text: string) => void;
 }) {
   const isDotykacka = (i.vendor ?? "").toLowerCase() === "dotykacka";
   const credentialsReady =
@@ -553,11 +593,47 @@ function IntegrationCard({
       </div>
 
       {!isDotykacka && (
-        <div className="mt-3 text-sm">
-          <p className="text-[var(--color-muted)]">Webhook URL</p>
-          <code className="block mt-1 px-3 py-2 rounded-lg bg-black/5 font-mono text-xs break-all">
-            {baseUrl}/api/pos/webhook/{i.id}
-          </code>
+        <div className="mt-3 space-y-3 text-sm">
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-semibold">Webhook URL (paste into your POS)</p>
+              <button
+                type="button"
+                className="text-xs text-[var(--color-primary)] hover:underline"
+                onClick={() => onCopy(`${baseUrl}${i.pushUrl}`)}
+              >
+                Copy
+              </button>
+            </div>
+            <code className="block mt-1 px-3 py-2 rounded-lg bg-black/5 font-mono text-xs break-all">
+              {baseUrl}{i.pushUrl}
+            </code>
+            <p className="text-xs text-[var(--color-muted)] mt-1">
+              The token is already embedded — no headers required. In{" "}
+              <a
+                href="https://manual.dotykacka.pl/webhook.html"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[var(--color-primary)] hover:underline"
+              >
+                Dotypos Cloud → Webhook
+              </a>{" "}
+              choose entity <strong>Realized sales</strong> and method{" "}
+              <strong>POST</strong>.
+            </p>
+          </div>
+          <details className="text-xs text-[var(--color-muted)]">
+            <summary className="cursor-pointer hover:text-[var(--color-text)]">
+              Advanced: HMAC URL for custom POS systems
+            </summary>
+            <code className="block mt-2 px-3 py-2 rounded-lg bg-black/5 font-mono break-all">
+              {baseUrl}/api/pos/webhook/{i.id}
+            </code>
+            <p className="mt-1">
+              Requires an <code>X-Pos-Signature</code> header (HMAC-SHA256 of the body
+              using your rotated secret). Use this only if your POS signs requests.
+            </p>
+          </details>
         </div>
       )}
 

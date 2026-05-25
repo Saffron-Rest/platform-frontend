@@ -203,7 +203,12 @@ export type PosIntegration = {
   lastSeenAt: string | null;
   lastExternalId: string | null;
   lastSyncedAt: string | null;
+  /** HMAC webhook URL (advanced; signature required). */
   webhookUrl: string;
+  /** Vendor-agnostic push URL with the per-integration token already
+   *  embedded — ready to paste into Dotypos Cloud or any POS webhook
+   *  config. Pre-fixed with our origin in the UI. */
+  pushUrl: string;
   createdAt: string | null;
   webhookSecret?: string;
   dotykacka?: {
