@@ -40,6 +40,7 @@ function PaySalaryForm({
   const [source, setSource] = useState<PaymentSource>("CASH");
   const [paidDate, setPaidDate] = useState(todayIso());
   const [notes, setNotes] = useState("");
+  const [excludeFromTreasury, setExcludeFromTreasury] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -61,6 +62,7 @@ function PaySalaryForm({
           periodFrom,
           periodTo,
           notes: notes.trim() || null,
+          excludeFromTreasury,
         }),
       });
       onPaid();
@@ -140,9 +142,28 @@ function PaySalaryForm({
           placeholder="e.g. May payroll"
         />
       </label>
+      <label className="flex items-start gap-2 text-xs cursor-pointer select-none rounded-lg border border-black/10 bg-amber-50/40 px-2.5 py-2">
+        <input
+          type="checkbox"
+          checked={excludeFromTreasury}
+          onChange={(e) => setExcludeFromTreasury(e.target.checked)}
+          className="mt-0.5 w-3.5 h-3.5 accent-[var(--color-saffron)] shrink-0"
+        />
+        <span className="flex-1">
+          <span className="font-medium text-[var(--color-ink)]">Don't deduct from treasury</span>
+          <span className="block text-[var(--color-muted)] mt-0.5">
+            Records the payout for payroll bookkeeping only — cash / card balance stays unchanged.
+            Use for owner-pocket bonuses, bank transfers outside the till, etc.
+          </span>
+        </span>
+      </label>
       {err && <Alert variant="error">{err}</Alert>}
       <Button type="button" fullWidth disabled={saving} onClick={submit}>
-        {saving ? "Recording…" : `Pay ${fmt(Number(amount))} from ${source.toLowerCase()}`}
+        {saving
+          ? "Recording…"
+          : excludeFromTreasury
+            ? `Record ${fmt(Number(amount))} (no balance impact)`
+            : `Pay ${fmt(Number(amount))} from ${source.toLowerCase()}`}
       </Button>
     </div>
   );
@@ -370,6 +391,14 @@ export function SalariesPanel() {
                               >
                                 <span className="min-w-0 flex-1">
                                   {p.paidDate} · {p.source.toLowerCase()}
+                                  {p.excludeFromTreasury && (
+                                    <span
+                                      className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-semibold align-middle"
+                                      title="Recorded for payroll only — does not affect treasury balance"
+                                    >
+                                      off-books
+                                    </span>
+                                  )}
                                   {p.notes && (
                                     <span className="text-[var(--color-muted)]"> · {p.notes}</span>
                                   )}

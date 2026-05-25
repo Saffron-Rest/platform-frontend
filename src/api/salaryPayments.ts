@@ -12,6 +12,8 @@ export type UpdateSalaryPaymentInput = {
   clearPeriod?: boolean;
   /** Send true to clear notes. */
   clearNotes?: boolean;
+  /** Toggle whether this payment affects treasury balances. */
+  excludeFromTreasury?: boolean;
 };
 
 export type SalaryPaymentMutationResult = {

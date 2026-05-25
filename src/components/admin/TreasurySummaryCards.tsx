@@ -59,11 +59,12 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
   if (!treasury) return null;
 
   const cardClass = compact ? "!p-3" : "!p-4";
-  const cashRaw = treasury.cashBalanceBeforeSalary ?? treasury.cashBalance;
-  const cardRaw = treasury.cardBalanceBeforeSalary ?? treasury.cardBalance + treasury.salaryPaidFromCard;
-  const cashDisplay = includeSalary ? treasury.cashBalance : cashRaw;
-  const cardDisplay = includeSalary ? treasury.cardBalance : cardRaw;
+  const cashPreSalary = treasury.cashBalanceBeforeSalary ?? treasury.cashBalance;
+  const cardPreSalary = treasury.cardBalanceBeforeSalary ?? treasury.cardBalance + treasury.salaryPaidFromCard;
+  const cashDisplay = includeSalary ? treasury.cashBalance : cashPreSalary;
+  const cardDisplay = includeSalary ? treasury.cardBalance : cardPreSalary;
   const salaryCashPost = treasury.salaryPaidFromCashPostCount ?? 0;
+  const expensesCashPost = treasury.standaloneCashExpensesPostCount ?? 0;
   const hasAnySalary = treasury.salaryPaidFromCash > 0 || treasury.salaryPaidFromCard > 0;
 
   return (
@@ -123,6 +124,7 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
                 treasury={treasury}
                 includeSalary={includeSalary}
                 salaryPostCount={salaryCashPost}
+                expensesPostCount={expensesCashPost}
               />
             )}
           </Card>
@@ -191,16 +193,19 @@ function CashOnHandMeta({
   treasury,
   includeSalary,
   salaryPostCount,
+  expensesPostCount,
 }: {
   treasury: TreasuryOverview;
   includeSalary: boolean;
   salaryPostCount: number;
+  expensesPostCount: number;
 }) {
   const fromLatest = treasury.cashSource === "LATEST_COUNT" && treasury.cashLatestCountDate;
   const computed = treasury.cashComputedBalance;
   const displayValue = includeSalary ? treasury.cashBalance : treasury.cashBalanceBeforeSalary ?? treasury.cashBalance;
   const showVariance =
     typeof computed === "number" && Math.abs(computed - displayValue) > 0.005;
+  const rawCount = treasury.cashRawCount;
 
   if (!fromLatest) {
     return (
@@ -221,7 +226,17 @@ function CashOnHandMeta({
             {who}
           </>
         )}
+        {typeof rawCount === "number" && (
+          <>
+            {" · "}counted <strong>{fmt(rawCount)}</strong>
+          </>
+        )}
       </p>
+      {expensesPostCount > 0.005 && (
+        <p className="text-emerald-900/70">
+          − expenses paid since last count: <strong>{fmt(expensesPostCount)}</strong>
+        </p>
+      )}
       {includeSalary && salaryPostCount > 0.005 && (
         <p className="text-emerald-900/70">
           − salary paid since last count: <strong>{fmt(salaryPostCount)}</strong>

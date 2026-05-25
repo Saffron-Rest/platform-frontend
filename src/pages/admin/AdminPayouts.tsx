@@ -294,7 +294,17 @@ export function AdminPayouts() {
                   </div>
                   <div className="text-right shrink-0 flex flex-col items-end gap-1">
                     <p className="font-bold tabular-nums">{fmt(p.amount)}</p>
-                    <Badge variant="neutral">{p.source === "CASH" ? "Cash" : "Card"}</Badge>
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Badge variant="neutral">{p.source === "CASH" ? "Cash" : "Card"}</Badge>
+                      {p.excludeFromTreasury && (
+                        <Badge
+                          variant="draft"
+                          title="Recorded for payroll only — does not affect treasury balance"
+                        >
+                          Off-books
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex gap-1 mt-1">
                       <button
                         type="button"
@@ -347,6 +357,7 @@ function PayoutEditForm({
   const [periodFrom, setPeriodFrom] = useState(payment.periodFrom ?? "");
   const [periodTo, setPeriodTo] = useState(payment.periodTo ?? "");
   const [notes, setNotes] = useState(payment.notes ?? "");
+  const [excludeFromTreasury, setExcludeFromTreasury] = useState(!!payment.excludeFromTreasury);
 
   const submit = () => {
     const patch: UpdateSalaryPaymentInput = {};
@@ -356,6 +367,9 @@ function PayoutEditForm({
     }
     if (paidDate && paidDate !== payment.paidDate) patch.paidDate = paidDate;
     if (source !== payment.source) patch.source = source;
+    if (excludeFromTreasury !== !!payment.excludeFromTreasury) {
+      patch.excludeFromTreasury = excludeFromTreasury;
+    }
 
     const hadPeriod = !!(payment.periodFrom && payment.periodTo);
     const hasPeriod = !!(periodFrom && periodTo);
@@ -455,6 +469,21 @@ function PayoutEditForm({
           className="field-input"
           placeholder="e.g. May payroll"
         />
+      </label>
+      <label className="flex items-start gap-2 text-xs cursor-pointer select-none rounded-lg border border-black/10 bg-amber-50/40 px-2.5 py-2">
+        <input
+          type="checkbox"
+          checked={excludeFromTreasury}
+          onChange={(e) => setExcludeFromTreasury(e.target.checked)}
+          className="mt-0.5 w-3.5 h-3.5 accent-[var(--color-saffron)] shrink-0"
+        />
+        <span className="flex-1">
+          <span className="font-medium text-[var(--color-ink)]">Don't deduct from treasury</span>
+          <span className="block text-[var(--color-muted)] mt-0.5">
+            Bookkeeping-only: treasury balance stays unchanged. Toggle off to put this payment back
+            on the books.
+          </span>
+        </span>
       </label>
       <Button type="button" fullWidth disabled={busy} onClick={submit}>
         {busy ? "Saving…" : "Save changes"}

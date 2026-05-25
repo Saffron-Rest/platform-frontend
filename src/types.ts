@@ -94,6 +94,8 @@ export type PayrollPaymentRef = {
   periodFrom?: string;
   periodTo?: string;
   notes?: string;
+  /** When true the payment is bookkeeping-only and does NOT affect treasury balances. */
+  excludeFromTreasury?: boolean;
 };
 
 export type PayrollEmployee = {
@@ -160,17 +162,21 @@ export type TreasurySettings = {
 
 export type TreasuryOverview = {
   settings: TreasurySettings;
-  /** Cash in the drawer — latest locked actual count MINUS salaries paid after
-   *  that count (so the displayed balance always reflects salary payouts).
-   *  Falls back to the initial balance when no locked report exists yet. */
+  /** Cash in the drawer — latest locked actual count MINUS standalone cash
+   *  expenses AND salaries paid after that count (so the displayed balance
+   *  always reflects post-count outflows). Falls back to the initial balance
+   *  when no locked report exists yet. */
   cashBalance: number;
   /** Cumulative card / bank balance, salaries already subtracted. */
   cardBalance: number;
-  /** Same as cashBalance but without subtracting salaries paid after the
-   *  latest count — i.e. the raw drawer count. */
+  /** Same as cashBalance but WITHOUT subtracting salaries — still subtracts
+   *  any post-count standalone cash expenses. */
   cashBalanceBeforeSalary?: number;
   /** Same as cardBalance but without subtracting salary payouts. */
   cardBalanceBeforeSalary?: number;
+  /** Raw drawer count from the latest locked report (no post-count
+   *  adjustments). */
+  cashRawCount?: number;
   /** Where `cashBalance` came from. */
   cashSource?: "LATEST_COUNT" | "INITIAL";
   cashLatestCountDate?: string;
@@ -189,12 +195,19 @@ export type TreasuryOverview = {
   cardFromManualSettlement?: number;
   cardFromBankDeposits?: number;
   standaloneCashExpenses?: number;
+  /** Subset of standaloneCashExpenses with effectiveDate AFTER the latest
+   *  locked cash count — i.e. drawer outflows not yet reflected in any count. */
+  standaloneCashExpensesPostCount?: number;
   standaloneCardExpenses?: number;
   salaryPaidFromCash: number;
   /** Subset of salaryPaidFromCash that has not yet been reflected in a
    *  physical cash count (i.e. paid after the latest locked count). */
   salaryPaidFromCashPostCount?: number;
   salaryPaidFromCard: number;
+  /** Salary cash/card payments flagged "exclude from treasury" — tracked for
+   *  transparency but NOT subtracted from the displayed balances. */
+  salaryPaidFromCashExcluded?: number;
+  salaryPaidFromCardExcluded?: number;
   currency: string;
 };
 
@@ -208,6 +221,8 @@ export type SalaryPaymentRecord = {
   periodFrom?: string;
   periodTo?: string;
   notes?: string;
+  /** When true the payment is bookkeeping-only and does NOT affect treasury balances. */
+  excludeFromTreasury?: boolean;
   createdAt: string;
 };
 
