@@ -92,6 +92,14 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [weeklyHours, setWeeklyHours] = useState<WeeklyHours | null>(null);
+  // Inline shift editor: when set, the row with this shift id flips to
+  // an edit form with start/end/till-close/reassign-to fields. Only one
+  // row is editable at a time to keep the UX clear.
+  const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+  const [editUserId, setEditUserId] = useState("");
+  const [editStart, setEditStart] = useState(DEFAULT_START);
+  const [editEnd, setEditEnd] = useState(DEFAULT_END);
+  const [editTillClose, setEditTillClose] = useState(false);
 
   const activeCashiers = useMemo(
     () => allCashiers.filter((u) => u.active !== false),
@@ -167,6 +175,7 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
   const openDay = async (dateKey: string, prefillCashierId?: string) => {
     setSelectedDate(dateKey);
     setMessage("");
+    setEditingShiftId(null);
     setAddUserId(prefillCashierId ?? "");
     // Default the start/end times to the restaurant's actual open/close for
     // that weekday (from {@code /settings/payroll}). Falls back to 09:00–17:00
@@ -188,6 +197,7 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
 
   const closeDay = () => {
     setSelectedDate(null);
+    setEditingShiftId(null);
     loadMonth();
   };
 
@@ -238,6 +248,127 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
       await loadMonth();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Open the inline editor for {@code shift}. We pre-fill the form with
+   *  the current values so the admin only has to change what's wrong, not
+   *  retype the whole row. The cashier dropdown opens with the existing
+   *  assignee but lets the admin reassign to another available cashier in
+   *  one step (no remove + re-add). */
+  const startEditShift = (shift: ScheduleRow) => {
+    if (!shift.id) return;
+    setEditingShiftId(shift.id);
+    setEditUserId(shift.userId);
+    setEditStart(shift.startTime || DEFAULT_START);
+    setEditEnd(shift.endTime || closeForSelectedDate || DEFAULT_END);
+    setEditTillClose(!shift.endTime);
+    setMessage("");
+    setError("");
+  };
+
+  const cancelEditShift = () => {
+    setEditingShiftId(null);
+  };
+
+  /**
+   * Save edits to an existing shift.
+   *
+   * <p>When the cashier wasn't changed we call {@code POST /shifts/assign}
+   * which the backend upserts by (userId, date). When the admin reassigns
+   * to a different person we delete the old row first so the new one
+   * doesn't collide — keeping the operation idempotent if anything fails
+   * partway (worst case the day is empty for that slot, which is what an
+   * admin in mid-fix would expect).</p>
+   */
+  const saveEditShift = async (original: ScheduleRow) => {
+    if (!selectedDate || !original.id) return;
+    if (!editUserId) {
+      setError("Pick an employee for this shift");
+      return;
+    }
+    if (!editStart) {
+      setError("Start time is required");
+      return;
+    }
+    const reassigning = editUserId !== original.userId;
+    setSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      if (reassigning) {
+        // Drop the old assignment so the new userId doesn't conflict with
+        // the same (userId, date) key when the new person already has a row.
+        await api(`/shifts/${original.id}`, { method: "DELETE" });
+      }
+      const res = await api<ScheduleRow & { autoAdjustedClosing?: boolean; designatedCloserName?: string }>(
+        "/shifts/assign",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            date: selectedDate,
+            userId: editUserId,
+            startTime: editStart,
+            endTime: editTillClose ? null : editEnd,
+            tillClose: editTillClose,
+          }),
+        }
+      );
+      const list = await api<ScheduleRow[]>(`/shifts?date=${selectedDate}`);
+      setDayShifts(list);
+      setEditingShiftId(null);
+      if (res.autoAdjustedClosing && res.designatedCloserName) {
+        setMessage(
+          `Saved. Closing was reassigned to ${res.designatedCloserName}; other "until close" shifts received a fixed end time.`
+        );
+      } else if (reassigning) {
+        const newName = allCashiers.find((c) => c.id === editUserId)?.name ?? "the new cashier";
+        setMessage(`Reassigned to ${newName}.`);
+      } else {
+        setMessage("Shift updated.");
+      }
+      await loadMonth();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save changes");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** One-tap toggle for the closer star. Same upsert semantics as the
+   *  full editor — handy when the admin only wants to change who closes. */
+  const toggleClosingForShift = async (shift: ScheduleRow) => {
+    if (!selectedDate || !shift.startTime) return;
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const nowTillClose = !!shift.endTime; // about to flip to "till close"
+      const res = await api<ScheduleRow & { autoAdjustedClosing?: boolean; designatedCloserName?: string }>(
+        "/shifts/assign",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            date: selectedDate,
+            userId: shift.userId,
+            startTime: shift.startTime,
+            endTime: nowTillClose ? null : closeForSelectedDate ?? DEFAULT_END,
+            tillClose: nowTillClose,
+          }),
+        }
+      );
+      const list = await api<ScheduleRow[]>(`/shifts?date=${selectedDate}`);
+      setDayShifts(list);
+      if (res.autoAdjustedClosing && res.designatedCloserName) {
+        setMessage(`Closing reassigned to ${res.designatedCloserName}.`);
+      } else {
+        setMessage(nowTillClose ? `${firstName(shift.name)} now closes.` : `${firstName(shift.name)} no longer closes.`);
+      }
+      await loadMonth();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to toggle closer");
     } finally {
       setSaving(false);
     }
@@ -551,41 +682,165 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
                   {readOnly ? "No one scheduled this day." : "No employees yet — add someone below."}
                 </li>
               )}
-              {dayShifts.map((s) => (
-                <li
-                  key={s.id ?? s.userId}
-                  className={`flex items-center justify-between gap-2 p-3 rounded-xl border border-black/5 ${
-                    currentUser?.id === s.userId
-                      ? "bg-[var(--color-saffron)]/15"
-                      : "bg-[var(--color-cream)]"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">
-                      {s.name}
-                      {currentUser?.id === s.userId && (
-                        <span className="ml-1 text-xs text-[var(--color-muted)]">(you)</span>
+              {dayShifts.map((s) => {
+                const isEditing = !readOnly && !!s.id && editingShiftId === s.id;
+                // Cashiers available as the "reassign to" target: everyone
+                // currently active, minus people already on this day (so we
+                // don't create duplicates) — but keep the original assignee
+                // in the list since they are this shift's current value.
+                const reassignChoices = activeCashiers.filter(
+                  (c) => c.id === s.userId || !dayShifts.some((x) => x.userId === c.id)
+                );
+                const editHours =
+                  editStart && (editTillClose ? closeForSelectedDate ?? "" : editEnd)
+                    ? hoursBetween(editStart, editTillClose ? closeForSelectedDate ?? editEnd : editEnd)
+                    : 0;
+                return (
+                  <li
+                    key={s.id ?? s.userId}
+                    className={`rounded-xl border border-black/5 ${
+                      currentUser?.id === s.userId
+                        ? "bg-[var(--color-saffron)]/15"
+                        : "bg-[var(--color-cream)]"
+                    } ${isEditing ? "ring-2 ring-[var(--color-saffron)]/60" : ""}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 p-3">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">
+                          {s.name}
+                          {currentUser?.id === s.userId && (
+                            <span className="ml-1 text-xs text-[var(--color-muted)]">(you)</span>
+                          )}
+                          {s.designatedCloser && (
+                            <span className="ml-1.5 text-xs font-semibold text-[var(--color-saffron-dark)]">
+                              ★ Closes
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-sm text-[var(--color-muted)]">{shiftHoursLabel(s)}</p>
+                      </div>
+                      {!readOnly && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          {!isEditing && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => toggleClosingForShift(s)}
+                                disabled={saving}
+                                title={s.designatedCloser ? "Remove closer star" : "Mark as closer (till close)"}
+                                className={`text-base leading-none px-2 py-1 rounded transition ${
+                                  s.designatedCloser
+                                    ? "text-[var(--color-saffron-dark)]"
+                                    : "text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)]"
+                                }`}
+                                aria-label="Toggle closer"
+                              >
+                                {s.designatedCloser ? "★" : "☆"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => startEditShift(s)}
+                                disabled={saving}
+                                className="text-sm text-[var(--color-saffron-dark)] px-2 py-1 hover:underline"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => s.id && removeShift(s.id)}
+                                disabled={saving}
+                                className="text-sm text-[var(--color-danger)] px-2 py-1"
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )}
+                        </div>
                       )}
-                      {s.designatedCloser && (
-                        <span className="ml-1.5 text-xs font-semibold text-[var(--color-saffron-dark)]">
-                          ★ Closes
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-sm text-[var(--color-muted)]">{shiftHoursLabel(s)}</p>
-                  </div>
-                  {!readOnly && (
-                    <button
-                      type="button"
-                      onClick={() => s.id && removeShift(s.id)}
-                      disabled={saving}
-                      className="text-sm text-[var(--color-danger)] shrink-0 px-2 py-1"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </li>
-              ))}
+                    </div>
+
+                    {isEditing && (
+                      <div className="border-t border-black/5 px-3 py-3 space-y-3 bg-white rounded-b-xl">
+                        <label className="field-label block">
+                          <span className="text-xs">Assigned to</span>
+                          <select
+                            value={editUserId}
+                            onChange={(e) => setEditUserId(e.target.value)}
+                            className="field-input"
+                          >
+                            {reassignChoices.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                                {c.id === s.userId ? " (current)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {editUserId !== s.userId && (
+                            <span className="block text-xs text-[var(--color-muted)] mt-1">
+                              Reassigning will swap who's on this slot. The previous person comes off this day.
+                            </span>
+                          )}
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="field-label block">
+                            <span className="text-xs">Start</span>
+                            <input
+                              type="time"
+                              value={editStart}
+                              onChange={(e) => setEditStart(e.target.value)}
+                              className="field-input"
+                            />
+                          </label>
+                          <label className="field-label block">
+                            <span className="text-xs">End</span>
+                            <input
+                              type="time"
+                              value={editTillClose ? closeForSelectedDate ?? "" : editEnd}
+                              onChange={(e) => setEditEnd(e.target.value)}
+                              disabled={editTillClose}
+                              className="field-input"
+                            />
+                          </label>
+                        </div>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={editTillClose}
+                            onChange={(e) => setEditTillClose(e.target.checked)}
+                            className="w-4 h-4"
+                          />
+                          <span>
+                            Works until close
+                            {closeForSelectedDate ? ` (≈ ${closeForSelectedDate})` : ""} · marks as ★ closer
+                          </span>
+                        </label>
+                        {editHours > 0 && (
+                          <p className="text-xs text-[var(--color-muted)]">
+                            ≈ {editHours.toFixed(2).replace(/\.?0+$/, "")} h
+                          </p>
+                        )}
+                        <div className="flex justify-end gap-2 pt-1">
+                          <Button
+                            variant="secondary"
+                            className="!py-2 !text-sm"
+                            onClick={cancelEditShift}
+                            disabled={saving}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            className="!py-2 !text-sm"
+                            onClick={() => saveEditShift(s)}
+                            disabled={saving || !editStart || (!editTillClose && !editEnd)}
+                          >
+                            {saving ? "Saving…" : "Save changes"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
 
             {!readOnly && (
