@@ -77,6 +77,15 @@ export function AdminTeam() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [loadError, setLoadError] = useState("");
+  // Result of an admin-initiated password reset. The plaintext lives in
+  // memory only while this modal is open — we never store it in the
+  // users list or anywhere else. Closing the modal clears it.
+  const [resetResult, setResetResult] = useState<{
+    user: User;
+    tempPassword: string;
+  } | null>(null);
+  const [resetBusyId, setResetBusyId] = useState<string | null>(null);
+  const [copiedTempPw, setCopiedTempPw] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const loadUsers = () =>
@@ -278,6 +287,53 @@ export function AdminTeam() {
     }
   };
 
+  /**
+   * Generate a one-time temporary password for {@code u} and show it in
+   * the {@link resetResult} modal. The plaintext appears only in this
+   * single network response — once the admin closes the modal, it's
+   * gone forever. Reloading users after the call refreshes the
+   * "must change password" badge so the row reflects the new state.
+   */
+  const resetPassword = async (u: User) => {
+    if (!confirm(`Generate a new one-time password for ${u.name}?\n\nThe current password will stop working immediately. They'll be asked to set a new password the next time they sign in.`)) {
+      return;
+    }
+    setErr("");
+    setResetBusyId(u.id);
+    try {
+      const res = await api<{ tempPassword: string }>(
+        `/users/${u.id}/reset-password`,
+        { method: "POST" },
+      );
+      setResetResult({ user: u, tempPassword: res.tempPassword });
+      setCopiedTempPw(false);
+      await loadUsers();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Reset failed");
+    } finally {
+      setResetBusyId(null);
+    }
+  };
+
+  const closeResetModal = () => {
+    setResetResult(null);
+    setCopiedTempPw(false);
+  };
+
+  const copyTempPassword = async () => {
+    if (!resetResult) return;
+    try {
+      await navigator.clipboard.writeText(resetResult.tempPassword);
+      setCopiedTempPw(true);
+      // Self-clear the "copied" feedback after 2s so the button can be
+      // clicked again to re-copy if needed.
+      setTimeout(() => setCopiedTempPw(false), 2000);
+    } catch {
+      // Clipboard API can fail under odd permissions / non-HTTPS contexts.
+      // The user can still triple-click + Cmd-C the visible field.
+    }
+  };
+
   return (
     <div data-tour="tour-admin-team">
       <PageHeader
@@ -460,6 +516,17 @@ export function AdminTeam() {
                 <Button variant="secondary" className="flex-1 !py-2 !text-sm" onClick={() => openEdit(u)}>
                   Edit
                 </Button>
+                {u.active !== false && (
+                  <button
+                    type="button"
+                    onClick={() => resetPassword(u)}
+                    disabled={resetBusyId === u.id}
+                    className="flex-1 text-sm font-medium text-[var(--color-saffron-dark)] py-2 disabled:opacity-50"
+                    title="Generate a one-time password the user must change on next sign-in"
+                  >
+                    {resetBusyId === u.id ? "Generating…" : "Reset password"}
+                  </button>
+                )}
                 {u.active === false ? (
                   <button
                     type="button"
@@ -734,6 +801,90 @@ export function AdminTeam() {
           </Card>
         </div>
       )}
+
+      {resetResult && (
+        <ResetPasswordModal
+          name={resetResult.user.name}
+          username={resetResult.user.username}
+          tempPassword={resetResult.tempPassword}
+          copied={copiedTempPw}
+          onCopy={copyTempPassword}
+          onClose={closeResetModal}
+        />
+      )}
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordModal({
+  name,
+  username,
+  tempPassword,
+  copied,
+  onCopy,
+  onClose,
+}: {
+  name: string;
+  username: string;
+  tempPassword: string;
+  copied: boolean;
+  onCopy: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-end md:items-center justify-center p-0 md:p-4 bg-black/50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-md rounded-t-2xl md:rounded-2xl shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-black/[0.06]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-saffron-dark)]">
+            One-time password
+          </p>
+          <h3 className="text-lg font-semibold mt-1">Share with {name}</h3>
+          <p className="text-xs text-[var(--color-muted)] mt-1">
+            They'll be asked to set a new password the next time they sign in. This
+            value is shown <strong>only once</strong> — copy it before closing.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <div className="rounded-lg border border-black/[0.08] bg-[var(--color-cream)] p-3">
+            <p className="text-[10px] uppercase tracking-wider text-[var(--color-muted)] font-semibold">
+              Username
+            </p>
+            <p className="font-mono text-sm mt-0.5 select-all">{username}</p>
+          </div>
+          <div className="rounded-lg border border-[var(--color-saffron)]/40 bg-[var(--color-saffron-light)] p-3">
+            <p className="text-[10px] uppercase tracking-wider text-[var(--color-saffron-dark)] font-semibold">
+              Temporary password
+            </p>
+            <div className="flex items-center justify-between gap-2 mt-1">
+              <code className="font-mono text-base tracking-wider select-all break-all">
+                {tempPassword}
+              </code>
+              <Button
+                variant="secondary"
+                onClick={onCopy}
+                className="!py-1 !px-3 !text-xs shrink-0"
+              >
+                {copied ? "Copied ✓" : "Copy"}
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-[var(--color-muted)]">
+            Best practice: share over a secure channel (SMS, Signal, in person) — never
+            email. If you lose this value, generate a fresh one.
+          </p>
+        </div>
+
+        <div className="px-5 py-3 border-t border-black/[0.06] flex justify-end">
+          <Button onClick={onClose}>Done</Button>
+        </div>
       </div>
     </div>
   );
