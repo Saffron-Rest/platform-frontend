@@ -41,8 +41,10 @@ import { reportDateRelativeLabel } from "../lib/reportDates";
 import { ReportContextBanner } from "../components/report/ReportContextBanner";
 import { ReportValidationPanel } from "../components/report/ReportValidationPanel";
 import { ReportActionBar } from "../components/report/ReportActionBar";
+import { WorkingHoursCard } from "../components/report/WorkingHoursCard";
 import { EntryHistoryDrawer } from "../components/entry/EntryHistoryDrawer";
 import { syncEntry } from "../api/entries";
+import type { WeeklyHours } from "../types";
 
 import { todayLocalIso } from "../lib/dates";
 
@@ -81,6 +83,7 @@ export function EntryPage() {
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [weeklyHours, setWeeklyHours] = useState<WeeklyHours | null>(null);
   /** True while the user has unsaved edits; pauses focus/visibility auto-refresh
    *  so opening the file picker or switching tabs never wipes work in progress. */
   const dirtyRef = useRef(false);
@@ -330,6 +333,15 @@ export function EntryPage() {
 
   useEffect(() => {
     api<{ platforms: Platforms }>("/settings").then((s) => setPlatforms(s.platforms));
+    // Restaurant weekly hours feed the WorkingHoursCard so we can estimate
+    // the close time for "until close" shifts. Endpoint is the same one
+    // AttendanceCalendar uses. Failures are non-fatal — the card degrades
+    // to "Until restaurant close (close time not configured)".
+    api<{ weeklyHours?: WeeklyHours }>("/settings/payroll")
+      .then((data) => {
+        if (data.weeklyHours) setWeeklyHours(data.weeklyHours);
+      })
+      .catch(() => {});
     api<Pick<TreasurySettings, "cardSalesSettlementRate" | "platformSettlementRates">>(
       "/treasury/settlement-defaults"
     )
@@ -384,6 +396,32 @@ export function EntryPage() {
       document.removeEventListener("visibilitychange", refreshIfVisible);
     };
   }, [loadEntry, canManageReports, selectedCashierId, saving]);
+
+  /**
+   * Poll {@code /shifts/today} every 30 seconds while the editor is visible
+   * so calendar changes made on another tab / device propagate to the
+   * working-hours card without a manual refresh. Only the schedule call —
+   * never the whole entry — so this is cheap and won't blow away unsaved
+   * typing in the form. Suspends while the tab is hidden and fires once
+   * immediately when the tab becomes visible again.
+   */
+  useEffect(() => {
+    if (canManageReports && !selectedCashierId) return;
+    const POLL_MS = 30_000;
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadShift();
+    };
+    const id = setInterval(tick, POLL_MS);
+    const resume = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [loadShift, canManageReports, selectedCashierId]);
 
   const persistExpenses = async (entryId: string, lines: ExpenseLine[]) => {
     const before = [...lines];
@@ -648,6 +686,15 @@ export function EntryPage() {
           cashierName={user?.name}
           status={entry?.status ?? (isNew ? "NEW" : undefined)}
           shiftLabel={shiftLabel}
+        />
+      )}
+
+      {(!canManageReports || selectedCashierId) && (
+        <WorkingHoursCard
+          schedule={schedule}
+          weeklyHours={weeklyHours}
+          date={entryDate}
+          manageHref={canManageReports ? "/schedule" : undefined}
         />
       )}
 
