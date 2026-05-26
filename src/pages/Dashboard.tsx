@@ -13,8 +13,8 @@ import { HubSection } from "../components/hub/HubSection";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Badge, entryStatusBadge } from "../components/ui/Badge";
-import { Spinner } from "../components/ui/Spinner";
 import { EmptyState } from "../components/ui/EmptyState";
+import { Skeleton, SkeletonText } from "../components/ui/Skeleton";
 import { Alert } from "../components/ui/Alert";
 import type { WorkSchedule } from "../types";
 
@@ -78,7 +78,7 @@ export function Dashboard() {
     return error ? (
       <EmptyState title="Could not load home" description="Check that the backend is running." />
     ) : (
-      <Spinner label="Loading…" />
+      <DashboardSkeleton />
     );
   }
 
@@ -300,6 +300,39 @@ function StatTile({
         {label}
       </p>
       <p className="text-xl font-bold tabular-nums mt-1">{fmt(value)}</p>
+    </div>
+  );
+}
+
+/**
+ * Skeleton placeholder for the dashboard while the initial fetch is in
+ * flight. Mirrors the visual rhythm of the loaded page (header, quick-
+ * actions row, hub cards) so the layout doesn't visibly jump when data
+ * arrives.
+ */
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <Skeleton className="h-7 w-2/5" />
+        <Skeleton className="h-3 w-1/3" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="surface-card p-4 space-y-2">
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-6 w-2/3" />
+          </div>
+        ))}
+      </div>
+      <div className="surface-card p-5 space-y-3">
+        <Skeleton className="h-5 w-1/4" />
+        <SkeletonText lines={3} />
+      </div>
+      <div className="surface-card p-5 space-y-3">
+        <Skeleton className="h-5 w-1/3" />
+        <SkeletonText lines={4} />
+      </div>
     </div>
   );
 }

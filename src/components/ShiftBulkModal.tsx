@@ -13,6 +13,7 @@ import { Button } from "./ui/Button";
 import { Alert } from "./ui/Alert";
 import { closeForDate, openForDate } from "../lib/restaurantHours";
 import type { WeeklyHours } from "../types";
+import { useToast } from "../context/ToastContext";
 
 type Tab = "PATTERN" | "COPY" | "CLEAR";
 
@@ -130,6 +131,7 @@ function PatternTab({
   defaultTo?: string;
   onApplied: (msg: string) => void;
 }) {
+  const toast = useToast();
   const [from, setFrom] = useState(defaultFrom || todayIso());
   const [to, setTo] = useState(defaultTo || daysAheadIso(13));
   const [weekdays, setWeekdays] = useState<Weekday[]>([
@@ -185,11 +187,14 @@ function PatternTab({
         skipExisting,
       });
       setResult(r);
-      onApplied(
-        `Created ${r.created}, updated ${r.updated}, skipped ${r.skipped} across ${r.affectedDays} day${r.affectedDays === 1 ? "" : "s"}.`,
-      );
+      const summary = `Created ${r.created}, updated ${r.updated}, skipped ${r.skipped} across ${r.affectedDays} day${r.affectedDays === 1 ? "" : "s"}.`;
+      onApplied(summary);
+      toast.success("Schedule applied", { description: summary });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bulk assign failed");
+      toast.error("Bulk schedule failed", {
+        description: e instanceof Error ? e.message : undefined,
+      });
     } finally {
       setSaving(false);
     }
@@ -202,20 +207,17 @@ function PatternTab({
       </p>
 
       {error && <Alert variant="error">{error}</Alert>}
-      {result && (
-        <Alert variant="success">
-          <div>Created {result.created} · updated {result.updated} · skipped {result.skipped}.</div>
-          {result.skipped > 0 && result.skippedDates && result.skippedDates.length > 0 && (
-            <details className="mt-1.5 text-xs">
-              <summary className="cursor-pointer hover:underline">
-                Skipped {result.skippedDates.length} (already had a shift)
-              </summary>
-              <div className="mt-1 max-h-32 overflow-y-auto text-[var(--color-muted)]">
-                {result.skippedDates.slice(0, 50).join(", ")}
-                {result.skippedDates.length > 50 ? "…" : ""}
-              </div>
-            </details>
-          )}
+      {result && result.skipped > 0 && result.skippedDates && result.skippedDates.length > 0 && (
+        <Alert variant="info">
+          <details className="text-xs">
+            <summary className="cursor-pointer hover:underline">
+              {result.skippedDates.length} day{result.skippedDates.length === 1 ? "" : "s"} skipped (already had a shift)
+            </summary>
+            <div className="mt-1 max-h-32 overflow-y-auto text-[var(--color-muted)]">
+              {result.skippedDates.slice(0, 50).join(", ")}
+              {result.skippedDates.length > 50 ? "…" : ""}
+            </div>
+          </details>
         </Alert>
       )}
 
@@ -371,6 +373,7 @@ function CopyWeekTab({
   defaultFrom?: string;
   onApplied: (msg: string) => void;
 }) {
+  const toast = useToast();
   const [source, setSource] = useState(mondayOf(defaultFrom || todayIso()));
   const [target, setTarget] = useState(
     mondayOf(defaultFrom ? daysAheadIso(7) : daysAheadIso(7))
@@ -392,11 +395,14 @@ function CopyWeekTab({
         overwrite,
       });
       setResult(r);
-      onApplied(
-        `Copied: ${r.created} created, ${r.updated} updated, ${r.skipped} skipped.`,
-      );
+      const summary = `${r.created} created, ${r.updated} updated, ${r.skipped} skipped.`;
+      onApplied(`Copied: ${summary}`);
+      toast.success("Week copied", { description: summary });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Copy failed");
+      toast.error("Copy failed", {
+        description: e instanceof Error ? e.message : undefined,
+      });
     } finally {
       setSaving(false);
     }
@@ -473,6 +479,7 @@ function ClearRangeTab({
   defaultTo?: string;
   onApplied: (msg: string) => void;
 }) {
+  const toast = useToast();
   const [from, setFrom] = useState(defaultFrom || todayIso());
   const [to, setTo] = useState(defaultTo || daysAheadIso(6));
   const [userId, setUserId] = useState("");
@@ -492,10 +499,15 @@ function ClearRangeTab({
     try {
       const r = await clearShiftRange(from, to, userId || undefined);
       setResult(r);
-      onApplied(`Cleared ${r.deleted} shift${r.deleted === 1 ? "" : "s"} across ${r.affectedDays} day${r.affectedDays === 1 ? "" : "s"}.`);
+      const summary = `${r.deleted} shift${r.deleted === 1 ? "" : "s"} removed across ${r.affectedDays} day${r.affectedDays === 1 ? "" : "s"}.`;
+      onApplied(`Cleared ${summary}`);
+      toast.warning("Shifts cleared", { description: summary });
       setConfirmText("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Clear failed");
+      toast.error("Clear failed", {
+        description: e instanceof Error ? e.message : undefined,
+      });
     } finally {
       setSaving(false);
     }

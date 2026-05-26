@@ -12,7 +12,7 @@ import { SidebarNav } from "./SidebarNav";
 import { BottomNav } from "./BottomNav";
 import { MoreMenu } from "./MoreMenu";
 import { OnboardingProvider, useOnboarding } from "../../context/OnboardingContext";
-import { CommandPalette } from "../search/CommandPalette";
+import { CommandPalette, openCommandPalette } from "../search/CommandPalette";
 import { NotificationCenter } from "../notifications/NotificationCenter";
 
 function AppShellInner({
@@ -49,6 +49,14 @@ function AppShellInner({
   if (!user) return <Navigate to="/login" replace />;
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
 
+  // The label inside the kbd hint changes with the platform — Ctrl on
+  // Windows/Linux, ⌘ on macOS. Falls back gracefully where the API is
+  // missing (jsdom in tests, older browsers).
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPod|iPad/i.test(navigator.platform || navigator.userAgent || "");
+  const modKey = isMac ? "⌘" : "Ctrl";
+
   return (
     <div className="min-h-screen bg-[var(--color-cream)] md:flex">
       <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-[var(--sidebar-width)] bg-[var(--color-ink)] text-white">
@@ -71,6 +79,23 @@ function AppShellInner({
             </div>
             <NotificationCenter />
           </div>
+        </div>
+        <div className="px-4 pt-3">
+          <button
+            type="button"
+            onClick={openCommandPalette}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-sm text-white/70 hover:text-white transition group"
+            aria-label="Search"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <span className="flex-1 text-left">Search…</span>
+            <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 group-hover:bg-white/15 border border-white/10 text-white/60">
+              {modKey} K
+            </kbd>
+          </button>
         </div>
         <SidebarNav groups={groups} pathname={loc.pathname} />
         <div className="p-4 border-t border-white/10 space-y-2">
@@ -100,6 +125,17 @@ function AppShellInner({
               <p className="text-white/55 text-xs truncate">{user.name}</p>
             </Link>
             <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={openCommandPalette}
+                aria-label="Search"
+                className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-white/80 hover:text-white transition"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+              </button>
               <NotificationCenter />
               <button
                 type="button"

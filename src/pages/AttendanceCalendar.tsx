@@ -18,6 +18,7 @@ import {
 } from "../lib/calendar";
 import { closeForDate, hoursBetween, openForDate } from "../lib/restaurantHours";
 import { ShiftBulkModal } from "../components/ShiftBulkModal";
+import { useToast } from "../context/ToastContext";
 
 const DEFAULT_START = "09:00";
 const DEFAULT_END = "17:00";
@@ -74,6 +75,7 @@ type AttendanceCalendarProps = {
 
 export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps) {
   const { user: currentUser } = useAuth();
+  const toast = useToast();
   const today = new Date();
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [filterCashierId, setFilterCashierId] = useState("");
@@ -227,30 +229,74 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
       setDayShifts(list);
       setAddUserId("");
       if (res.autoAdjustedClosing && res.designatedCloserName) {
-        setMessage(
-          `Added. Closing (final cash count) assigned to ${res.designatedCloserName}; other shifts were given an end time automatically.`
-        );
+        const msg = `Closing assigned to ${res.designatedCloserName}; other shifts were given an end time automatically.`;
+        setMessage(`Added. ${msg}`);
+        toast.success("Shift added", { description: msg });
       } else {
         setMessage("Employee added to this day");
+        toast.success("Shift added");
       }
       await loadMonth();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add");
+      const msg = err instanceof Error ? err.message : "Failed to add";
+      setError(msg);
+      toast.error("Couldn't add shift", { description: msg });
     } finally {
       setSaving(false);
     }
   };
 
+  /** Remove a shift with an undo path. We capture the removed row's
+   *  user + times before the delete so the toast can recreate it via the
+   *  existing assign endpoint if the admin changes their mind. */
   const removeShift = async (id: string) => {
-    if (!selectedDate || !confirm("Remove this shift from the day?")) return;
+    if (!selectedDate) return;
+    const target = dayShifts.find((s) => s.id === id);
+    if (!confirm("Remove this shift from the day?")) return;
     setSaving(true);
     try {
       await api(`/shifts/${id}`, { method: "DELETE" });
       const list = await api<ScheduleRow[]>(`/shifts?date=${selectedDate}`);
       setDayShifts(list);
       await loadMonth();
+      if (target) {
+        const dateAtRemove = selectedDate;
+        toast.success(`${firstName(target.name)}'s shift removed`, {
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                await api(`/shifts/assign`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    date: dateAtRemove,
+                    userId: target.userId,
+                    startTime: target.startTime,
+                    endTime: target.endTime,
+                    tillClose: !target.endTime,
+                  }),
+                });
+                if (selectedDate === dateAtRemove) {
+                  const list = await api<ScheduleRow[]>(`/shifts?date=${selectedDate}`);
+                  setDayShifts(list);
+                }
+                await loadMonth();
+                toast.success("Restored");
+              } catch (e) {
+                toast.error("Couldn't restore", {
+                  description: e instanceof Error ? e.message : undefined,
+                });
+              }
+            },
+          },
+        });
+      } else {
+        toast.success("Shift removed");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove");
+      const msg = err instanceof Error ? err.message : "Failed to remove";
+      setError(msg);
+      toast.error("Couldn't remove shift", { description: msg });
     } finally {
       setSaving(false);
     }
@@ -323,18 +369,22 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
       setDayShifts(list);
       setEditingShiftId(null);
       if (res.autoAdjustedClosing && res.designatedCloserName) {
-        setMessage(
-          `Saved. Closing was reassigned to ${res.designatedCloserName}; other "until close" shifts received a fixed end time.`
-        );
+        const note = `Closing was reassigned to ${res.designatedCloserName}; other "until close" shifts received a fixed end time.`;
+        setMessage(`Saved. ${note}`);
+        toast.success("Shift updated", { description: note });
       } else if (reassigning) {
         const newName = allCashiers.find((c) => c.id === editUserId)?.name ?? "the new cashier";
         setMessage(`Reassigned to ${newName}.`);
+        toast.success(`Reassigned to ${newName}`);
       } else {
         setMessage("Shift updated.");
+        toast.success("Shift updated");
       }
       await loadMonth();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save changes");
+      const msg = err instanceof Error ? err.message : "Failed to save changes";
+      setError(msg);
+      toast.error("Couldn't save changes", { description: msg });
     } finally {
       setSaving(false);
     }
@@ -365,13 +415,21 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
       const list = await api<ScheduleRow[]>(`/shifts?date=${selectedDate}`);
       setDayShifts(list);
       if (res.autoAdjustedClosing && res.designatedCloserName) {
-        setMessage(`Closing reassigned to ${res.designatedCloserName}.`);
+        const note = `Closing reassigned to ${res.designatedCloserName}.`;
+        setMessage(note);
+        toast.success(note);
       } else {
-        setMessage(nowTillClose ? `${firstName(shift.name)} now closes.` : `${firstName(shift.name)} no longer closes.`);
+        const note = nowTillClose
+          ? `${firstName(shift.name)} now closes.`
+          : `${firstName(shift.name)} no longer closes.`;
+        setMessage(note);
+        toast.success(note);
       }
       await loadMonth();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to toggle closer");
+      const msg = err instanceof Error ? err.message : "Failed to toggle closer";
+      setError(msg);
+      toast.error("Couldn't update closer", { description: msg });
     } finally {
       setSaving(false);
     }

@@ -24,7 +24,9 @@ export function CommandPalette() {
   const listRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  // Global hotkey — bound once to window.
+  // Global hotkey — bound once to window. Also listens for the custom
+  // {@code saffron:cmdk-open} event so any UI (sidebar button, empty
+  // state CTA, etc.) can pop the palette without prop-drilling.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -35,8 +37,13 @@ export function CommandPalette() {
         setOpen(false);
       }
     };
+    const openEvt = () => setOpen(true);
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("saffron:cmdk-open", openEvt);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener("saffron:cmdk-open", openEvt);
+    };
   }, [open]);
 
   // Reset state on open. Auto-focus the input after the modal animates in.
@@ -69,25 +76,58 @@ export function CommandPalette() {
   }, [query, open]);
 
   // Quick actions are static — defined here so they don't import circularly
-  // with the route definitions.
+  // with the route definitions. Keep tags ("Go to", "Add", "Open") in the
+  // title so plain-language queries like "go to payroll" still match.
   const quickActions = useMemo<SearchHit[]>(
     () => [
-      { type: "audit", id: "qa-new-shift", title: "New shift report", subtitle: "Quick action · Cashier entry", url: "/entry", score: 100 },
-      { type: "audit", id: "qa-new-expense", title: "Add expense", subtitle: "Quick action · Finance", url: "/finance?add=expense", score: 100 },
-      { type: "audit", id: "qa-new-delivery", title: "Add delivery income", subtitle: "Quick action · Finance", url: "/finance?add=delivery", score: 100 },
-      { type: "audit", id: "qa-dashboard", title: "Open dashboard", subtitle: "Quick action", url: "/", score: 100 },
-      { type: "audit", id: "qa-reports", title: "Shift reports list", subtitle: "Quick action", url: "/reports", score: 100 },
-      { type: "audit", id: "qa-pl", title: "Profit & loss", subtitle: "Quick action", url: "/profit-loss", score: 100 },
-      { type: "audit", id: "qa-team", title: "Admin · team", subtitle: "Quick action", url: "/admin/team", score: 100 },
-      { type: "audit", id: "qa-tags", title: "Admin · tag library", subtitle: "Quick action", url: "/admin/tags", score: 100 },
-      { type: "audit", id: "qa-payouts", title: "Admin · payouts", subtitle: "Quick action", url: "/admin/payouts", score: 100 },
+      // Daily actions — surfaced first because they're the highest-frequency tasks.
+      { type: "audit", id: "qa-new-shift", title: "New shift report", subtitle: "Cashier entry", url: "/entry", score: 100 },
+      { type: "audit", id: "qa-add-expense", title: "Add expense", subtitle: "Finance ledger", url: "/finance?add=expense", score: 100 },
+      { type: "audit", id: "qa-add-delivery", title: "Add delivery income", subtitle: "Finance ledger", url: "/finance?add=delivery", score: 100 },
+      { type: "audit", id: "qa-checklists", title: "Open daily checklists", subtitle: "Operations", url: "/checklists", score: 100 },
+      { type: "audit", id: "qa-haccp", title: "Log HACCP entry", subtitle: "Food safety", url: "/haccp", score: 100 },
+
+      // Reports & analytics
+      { type: "audit", id: "qa-dashboard", title: "Go to dashboard", subtitle: "Overview", url: "/", score: 95 },
+      { type: "audit", id: "qa-reports", title: "Go to shift reports", subtitle: "History", url: "/reports", score: 95 },
+      { type: "audit", id: "qa-analytics", title: "Go to analytics", subtitle: "Reports & PDF export", url: "/analytics", score: 95 },
+      { type: "audit", id: "qa-pl", title: "Go to profit & loss", subtitle: "Reports", url: "/profit-loss", score: 95 },
+      { type: "audit", id: "qa-finance", title: "Go to finance ledger", subtitle: "Expenses & income", url: "/finance", score: 95 },
+      { type: "audit", id: "qa-menu", title: "Go to menu analytics", subtitle: "Reports", url: "/menu", score: 90 },
+      { type: "audit", id: "qa-menu-eng", title: "Menu engineering matrix", subtitle: "Reports", url: "/menu/engineering", score: 90 },
+      { type: "audit", id: "qa-treasury", title: "Treasury history", subtitle: "Reports", url: "/treasury/history", score: 90 },
+
+      // Admin — Operations
+      { type: "audit", id: "qa-inbox", title: "Admin · inbox", subtitle: "Open issues & data health", url: "/admin/inbox", score: 85 },
+      { type: "audit", id: "qa-attendance", title: "Admin · schedule", subtitle: "Calendar & shifts", url: "/admin/attendance", score: 85 },
+      { type: "audit", id: "qa-admin-menu", title: "Admin · menu items", subtitle: "Items, prices, costs", url: "/admin/menu", score: 85 },
+      { type: "audit", id: "qa-stock", title: "Admin · stock", subtitle: "Inventory & POS sync", url: "/admin/stock", score: 85 },
+      { type: "audit", id: "qa-incidents", title: "Admin · incidents", subtitle: "Breakages, complaints, accidents", url: "/admin/incidents", score: 85 },
+      { type: "audit", id: "qa-admin-checklists", title: "Admin · checklist templates", subtitle: "Opening / closing tasks", url: "/admin/checklists", score: 85 },
+      { type: "audit", id: "qa-admin-haccp", title: "Admin · HACCP logs", subtitle: "Food-safety history & export", url: "/admin/haccp", score: 85 },
+
+      // Admin — People
+      { type: "audit", id: "qa-team", title: "Admin · team", subtitle: "People & roles", url: "/admin/team", score: 85 },
+      { type: "audit", id: "qa-salaries", title: "Admin · payroll", subtitle: "Calculate pay", url: "/admin/salaries", score: 85 },
+      { type: "audit", id: "qa-payouts", title: "Admin · payouts", subtitle: "Approvals", url: "/admin/payouts", score: 85 },
+      { type: "audit", id: "qa-certs", title: "Admin · certifications", subtitle: "Sanepid, expiry alerts", url: "/admin/certifications", score: 85 },
+
+      // Admin — Setup
+      { type: "audit", id: "qa-hours", title: "Admin · restaurant hours", subtitle: "Opening times", url: "/admin/hours", score: 80 },
+      { type: "audit", id: "qa-pos", title: "Admin · POS integrations", subtitle: "Webhooks", url: "/admin/pos", score: 80 },
+      { type: "audit", id: "qa-tags", title: "Admin · tag library", subtitle: "Custom labels", url: "/admin/tags", score: 80 },
+      { type: "audit", id: "qa-security", title: "Admin · security & 2FA", subtitle: "Personal security settings", url: "/admin/security", score: 80 },
+      { type: "audit", id: "qa-settings", title: "Admin · settings", subtitle: "Restaurant-wide settings", url: "/admin/settings", score: 80 },
+      { type: "audit", id: "qa-audit", title: "Audit log", subtitle: "Who changed what", url: "/audit", score: 80 },
     ],
     []
   );
 
   const matchingQuickActions = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return quickActions.slice(0, 4); // surface a handful by default
+    // Surface the top frequent-use actions when the input is empty so
+    // first-time openers see useful destinations, not a blank dialog.
+    if (!q) return quickActions.slice(0, 6);
     return quickActions.filter((a) =>
       a.title.toLowerCase().includes(q) ||
       (a.subtitle ?? "").toLowerCase().includes(q)
@@ -334,4 +374,13 @@ function saveRecent(value: string, set: (next: string[]) => void) {
   } catch {
     // ignored
   }
+}
+
+/**
+ * Open the global command palette from anywhere. Fires a custom event
+ * picked up by the mounted {@link CommandPalette} — avoids prop-drilling
+ * an "open" callback through every layout component.
+ */
+export function openCommandPalette() {
+  window.dispatchEvent(new CustomEvent("saffron:cmdk-open"));
 }

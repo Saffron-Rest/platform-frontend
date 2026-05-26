@@ -13,7 +13,7 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge, entryStatusBadge } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
-import { Spinner } from "../components/ui/Spinner";
+import { SkeletonRows } from "../components/ui/Skeleton";
 import { Alert } from "../components/ui/Alert";
 import { AdminHistory } from "./AdminHistory";
 import { TreasurySummaryCards } from "../components/admin/TreasurySummaryCards";
@@ -654,7 +654,7 @@ export function ShiftReports() {
       {message && <Alert variant="success">{message}</Alert>}
 
       {loading ? (
-        <Spinner label="Loading reports…" />
+        <SkeletonRows count={6} />
       ) : sortedReports.length === 0 ? (
         <EmptyState
           title="No reports in this range"
