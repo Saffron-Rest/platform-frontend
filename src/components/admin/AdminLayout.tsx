@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type React from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { PageHeader } from "../ui/PageHeader";
 import {
@@ -46,7 +47,7 @@ type NavItem = {
   to: string;
   label: string;
   desc: string;
-  Icon: (props: { className?: string }) => JSX.Element;
+  Icon: (props: { className?: string }) => React.JSX.Element;
 };
 
 type NavGroup = {

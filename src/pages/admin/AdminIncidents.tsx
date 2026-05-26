@@ -154,8 +154,6 @@ export function AdminIncidents() {
     });
   }, [incidents, filter, search]);
 
-  const userName = (id: string | null) => users.find((u) => u.id === id)?.name ?? "—";
-
   return (
     <div className="space-y-6">
       <PageHeader

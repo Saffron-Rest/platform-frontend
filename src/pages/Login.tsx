@@ -1,6 +1,6 @@
 import { useState, FormEvent } from "react";
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { TwoFactorRequiredError, useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
 
@@ -8,6 +8,8 @@ export function Login() {
   const { user, login, loading } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [needsTotp, setNeedsTotp] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -20,9 +22,15 @@ export function Login() {
     setError("");
     setSubmitting(true);
     try {
-      await login(username, password);
+      await login(username, password, needsTotp ? totpCode : undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      if (err instanceof TwoFactorRequiredError) {
+        // Don't surface the error — just escalate the form to the 2FA step.
+        setNeedsTotp(true);
+        setTotpCode("");
+      } else {
+        setError(err instanceof Error ? err.message : "Login failed");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -78,8 +86,37 @@ export function Login() {
                 className="field-input"
               />
             </label>
+            {needsTotp && (
+              <label className="field-label">
+                <div className="flex items-center justify-between gap-2">
+                  <span>Two-factor code</span>
+                  <button
+                    type="button"
+                    onClick={() => { setNeedsTotp(false); setTotpCode(""); }}
+                    className="text-xs text-[var(--color-muted)] hover:underline"
+                  >
+                    Use a different account
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  required
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                  className="field-input text-2xl font-mono tracking-widest text-center"
+                  placeholder="123456"
+                  autoFocus
+                />
+                <span className="text-xs text-[var(--color-muted)] mt-1 block">
+                  Open your authenticator app and enter the 6-digit code for Saffron.
+                </span>
+              </label>
+            )}
             <Button type="submit" fullWidth disabled={submitting} className="py-3.5">
-              {submitting ? "Signing in…" : "Sign in"}
+              {submitting ? "Signing in…" : needsTotp ? "Verify code" : "Sign in"}
             </Button>
           </form>
         </div>

@@ -38,11 +38,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (username: string, password: string) => {
-    const res = await api<{ token: string; user: User }>("/auth/login", {
+  const login = async (username: string, password: string, totpCode?: string) => {
+    // We bypass the generic api() helper here because we need access to
+    // both the body and status code so we can distinguish the 2FA-required
+    // response from a plain "invalid credentials". The helper collapses both
+    // into a single Error.
+    const API_BASE =
+      (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || "/api";
+    const r = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
-      body: JSON.stringify({ username: username.trim(), password }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: username.trim(),
+        password,
+        totpCode: totpCode || undefined,
+      }),
     });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 401 && body && body.requires2fa === true) {
+        throw new TwoFactorRequiredError();
+      }
+      throw new Error(typeof body?.error === "string" ? body.error : "Login failed");
+    }
+    const res = body as { token: string; user: User };
     localStorage.setItem("token", res.token);
     setUser(res.user);
   };
