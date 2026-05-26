@@ -70,9 +70,11 @@ export type User = {
   roleDefaultPermissions?: string[];
   /** Permission keys an admin has granted on top of {@link role}. */
   extraPermissions?: string[];
-  /** {@code roleDefaultPermissions ∪ extraPermissions} — what the user
-   *  actually has. Useful for client-side gating; the backend is the
-   *  source of truth. */
+  /** Role-default permission keys an admin has explicitly revoked. */
+  revokedPermissions?: string[];
+  /** {@code (roleDefaultPermissions − revokedPermissions) ∪ extraPermissions}
+   *  — what the user actually has. Useful for client-side gating; the
+   *  backend is the source of truth. */
   effectivePermissions?: string[];
 };
 

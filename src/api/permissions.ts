@@ -1,13 +1,18 @@
 import { api } from "./client";
 
 /** One entry in the system-wide permission catalog. The backend is the
- *  source of truth — labels/descriptions live in the {@code Permission}
- *  enum and ship to the client via this endpoint so we never duplicate
- *  the copy. */
+ *  source of truth — labels, descriptions, and categories live in the
+ *  {@code Permission} enum and ship to the client via this endpoint so
+ *  we never duplicate the copy. */
 export type PermissionCatalogEntry = {
   key: string;
   label: string;
   description: string;
+  /** Stable enum name of the category (e.g. {@code "STOCK"}). Used as a
+   *  React key when grouping; UI copy should prefer {@link categoryLabel}. */
+  category: string;
+  /** Human-readable category label (e.g. {@code "Stock & inventory"}). */
+  categoryLabel: string;
 };
 
 /** Permissions view for a single user. */
@@ -17,11 +22,14 @@ export type UserPermissions = {
   name: string;
   role: "ADMIN" | "MANAGER" | "CASHIER";
   isAdmin: boolean;
-  /** Keys baked in by the user's role — cannot be unchecked. */
+  /** Keys baked in by the user's role. Admins can revoke any of these
+   *  via the {@link revokedPermissions} set — they're not locked. */
   roleDefaultPermissions: string[];
   /** Admin-granted keys on top of the role defaults. */
   extraPermissions: string[];
-  /** Union of the above — what the user effectively has. */
+  /** Role-default keys an admin has explicitly revoked. */
+  revokedPermissions: string[];
+  /** {@code (defaults − revokes) ∪ extras} — what the user actually has. */
   effectivePermissions: string[];
   /** Bundled catalog so the modal doesn't need a second fetch. */
   catalog: PermissionCatalogEntry[];
@@ -36,10 +44,11 @@ export async function getUserPermissions(userId: string) {
 }
 
 /**
- * Replace the user's *extra* permissions (above-role grants). Pass the
- * full desired set — anything not in {@code permissions} is revoked.
- * Permissions that are already implied by the user's role are silently
- * filtered server-side, so callers can send the union for convenience.
+ * Replace the user's full effective permission set. Pass the desired
+ * union — every permission the user should have. The server splits
+ * the diff against role defaults into "extras" (granted above the
+ * baseline) and "revokes" (denied from the baseline) and persists
+ * both as small CSV columns.
  */
 export async function setUserPermissions(
   userId: string,
