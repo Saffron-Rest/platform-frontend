@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { addPayRate, deletePayRate, listPayRates } from "../../api/payRates";
+import {
+  getUserPermissions,
+  setUserPermissions,
+  type UserPermissions,
+} from "../../api/permissions";
 import type { PayRateHistoryEntry, PayType, Role, User } from "../../types";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
@@ -87,6 +92,18 @@ export function AdminTeam() {
   const [resetBusyId, setResetBusyId] = useState<string | null>(null);
   const [copiedTempPw, setCopiedTempPw] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // ----- Permissions modal -----
+  // `permsView` holds the freshly-fetched server-side state for the
+  // user being edited (catalog + current grants). `permsDraft` is the
+  // in-flight Set the admin is toggling; we PUT it on save. We keep
+  // them separate so cancel just discards the draft without a refetch.
+  const [permsTarget, setPermsTarget] = useState<User | null>(null);
+  const [permsView, setPermsView] = useState<UserPermissions | null>(null);
+  const [permsDraft, setPermsDraft] = useState<Set<string>>(new Set());
+  const [permsReason, setPermsReason] = useState("");
+  const [permsLoading, setPermsLoading] = useState(false);
+  const [permsSaving, setPermsSaving] = useState(false);
 
   const loadUsers = () =>
     api<User[]>("/users")
@@ -334,6 +351,87 @@ export function AdminTeam() {
     }
   };
 
+  /**
+   * Open the "Manage permissions" modal for a teammate. We fetch the
+   * server-side permission view (catalog + current grants) before
+   * showing the modal so role defaults are accurate even after a role
+   * change made elsewhere in this session.
+   */
+  const openPermissions = async (u: User) => {
+    setPermsTarget(u);
+    setPermsView(null);
+    setPermsDraft(new Set());
+    setPermsReason("");
+    setPermsLoading(true);
+    setErr("");
+    try {
+      const view = await getUserPermissions(u.id);
+      setPermsView(view);
+      // Seed the draft with the union (defaults + extras) so the UI
+      // visually mirrors "what they currently have". We later split out
+      // the defaults server-side when saving — only the deltas matter.
+      const seeded = new Set<string>([
+        ...view.roleDefaultPermissions,
+        ...view.extraPermissions,
+      ]);
+      setPermsDraft(seeded);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to load permissions");
+      setPermsTarget(null);
+    } finally {
+      setPermsLoading(false);
+    }
+  };
+
+  const closePermissions = () => {
+    setPermsTarget(null);
+    setPermsView(null);
+    setPermsDraft(new Set());
+    setPermsReason("");
+  };
+
+  const togglePermission = (key: string) => {
+    if (!permsView) return;
+    // Role defaults are locked — flipping them would imply removing a
+    // capability the role itself grants. Changing role is the right
+    // path for that, not the permissions modal.
+    if (permsView.roleDefaultPermissions.includes(key)) return;
+    setPermsDraft((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const savePermissions = async () => {
+    if (!permsTarget || !permsView) return;
+    setPermsSaving(true);
+    setErr("");
+    try {
+      // Send the full desired union; the backend filters out role
+      // defaults and stores only true extras. Keeps the client logic
+      // simple — admins always see the union in the UI.
+      const desired = Array.from(permsDraft);
+      const updated = await setUserPermissions(
+        permsTarget.id,
+        desired,
+        permsReason.trim() || undefined,
+      );
+      setMsg(
+        updated.extraPermissions.length === 0
+          ? `Permissions reset to role defaults for ${permsTarget.name}.`
+          : `Updated permissions for ${permsTarget.name} (${updated.extraPermissions.length} extra granted).`,
+      );
+      closePermissions();
+      await loadUsers();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setPermsSaving(false);
+    }
+  };
+
   return (
     <div data-tour="tour-admin-team">
       <PageHeader
@@ -512,10 +610,29 @@ export function AdminTeam() {
                   Manager — full access to reports and operations
                 </p>
               )}
+              {u.role !== "ADMIN" && (u.extraPermissions?.length ?? 0) > 0 && (
+                <p className="text-xs text-[var(--color-muted)]">
+                  <span className="inline-flex items-center gap-1 text-[var(--color-saffron-dark)] font-medium">
+                    <span aria-hidden>★</span>
+                    {u.extraPermissions?.length} extra permission
+                    {u.extraPermissions?.length === 1 ? "" : "s"}
+                  </span>
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 mt-auto">
                 <Button variant="secondary" className="flex-1 !py-2 !text-sm" onClick={() => openEdit(u)}>
                   Edit
                 </Button>
+                {u.role !== "ADMIN" && u.active !== false && (
+                  <button
+                    type="button"
+                    onClick={() => openPermissions(u)}
+                    className="flex-1 text-sm font-medium text-[var(--color-ink)] py-2"
+                    title="Grant or revoke specific capabilities for this teammate"
+                  >
+                    Permissions
+                  </button>
+                )}
                 {u.active !== false && (
                   <button
                     type="button"
@@ -812,6 +929,21 @@ export function AdminTeam() {
           onClose={closeResetModal}
         />
       )}
+
+      {permsTarget && (
+        <PermissionsModal
+          target={permsTarget}
+          view={permsView}
+          loading={permsLoading}
+          saving={permsSaving}
+          draft={permsDraft}
+          reason={permsReason}
+          onToggle={togglePermission}
+          onReasonChange={setPermsReason}
+          onCancel={closePermissions}
+          onSave={savePermissions}
+        />
+      )}
       </div>
     </div>
   );
@@ -933,6 +1065,178 @@ function PayFields({
         />
       </label>
       {hint && <p className="text-xs text-[var(--color-muted)]">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * Manage-permissions modal for a single teammate.
+ *
+ * <p>Lists every permission the backend knows about (the catalog is
+ * bundled into the {@code UserPermissions} payload so the modal never
+ * needs a second fetch). Role defaults are rendered as locked
+ * checkboxes — flipping them would imply revoking a capability the
+ * role itself grants, which is the job of changing the role, not the
+ * permission overlay.</p>
+ *
+ * <p>The save button is only enabled when there's an actual delta vs
+ * the server state. Doing nothing should leave nothing in the audit
+ * log; the backend also short-circuits no-op writes for the same
+ * reason.</p>
+ */
+function PermissionsModal({
+  target,
+  view,
+  loading,
+  saving,
+  draft,
+  reason,
+  onToggle,
+  onReasonChange,
+  onCancel,
+  onSave,
+}: {
+  target: User;
+  view: UserPermissions | null;
+  loading: boolean;
+  saving: boolean;
+  draft: Set<string>;
+  reason: string;
+  onToggle: (key: string) => void;
+  onReasonChange: (v: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  // Decide if there's an actual delta worth saving. Without this the
+  // admin could fire off no-op PUTs that bounce against the server-side
+  // idempotency check and still litter the network panel.
+  const hasChanges = (() => {
+    if (!view) return false;
+    const currentUnion = new Set<string>([
+      ...view.roleDefaultPermissions,
+      ...view.extraPermissions,
+    ]);
+    if (currentUnion.size !== draft.size) return true;
+    for (const k of currentUnion) if (!draft.has(k)) return true;
+    return false;
+  })();
+
+  const extrasCount = view
+    ? Array.from(draft).filter((k) => !view.roleDefaultPermissions.includes(k)).length
+    : 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-end md:items-center justify-center p-0 md:p-4 bg-black/50"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="perms-modal-title"
+        className="bg-white w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-t-2xl md:rounded-2xl shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-black/[0.06] sticky top-0 bg-white z-10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-saffron-dark)]">
+            Permissions
+          </p>
+          <h3 id="perms-modal-title" className="text-lg font-semibold mt-1">
+            {target.name}
+          </h3>
+          <p className="text-xs text-[var(--color-muted)] mt-1">
+            Role: <span className="font-medium text-[var(--color-ink)]">{target.role}</span>
+            {extrasCount > 0 && (
+              <>
+                {" · "}
+                <span className="text-[var(--color-saffron-dark)] font-medium">
+                  {extrasCount} extra granted
+                </span>
+              </>
+            )}
+          </p>
+          <p className="text-[11px] text-[var(--color-muted)] mt-1">
+            Locked items are granted by the role and can only be removed by
+            changing it. New grants take effect on the user's next sign-in.
+          </p>
+        </div>
+
+        {loading || !view ? (
+          <div className="px-5 py-10 text-center text-sm text-[var(--color-muted)]">
+            Loading permissions…
+          </div>
+        ) : (
+          <>
+            <div className="px-5 py-3 space-y-2">
+              {view.catalog.map((entry) => {
+                const isDefault = view.roleDefaultPermissions.includes(entry.key);
+                const checked = draft.has(entry.key);
+                const disabled = isDefault;
+                return (
+                  <label
+                    key={entry.key}
+                    className={`flex items-start gap-3 rounded-lg border px-3 py-2 cursor-pointer transition ${
+                      checked
+                        ? "border-[var(--color-saffron)]/40 bg-[var(--color-saffron)]/[0.04]"
+                        : "border-black/[0.06] hover:bg-[var(--color-cream)]"
+                    } ${disabled ? "opacity-90 cursor-not-allowed" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => onToggle(entry.key)}
+                      className="mt-1 h-4 w-4 rounded border-black/30 text-[var(--color-saffron)] focus:ring-[var(--color-saffron)]"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-[var(--color-ink)]">
+                          {entry.label}
+                        </span>
+                        {isDefault && (
+                          <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--color-muted)] bg-black/[0.04] rounded px-1.5 py-0.5">
+                            From role
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[var(--color-muted)] mt-0.5">
+                        {entry.description}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="px-5 pb-4">
+              <label className="block text-xs font-medium text-[var(--color-muted)] mb-1">
+                Reason (optional, logged in audit trail)
+              </label>
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => onReasonChange(e.target.value)}
+                placeholder="e.g. promoted to senior cashier"
+                className="w-full rounded-md border border-black/15 px-3 py-2 text-sm focus:border-[var(--color-saffron)] focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]/30"
+              />
+            </div>
+          </>
+        )}
+
+        <div className="flex items-center justify-end gap-2 border-t border-black/5 px-5 py-3 bg-[var(--color-cream)]/40 sticky bottom-0">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="rounded-md border border-black/15 bg-white px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <Button onClick={onSave} disabled={saving || !hasChanges || loading || !view}>
+            {saving ? "Saving…" : "Save permissions"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

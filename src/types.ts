@@ -65,6 +65,15 @@ export type User = {
   payAmount?: number | null;
   /** @deprecated use payAmount */
   hourlyRate?: number | null;
+  /** Permission keys baked into the user's {@link role}.
+   *  Returned by the user-list endpoint, omitted by login responses. */
+  roleDefaultPermissions?: string[];
+  /** Permission keys an admin has granted on top of {@link role}. */
+  extraPermissions?: string[];
+  /** {@code roleDefaultPermissions ∪ extraPermissions} — what the user
+   *  actually has. Useful for client-side gating; the backend is the
+   *  source of truth. */
+  effectivePermissions?: string[];
 };
 
 export type PayRateHistoryEntry = {
