@@ -109,7 +109,26 @@ export function EntryPage() {
 
   const entryStatus = (entry?.status ?? "").toUpperCase();
   const locked = entryStatus === "LOCKED";
-  const scheduleClosingOnly = entry?.closingOnly ?? shiftType === "CLOSING";
+  /**
+   * Detect "this person is closing out someone else's day" from a few
+   * angles so a cashier who wasn't formally scheduled — but who clearly
+   * needs to do the closing — still lands on the simple closing form.
+   *
+   * <p>Signals (any one is enough):
+   * <ul>
+   *   <li>The persisted entry was opened as a closing-only shift.</li>
+   *   <li>The fetched schedule says shiftType=CLOSING + closingOnly.</li>
+   *   <li>Suggested-opening reports a pending or same-day handover,
+   *       meaning a colleague started the drawer earlier today and
+   *       hasn't filed yet.</li>
+   * </ul></p>
+   */
+  const handoverDetected =
+    !!openingHint?.handoverPending ||
+    openingHint?.source === "SAME_DAY_HANDOVER";
+  const scheduleClosingOnly =
+    entry?.closingOnly ??
+    (shiftType === "CLOSING" || (!entry && handoverDetected));
   /** Cashiers on a closing shift use the short form; admin/manager always get the full report editor. */
   const closingOnly = scheduleClosingOnly && !canManageReports;
   const readOnly = locked && !canManageReports;
@@ -737,7 +756,25 @@ export function EntryPage() {
         <Alert variant="warning" className="mb-4">
           {canManageReports
             ? "Not on the schedule for this date — you can still create a report."
-            : "You are not scheduled today. Open a report only if you are working."}
+            : handoverDetected
+              ? "You are not on today's schedule, but a colleague started the drawer. Record opening cash and your final count below to close out the day."
+              : "You are not scheduled today, but you can still file a report if you are working."}
+        </Alert>
+      )}
+
+      {!locked && !canManageReports && handoverDetected && isNew && (
+        <Alert variant="info" className="mb-4">
+          <strong>
+            Closing handover
+            {openingHint?.handoverCashierName
+              ? ` from ${openingHint.handoverCashierName}`
+              : ""}
+            .
+          </strong>{" "}
+          Confirm the opening cash{openingHint?.handoverEndTime
+            ? ` (left at ${openingHint.handoverEndTime})`
+            : ""}{" "}
+          and enter your final count.
         </Alert>
       )}
 
@@ -754,11 +791,13 @@ export function EntryPage() {
         </Card>
       ) : loading ? (
         <Spinner label="Loading report…" />
-      ) : scheduledOff && !canManageReports && !entry ? (
-        <Card className="text-center py-12 text-[var(--color-muted)]">
-          <p>No report needed — you are not scheduled today.</p>
-        </Card>
       ) : (
+        // Form always renders past this point. The old version
+        // hard-blocked "scheduledOff && !canManageReports && !entry"
+        // with a "No report needed" card, but that left covering /
+        // last-minute closing cashiers unable to file at all. The
+        // scheduledOff warning above already explains the situation;
+        // the form lets them act on it.
         <>
           {isNew && !readOnly && (
             <Card className="mb-4 !p-4 bg-[var(--color-saffron)]/8 border-[var(--color-saffron)]/25">
