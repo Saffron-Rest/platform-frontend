@@ -101,6 +101,7 @@ export function CommandPalette() {
       { type: "audit", id: "qa-inbox", title: "Admin · inbox", subtitle: "Open issues & data health", url: "/admin/inbox", score: 85 },
       { type: "audit", id: "qa-attendance", title: "Admin · schedule", subtitle: "Calendar & shifts", url: "/admin/attendance", score: 85 },
       { type: "audit", id: "qa-admin-menu", title: "Admin · menu items", subtitle: "Items, prices, costs", url: "/admin/menu", score: 85 },
+      { type: "audit", id: "qa-admin-recipes", title: "Admin · recipes", subtitle: "Cost cards & price suggestions", url: "/admin/recipes", score: 85 },
       { type: "audit", id: "qa-stock", title: "Admin · stock", subtitle: "Inventory & POS sync", url: "/admin/stock", score: 85 },
       { type: "audit", id: "qa-incidents", title: "Admin · incidents", subtitle: "Breakages, complaints, accidents", url: "/admin/incidents", score: 85 },
       { type: "audit", id: "qa-admin-checklists", title: "Admin · checklist templates", subtitle: "Opening / closing tasks", url: "/admin/checklists", score: 85 },

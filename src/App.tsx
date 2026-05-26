@@ -26,6 +26,7 @@ import { AdminAudit } from "./pages/admin/AdminAudit";
 import { AdminTagLibrary } from "./pages/admin/AdminTagLibrary";
 import { AdminDataHealth } from "./pages/admin/AdminDataHealth";
 import { AdminMenu } from "./pages/admin/AdminMenu";
+import { AdminRecipes } from "./pages/admin/AdminRecipes";
 import { AdminPos } from "./pages/admin/AdminPos";
 import { AdminStock } from "./pages/admin/AdminStock";
 import { AdminIncidents } from "./pages/admin/AdminIncidents";
@@ -79,6 +80,7 @@ export default function App() {
                   <Route path="tags" element={<AdminTagLibrary />} />
                   <Route path="inbox" element={<AdminDataHealth />} />
                   <Route path="menu" element={<AdminMenu />} />
+                  <Route path="recipes" element={<AdminRecipes />} />
                   <Route path="stock" element={<AdminStock />} />
                   <Route path="incidents" element={<AdminIncidents />} />
                   <Route path="certifications" element={<AdminCertifications />} />

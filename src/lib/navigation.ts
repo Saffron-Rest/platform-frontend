@@ -100,6 +100,7 @@ function operationsGroups(includeAdmin: boolean): NavGroup[] {
         { kind: "link", to: "/admin/stock", label: "Stock", description: "Inventory & POS sync", icon: IconBoxes },
         { kind: "link", to: "/admin/incidents", label: "Incidents", description: "Breakages, complaints, accidents", icon: IconWarning },
         { kind: "link", to: "/admin/menu", label: "Menu items", description: "Items, prices, costs", icon: IconUtensils },
+        { kind: "link", to: "/admin/recipes", label: "Recipes", description: "Cost cards & price suggestions", icon: IconUtensils },
         { kind: "link", to: "/admin/checklists", label: "Checklist templates", description: "Opening / closing tasks", icon: IconCheckSquare },
         { kind: "link", to: "/admin/haccp", label: "HACCP history", description: "Food-safety records & export", icon: IconThermometer },
       ],
