@@ -17,6 +17,7 @@ import {
   shiftMonth,
 } from "../lib/calendar";
 import { closeForDate, hoursBetween, openForDate } from "../lib/restaurantHours";
+import { ShiftBulkModal } from "../components/ShiftBulkModal";
 
 const DEFAULT_START = "09:00";
 const DEFAULT_END = "17:00";
@@ -100,6 +101,8 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
   const [editStart, setEditStart] = useState(DEFAULT_START);
   const [editEnd, setEditEnd] = useState(DEFAULT_END);
   const [editTillClose, setEditTillClose] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBanner, setBulkBanner] = useState("");
 
   const activeCashiers = useMemo(
     () => allCashiers.filter((u) => u.active !== false),
@@ -422,25 +425,38 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
   return (
     <div className="space-y-4">
       <Card className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              { id: "day" as const, label: "By day" },
-              { id: "cashier" as const, label: "By cashier" },
-            ] as const
-          ).map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              onClick={() => setViewMode(v.id)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-                viewMode === v.id ? "bg-[var(--color-ink)] text-white" : "bg-white border border-black/10"
-              }`}
+        <div className="flex flex-wrap gap-2 items-center justify-between">
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                { id: "day" as const, label: "By day" },
+                { id: "cashier" as const, label: "By cashier" },
+              ] as const
+            ).map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => setViewMode(v.id)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                  viewMode === v.id ? "bg-[var(--color-ink)] text-white" : "bg-white border border-black/10"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          {!readOnly && (
+            <Button
+              variant="dark"
+              className="!py-2 !text-sm"
+              onClick={() => { setBulkBanner(""); setBulkOpen(true); }}
             >
-              {v.label}
-            </button>
-          ))}
+              Bulk schedule…
+            </Button>
+          )}
         </div>
+
+        {bulkBanner && <Alert variant="success">{bulkBanner}</Alert>}
 
         <p className="text-sm text-[var(--color-muted)]">
           {readOnly
@@ -957,6 +973,20 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
             </Button>
           </div>
         </div>
+      )}
+
+      {!readOnly && bulkOpen && (
+        <ShiftBulkModal
+          cashiers={activeCashiers}
+          weeklyHours={weeklyHours}
+          defaultFrom={monthRange(viewYear, viewMonth).from}
+          defaultTo={monthRange(viewYear, viewMonth).to}
+          onClose={() => setBulkOpen(false)}
+          onApplied={(msg) => {
+            setBulkBanner(msg);
+            loadMonth();
+          }}
+        />
       )}
     </div>
   );
