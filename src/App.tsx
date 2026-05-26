@@ -25,6 +25,12 @@ import { AdminDataHealth } from "./pages/admin/AdminDataHealth";
 import { AdminMenu } from "./pages/admin/AdminMenu";
 import { AdminPos } from "./pages/admin/AdminPos";
 import { AdminStock } from "./pages/admin/AdminStock";
+import { AdminIncidents } from "./pages/admin/AdminIncidents";
+import { AdminCertifications } from "./pages/admin/AdminCertifications";
+import { AdminChecklists } from "./pages/admin/AdminChecklists";
+import { DailyChecklists } from "./pages/DailyChecklists";
+import { HaccpLogs } from "./pages/HaccpLogs";
+import { AdminSecurity } from "./pages/admin/AdminSecurity";
 import { MenuAnalytics } from "./pages/MenuAnalytics";
 import { MenuEngineering } from "./pages/MenuEngineering";
 import { FinanceLedger } from "./pages/FinanceLedger";
@@ -42,6 +48,8 @@ export default function App() {
             <Route path="/entry" element={<EntryPage />} />
             <Route path="/entry/:id" element={<EntryDetail />} />
             <Route path="/schedule" element={<Schedule />} />
+            <Route path="/checklists" element={<DailyChecklists />} />
+            <Route path="/haccp" element={<HaccpLogs />} />
             <Route element={<OperationsGuard />}>
               <Route path="/reports" element={<ShiftReports />} />
               <Route path="/analytics" element={<Reports />} />
@@ -66,6 +74,11 @@ export default function App() {
                 <Route path="inbox" element={<AdminDataHealth />} />
                 <Route path="menu" element={<AdminMenu />} />
                 <Route path="stock" element={<AdminStock />} />
+                <Route path="incidents" element={<AdminIncidents />} />
+                <Route path="certifications" element={<AdminCertifications />} />
+                <Route path="checklists" element={<AdminChecklists />} />
+                <Route path="haccp" element={<HaccpLogs />} />
+                <Route path="security" element={<AdminSecurity />} />
                 <Route path="pos" element={<AdminPos />} />
               </Route>
             </Route>

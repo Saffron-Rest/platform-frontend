@@ -2,10 +2,20 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { api } from "../api/client";
 import type { User } from "../types";
 
+/** Thrown by {@link AuthCtx.login} when the user has 2FA enabled but no
+ *  code was supplied. The login page should catch this, prompt for the
+ *  code, then call {@code login(username, password, code)} again. */
+export class TwoFactorRequiredError extends Error {
+  constructor() {
+    super("Two-factor authentication required");
+    this.name = "TwoFactorRequiredError";
+  }
+}
+
 type AuthCtx = {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, totpCode?: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => void;
 };
