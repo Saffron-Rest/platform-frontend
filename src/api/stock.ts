@@ -103,6 +103,18 @@ export async function archiveStock(id: string) {
   return api<{ archived: string }>(`/stock/${id}`, { method: "DELETE" });
 }
 
+/**
+ * Permanently remove an archived stock item AND its movement history.
+ * Admin-only on the backend. The optional reason is recorded in the
+ * audit log so future questions of "where did Y go?" have an answer.
+ */
+export async function deleteStockPermanently(id: string, reason?: string) {
+  return api<{ deleted: string }>(`/stock/${id}/permanent`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason: reason ?? null }),
+  });
+}
+
 export async function listMovements(id: string, limit = 100) {
   return api<StockMovement[]>(`/stock/${id}/movements?limit=${limit}`);
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   adjustStock,
   archiveStock,
+  deleteStockPermanently,
   createStock,
   listMovements,
   listStock,
@@ -115,6 +116,13 @@ export function AdminStock() {
 
   const [adjustingFor, setAdjustingFor] = useState<StockItem | null>(null);
   const [historyFor, setHistoryFor] = useState<StockItem | null>(null);
+  // Two-step delete: archive first (handled by the regular Archive action),
+  // then confirm permanent removal via this modal. We hold the candidate
+  // item + a typed-confirmation string here.
+  const [deletingItem, setDeletingItem] = useState<StockItem | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -224,6 +232,44 @@ export function AdminStock() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Archive failed");
+    }
+  };
+
+  const openDeleteConfirm = (it: StockItem) => {
+    setDeletingItem(it);
+    setDeleteConfirm("");
+    setDeleteReason("");
+    setError("");
+  };
+
+  const closeDeleteConfirm = () => {
+    setDeletingItem(null);
+    setDeleteConfirm("");
+    setDeleteReason("");
+  };
+
+  /**
+   * Wipe the item and its movement ledger after the admin has typed the
+   * item's name to confirm. The backend additionally guards against
+   * deleting an active item — this UI only exposes the action on the
+   * Archived tab, but the server check is the real gate.
+   */
+  const confirmDeleteItem = async () => {
+    if (!deletingItem) return;
+    if (deleteConfirm.trim() !== deletingItem.name) {
+      setError(`Type the item's name "${deletingItem.name}" to confirm.`);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteStockPermanently(deletingItem.id, deleteReason.trim() || undefined);
+      setInfo(`Permanently deleted "${deletingItem.name}".`);
+      closeDeleteConfirm();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -370,7 +416,7 @@ export function AdminStock() {
                         >
                           Edit
                         </button>
-                        {it.active && (
+                        {it.active ? (
                           <>
                             <span className="text-[var(--color-muted)] mx-2">·</span>
                             <button
@@ -379,6 +425,18 @@ export function AdminStock() {
                               className="text-sm text-red-700 hover:underline"
                             >
                               Archive
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[var(--color-muted)] mx-2">·</span>
+                            <button
+                              type="button"
+                              onClick={() => openDeleteConfirm(it)}
+                              className="text-sm text-red-700 hover:underline"
+                              title="Permanently remove this item and its movement history"
+                            >
+                              Delete permanently
                             </button>
                           </>
                         )}
@@ -427,6 +485,77 @@ export function AdminStock() {
           }}
           onError={setError}
         />
+      )}
+
+      {deletingItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="stock-delete-title"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-red-200 bg-red-50 px-6 py-4 rounded-t-2xl">
+              <h2 id="stock-delete-title" className="text-base font-semibold text-red-900">
+                Delete permanently?
+              </h2>
+              <p className="mt-1 text-sm text-red-900/80">
+                This removes <strong>{deletingItem.name}</strong> and its entire
+                movement history. The action cannot be undone.
+              </p>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[var(--color-muted)] mb-1">
+                  Type <span className="font-mono text-[var(--color-ink)]">{deletingItem.name}</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirm}
+                  onChange={(e) => setDeleteConfirm(e.target.value)}
+                  autoFocus
+                  className="w-full rounded-md border border-black/15 px-3 py-2 text-sm focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-200"
+                  placeholder={deletingItem.name}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--color-muted)] mb-1">
+                  Reason (optional, logged in audit trail)
+                </label>
+                <input
+                  type="text"
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  className="w-full rounded-md border border-black/15 px-3 py-2 text-sm focus:border-[var(--color-saffron)] focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]/30"
+                  placeholder="e.g. duplicate item, created in error"
+                />
+              </div>
+              {error && (
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                  {error}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-black/5 px-6 py-3 bg-[var(--color-cream)]/40 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={closeDeleteConfirm}
+                disabled={deleting}
+                className="rounded-md border border-black/15 bg-white px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteItem}
+                disabled={deleting || deleteConfirm.trim() !== deletingItem.name}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting ? "Deleting…" : "Delete permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
