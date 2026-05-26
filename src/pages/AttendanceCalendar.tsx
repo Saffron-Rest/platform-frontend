@@ -16,7 +16,7 @@ import {
   monthRange,
   shiftMonth,
 } from "../lib/calendar";
-import { closeForDate, hoursBetween } from "../lib/restaurantHours";
+import { closeForDate, hoursBetween, openForDate } from "../lib/restaurantHours";
 
 const DEFAULT_START = "09:00";
 const DEFAULT_END = "17:00";
@@ -145,6 +145,22 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
     }
   }, [readOnly, byDate]);
 
+  // Re-seed the Add-employee defaults when weekly hours arrive AFTER the
+  // day was already opened. Without this the inputs would be stuck on
+  // 09:00–17:00 (the static fallback) until the admin closes and reopens
+  // the day. We only overwrite when the inputs still hold the static
+  // fallback — never touch a value the admin has typed.
+  useEffect(() => {
+    if (!selectedDate || !weeklyHours) return;
+    const dayOpen = openForDate(selectedDate, weeklyHours);
+    const dayClose = closeForDate(selectedDate, weeklyHours);
+    if (dayOpen && addStart === DEFAULT_START) setAddStart(dayOpen);
+    if (dayClose && addEnd === DEFAULT_END) setAddEnd(dayClose);
+    // We intentionally exclude addStart/addEnd from deps so this only fires
+    // on weeklyHours / selectedDate changes — typed values are preserved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weeklyHours, selectedDate]);
+
   const filterShifts = (rows: ScheduleRow[]) =>
     filterCashierId ? rows.filter((s) => s.userId === filterCashierId) : rows;
 
@@ -152,8 +168,15 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
     setSelectedDate(dateKey);
     setMessage("");
     setAddUserId(prefillCashierId ?? "");
-    setAddStart(DEFAULT_START);
-    setAddEnd(DEFAULT_END);
+    // Default the start/end times to the restaurant's actual open/close for
+    // that weekday (from {@code /settings/payroll}). Falls back to 09:00–17:00
+    // only when no weekly hours have been configured yet. This makes the
+    // shift the admin is about to create match what the rest of the system
+    // already knows about the restaurant's day instead of a hardcoded guess.
+    const dayOpen = openForDate(dateKey, weeklyHours);
+    const dayClose = closeForDate(dateKey, weeklyHours);
+    setAddStart(dayOpen ?? DEFAULT_START);
+    setAddEnd(dayClose ?? DEFAULT_END);
     setAddTillClose(false);
     try {
       const list = await api<ScheduleRow[]>(`/shifts?date=${dateKey}`);
@@ -223,6 +246,7 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
   const availableToAdd = activeCashiers.filter((c) => !dayShifts.some((s) => s.userId === c.id));
 
   const closeForSelectedDate = selectedDate ? closeForDate(selectedDate, weeklyHours) : null;
+  const openForSelectedDate = selectedDate ? openForDate(selectedDate, weeklyHours) : null;
   const previewHours =
     closeForSelectedDate && addStart
       ? hoursBetween(addStart, addTillClose ? closeForSelectedDate : addEnd)
@@ -586,6 +610,31 @@ export function AttendanceCalendar({ readOnly = false }: AttendanceCalendarProps
                         ))}
                       </select>
                     </label>
+                    {(openForSelectedDate || closeForSelectedDate) && (
+                      <p className="text-xs text-[var(--color-muted)] -mb-1 flex items-center gap-1 flex-wrap">
+                        <span aria-hidden>🏛</span>
+                        <span>
+                          Restaurant hours for this day:{" "}
+                          <strong className="text-[var(--color-ink)]">
+                            {openForSelectedDate ?? "—"} – {closeForSelectedDate ?? "—"}
+                          </strong>
+                          .{" "}
+                          {(addStart !== openForSelectedDate || (!addTillClose && addEnd !== closeForSelectedDate)) && (
+                            <button
+                              type="button"
+                              className="underline text-[var(--color-saffron-dark)] hover:text-[var(--color-saffron)]"
+                              onClick={() => {
+                                if (openForSelectedDate) setAddStart(openForSelectedDate);
+                                if (closeForSelectedDate) setAddEnd(closeForSelectedDate);
+                                setAddTillClose(false);
+                              }}
+                            >
+                              Use these
+                            </button>
+                          )}
+                        </span>
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 gap-3">
                       <label className="field-label">
                         From

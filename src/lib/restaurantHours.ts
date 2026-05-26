@@ -26,6 +26,13 @@ export function closeForDate(dateIso: string, weekly: WeeklyHours | null | undef
   return day.close;
 }
 
+/** Resolved restaurant open time (HH:mm) for the given date, or null if not configured / closed. */
+export function openForDate(dateIso: string, weekly: WeeklyHours | null | undefined): string | null {
+  const day = dayFor(dateIso, weekly);
+  if (!day || day.closed) return null;
+  return day.open;
+}
+
 /** Open hours between two HH:mm strings as a decimal (e.g. 13.50). Returns 0 on invalid input. */
 export function hoursBetween(startHHMM: string | null | undefined, endHHMM: string | null | undefined): number {
   if (!startHHMM || !endHHMM) return 0;
