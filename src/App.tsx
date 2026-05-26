@@ -24,6 +24,7 @@ import { AdminTagLibrary } from "./pages/admin/AdminTagLibrary";
 import { AdminDataHealth } from "./pages/admin/AdminDataHealth";
 import { AdminMenu } from "./pages/admin/AdminMenu";
 import { AdminPos } from "./pages/admin/AdminPos";
+import { AdminStock } from "./pages/admin/AdminStock";
 import { MenuAnalytics } from "./pages/MenuAnalytics";
 import { MenuEngineering } from "./pages/MenuEngineering";
 import { FinanceLedger } from "./pages/FinanceLedger";
@@ -64,6 +65,7 @@ export default function App() {
                 <Route path="tags" element={<AdminTagLibrary />} />
                 <Route path="inbox" element={<AdminDataHealth />} />
                 <Route path="menu" element={<AdminMenu />} />
+                <Route path="stock" element={<AdminStock />} />
                 <Route path="pos" element={<AdminPos />} />
               </Route>
             </Route>

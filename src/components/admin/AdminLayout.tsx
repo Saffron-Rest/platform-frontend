@@ -10,6 +10,7 @@ const tabs = [
   { to: "/admin/hours", label: "Hours", desc: "Opening times" },
   { to: "/admin/settings", label: "Treasury", desc: "Balances & %" },
   { to: "/admin/menu", label: "Menu", desc: "Items, prices, costs" },
+  { to: "/admin/stock", label: "Stock", desc: "Inventory & POS sync" },
   { to: "/admin/pos", label: "POS", desc: "Webhook integrations" },
   { to: "/admin/tags", label: "Tags", desc: "Custom labels" },
 ];

@@ -22,6 +22,7 @@ export function entityLabel(type: string) {
     Settings: "Settings",
     Report: "Export",
     Auth: "Sign-in",
+    StockItem: "Stock item",
   };
   return labels[type] ?? type;
 }
@@ -46,6 +47,10 @@ export function actionAccent(action: string): string {
       return "bg-amber-100 text-amber-900 ring-amber-200";
     case "CREATE":
       return "bg-blue-100 text-blue-800 ring-blue-200";
+    case "STOCK_ADJUST":
+      return "bg-violet-100 text-violet-800 ring-violet-200";
+    case "STOCK_REVERT":
+      return "bg-orange-100 text-orange-800 ring-orange-200";
     default:
       return "bg-[var(--color-cream)] text-[var(--color-ink)] ring-black/10";
   }
@@ -70,6 +75,10 @@ export function actionIcon(action: string): string {
       return "○";
     case "EXPORT":
       return "↓";
+    case "STOCK_ADJUST":
+      return "±";
+    case "STOCK_REVERT":
+      return "↶";
     default:
       return "•";
   }
