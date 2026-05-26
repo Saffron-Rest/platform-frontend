@@ -18,6 +18,8 @@ import {
   type StockStatus,
 } from "../../api/stock";
 import { listItems as listMenuItems, type MenuItem } from "../../api/menu";
+import { getRecipesAffectedByStock, type RecipeRef } from "../../api/recipes";
+import { Link } from "react-router-dom";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Alert } from "../../components/ui/Alert";
@@ -615,6 +617,28 @@ function EditorModal({
     [existingItems, draft.id]
   );
 
+  // Recipes that consume this stock item — used to warn the admin
+  // that changing the unit cost will silently reprice N cost cards.
+  // Skipped on the "create" flow since there are no references yet.
+  const [affectedRecipes, setAffectedRecipes] = useState<RecipeRef[]>([]);
+  useEffect(() => {
+    if (!draft.id) {
+      setAffectedRecipes([]);
+      return;
+    }
+    let alive = true;
+    getRecipesAffectedByStock(draft.id)
+      .then((r) => {
+        if (alive) setAffectedRecipes(r);
+      })
+      .catch(() => {
+        if (alive) setAffectedRecipes([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [draft.id]);
+
   return (
     <Modal title={isEdit ? "Edit stock item" : "Add stock item"} onClose={onCancel}>
       <div className="space-y-4">
@@ -722,6 +746,39 @@ function EditorModal({
             />
           </Field>
         </div>
+
+        {affectedRecipes.length > 0 && (
+          <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900">
+            <p className="font-medium">
+              {affectedRecipes.length === 1
+                ? "1 recipe uses this ingredient"
+                : `${affectedRecipes.length} recipes use this ingredient`}
+              {" — changing the unit cost will reprice them."}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {affectedRecipes.slice(0, 6).map((r) => (
+                <li key={r.id}>
+                  <Link
+                    to="/admin/recipes"
+                    className="hover:underline text-amber-900"
+                  >
+                    {r.name}
+                  </Link>
+                  {!r.active && (
+                    <span className="ml-1 text-[10px] uppercase tracking-wider font-semibold opacity-70">
+                      archived
+                    </span>
+                  )}
+                </li>
+              ))}
+              {affectedRecipes.length > 6 && (
+                <li className="opacity-70">
+                  + {affectedRecipes.length - 6} more…
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
 
         <Field label="Notes">
           <textarea
