@@ -165,11 +165,17 @@ export function Dashboard() {
               data.platforms.other
             }
           />
-          <StatTile
-            label="Drawer diff."
-            value={data.difference}
-            warn={data.difference < -0.01}
-          />
+          {/* Cashier without a report = no meaningful drawer diff yet;
+              showing 0.00 would falsely signal "balanced". */}
+          {isCashier(user?.role) && data.entries.length === 0 ? (
+            <StatTile label="Drawer diff." placeholder="—" />
+          ) : (
+            <StatTile
+              label="Drawer diff."
+              value={data.difference}
+              warn={data.difference < -0.01}
+            />
+          )}
         </div>
         {canOperate(user?.role) && (
           <p className="text-xs text-[var(--color-muted)] mt-2">
@@ -277,11 +283,15 @@ function StatTile({
   value,
   highlight,
   warn,
+  placeholder,
 }: {
   label: string;
-  value: number;
+  value?: number;
   highlight?: boolean;
   warn?: boolean;
+  /** When set, renders this string instead of the formatted value
+   *  (used e.g. for "—" when there is no data yet for this metric). */
+  placeholder?: string;
 }) {
   return (
     <div
@@ -300,7 +310,9 @@ function StatTile({
       >
         {label}
       </p>
-      <p className="text-xl font-bold tabular-nums mt-1">{fmt(value)}</p>
+      <p className="text-xl font-bold tabular-nums mt-1">
+        {placeholder ?? fmt(value ?? 0)}
+      </p>
     </div>
   );
 }

@@ -27,7 +27,7 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { Alert } from "../components/ui/Alert";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
-import { Spinner } from "../components/ui/Spinner";
+import { Skeleton } from "../components/ui/Skeleton";
 import { ReportStepper } from "../components/report/ReportStepper";
 import { ReportSummaryBar } from "../components/report/ReportSummaryBar";
 import {
@@ -627,7 +627,10 @@ export function EntryPage() {
     }
   };
 
-  if (loading && !canManageReports) return <Spinner label="Loading report…" />;
+  // Note: we no longer block the whole page with a centered spinner for
+  // cashiers — that hid the page header and context banner. Instead the
+  // banner/skeleton inside the editor area renders below while loading.
+
 
   return (
     <div>
@@ -790,7 +793,19 @@ export function EntryPage() {
           <p className="text-sm mt-1">Pick who this report is for, then fill in or create it.</p>
         </Card>
       ) : loading ? (
-        <Spinner label="Loading report…" />
+        /* Inline skeleton — preserves the page header & context banner
+           above, so the cashier still sees the date / shift / status
+           while the form loads. */
+        <div className="space-y-4" role="status" aria-live="polite">
+          <span className="sr-only">Loading report…</span>
+          <Skeleton className="h-20 rounded-2xl" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Skeleton className="h-28 rounded-2xl" />
+            <Skeleton className="h-28 rounded-2xl" />
+          </div>
+          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="h-24 rounded-2xl" />
+        </div>
       ) : (
         // Form always renders past this point. The old version
         // hard-blocked "scheduledOff && !canManageReports && !entry"
@@ -809,7 +824,10 @@ export function EntryPage() {
             </Card>
           )}
 
-          {!readOnly && <ReportStepper steps={steps} />}
+          {/* Stepper helps cashiers navigate a long full report, but it's
+              noise for a 2-step closing-only flow (the ClosingEntryForm
+              already shows explicit "Step 1 / Step 2" badges). */}
+          {!readOnly && !closingOnly && <ReportStepper steps={steps} />}
 
           {!readOnly && (
             <ReportValidationPanel issues={validationIssues} ready={canSubmit} />
@@ -828,7 +846,11 @@ export function EntryPage() {
 
           <div
             data-tour="tour-entry-form"
-            className={!readOnly || (locked && canManageReports) ? "mb-40 md:mb-0" : ""}
+            // Bottom padding on mobile clears the sticky .action-bar. The
+            // bar can stack up to ~3 stacked buttons (unlock + secondary +
+            // primary) plus the diff line + Save link, so we reserve enough
+            // room for the worst case to keep the last form input visible.
+            className={!readOnly || (locked && canManageReports) ? "pb-64 md:pb-0" : ""}
           >
             {closingOnly ? (
               <ClosingEntryForm

@@ -23,7 +23,10 @@ export function ReportSummaryBar({
   return (
     <div
       data-tour="tour-entry-summary"
-      className="sticky top-0 z-20 -mx-4 px-4 py-2.5 mb-4 bg-[var(--color-cream)]/95 backdrop-blur-md border-b border-black/5 md:static md:mx-0 md:px-0 md:rounded-2xl md:border md:bg-white md:shadow-sm"
+      // On mobile we sit just below the sticky mini-header (h-14 = 3.5rem).
+      // z-20 < the header's z-30 so even if the offset is briefly wrong on
+      // an in-app keyboard close, the header still wins.
+      className="sticky top-14 z-20 -mx-4 px-4 py-2.5 mb-4 bg-[var(--color-cream)]/95 backdrop-blur-md border-b border-black/5 md:static md:top-auto md:mx-0 md:px-0 md:rounded-2xl md:border md:bg-white md:shadow-sm"
     >
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
         <div className="px-2 py-1.5 rounded-xl bg-white/80 md:bg-[var(--color-cream)]/50">
