@@ -87,6 +87,7 @@ export function Dashboard() {
   return (
     <div className="space-y-8">
       <PageHeader
+        kicker={canOperate(user?.role) ? "Overview" : "Today"}
         title={greeting}
         subtitle={
           canOperate(user?.role)

@@ -157,9 +157,16 @@ export function AdminIncidents() {
   return (
     <div className="space-y-6">
       <PageHeader
+        kicker="Operations"
         title="Incidents"
         subtitle="Breakages, complaints, accidents — anything worth a 'this happened' entry."
         action={<Button onClick={() => setEditor(blankDraft())}>+ Report incident</Button>}
+        tabs={[
+          { id: "OPEN", label: "Active", active: filter === "OPEN", onClick: () => setFilter("OPEN"), badge: counts.open + counts.inProgress },
+          { id: "ASSIGNED", label: "Assigned", active: filter === "ASSIGNED", onClick: () => setFilter("ASSIGNED") },
+          { id: "CRITICAL", label: "Critical", active: filter === "CRITICAL", onClick: () => setFilter("CRITICAL"), badge: counts.critical },
+          { id: "ALL", label: "All", active: filter === "ALL", onClick: () => setFilter("ALL") },
+        ]}
       />
 
       {error && (
@@ -187,29 +194,7 @@ export function AdminIncidents() {
       </div>
 
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex gap-1">
-            {(["OPEN", "ASSIGNED", "CRITICAL", "ALL"] as Filter[]).map((f) => {
-              const active = filter === f;
-              const label = f === "OPEN"
-                ? `Active (${counts.open + counts.inProgress})`
-                : f === "ASSIGNED"
-                ? "Assigned"
-                : f === "CRITICAL"
-                ? `Critical (${counts.critical})`
-                : "All";
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFilter(f)}
-                  className={`tab-pill shrink-0 ${active ? "tab-pill-active" : "tab-pill-idle"}`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-3 mb-4">
           <input
             type="search"
             placeholder="Search by title, category, description…"

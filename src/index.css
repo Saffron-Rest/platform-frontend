@@ -13,12 +13,12 @@
   --color-success: #2d6a4f;
   --color-danger: #9b2226;
   --color-card: #ffffff;
-  --sidebar-width: 16.5rem;
+  --sidebar-width: 15rem;
   --nav-height: 4.25rem;
   --radius-lg: 1rem;
   --radius-xl: 1.25rem;
-  --shadow-soft: 0 1px 2px rgb(26 22 20 / 0.04), 0 4px 16px rgb(26 22 20 / 0.06);
-  --shadow-card: 0 2px 8px rgb(26 22 20 / 0.06), 0 12px 32px rgb(26 22 20 / 0.08);
+  --shadow-soft: 0 1px 1px rgb(26 22 20 / 0.03), 0 1px 2px rgb(26 22 20 / 0.04);
+  --shadow-card: 0 2px 4px rgb(26 22 20 / 0.04), 0 8px 24px rgb(26 22 20 / 0.06);
 }
 
 body {
@@ -58,8 +58,19 @@ input[type="number"] {
   }
 
   .surface-card {
-    @apply bg-white rounded-2xl border border-black/[0.06];
+    @apply bg-white rounded-xl border border-black/[0.05];
     box-shadow: var(--shadow-soft);
+  }
+
+  /* Stripe-like section header — uppercase label + thin divider — for
+     dense lists where a full <PageHeader> would be overkill. */
+  .section-header {
+    @apply flex items-end justify-between gap-3 mb-3 pb-2 border-b border-black/[0.05];
+  }
+
+  /* Page toolbar: filters + search + actions row, used above lists. */
+  .page-toolbar {
+    @apply flex flex-wrap items-center gap-2 mb-4;
   }
 
   .section-title {
@@ -79,15 +90,26 @@ input[type="number"] {
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors;
+    @apply relative flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors;
   }
 
   .nav-item-active {
-    @apply bg-[var(--color-saffron)] text-white shadow-sm;
+    @apply bg-white/[0.08] text-white;
+  }
+
+  .nav-item-active::before {
+    content: "";
+    position: absolute;
+    left: -12px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: var(--color-saffron);
+    border-radius: 1px;
   }
 
   .nav-item-idle {
-    @apply text-white/75 hover:bg-white/10 hover:text-white;
+    @apply text-white/65 hover:bg-white/[0.05] hover:text-white;
   }
 
   .hub-tile {

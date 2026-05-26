@@ -96,6 +96,15 @@ export function AdminTeam() {
     return list;
   }, [users, filter, section]);
 
+  // Counts for the tab badges — show how many active people sit in each
+  // section so admins don't have to click both to know.
+  const sectionCounts = useMemo(() => {
+    return {
+      cashiers: users.filter((u) => u.role === "CASHIER" && u.active !== false).length,
+      managers: users.filter((u) => u.role === "MANAGER" && u.active !== false).length,
+    };
+  }, [users]);
+
   const createTeamMember = async (e: FormEvent) => {
     e.preventDefault();
     setMsg("");
@@ -270,53 +279,57 @@ export function AdminTeam() {
   };
 
   return (
-    <div className="space-y-4" data-tour="tour-admin-team">
+    <div data-tour="tour-admin-team">
       <PageHeader
+        kicker="People"
         title="Team"
-        subtitle="Create managers and cashiers, set pay for cashiers, activate or deactivate"
+        subtitle="Create managers and cashiers, set pay rates, and toggle access."
         action={
           <Button onClick={() => setShowCreate((v) => !v)}>
             {showCreate ? "Cancel" : section === "cashiers" ? "+ Add cashier" : "+ Add manager"}
           </Button>
         }
+        tabs={[
+          {
+            id: "cashiers",
+            label: "Cashiers",
+            active: section === "cashiers",
+            onClick: () => { setSection("cashiers"); setShowCreate(false); },
+            badge: sectionCounts.cashiers,
+          },
+          {
+            id: "managers",
+            label: "Managers",
+            active: section === "managers",
+            onClick: () => { setSection("managers"); setShowCreate(false); },
+            badge: sectionCounts.managers,
+          },
+        ]}
       />
 
-      <div className="flex gap-2 p-1 rounded-xl bg-[var(--color-cream)] w-fit">
-        {(["cashiers", "managers"] as TeamSection[]).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => {
-              setSection(s);
-              setShowCreate(false);
-            }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium capitalize ${
-              section === s ? "bg-white shadow-sm text-[var(--color-ink)]" : "text-[var(--color-muted)]"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
+      <div className="page-toolbar">
+        <div className="flex items-center gap-1 p-1 rounded-full bg-white border border-black/[0.06]">
+          {(["active", "inactive", "all"] as Filter[]).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1 rounded-full text-xs font-medium capitalize transition ${
+                filter === f
+                  ? "bg-[var(--color-ink)] text-white"
+                  : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
       </div>
 
+      <div className="space-y-4">
       {loadError && <Alert variant="error">{loadError}</Alert>}
       {msg && <Alert variant="success">{msg}</Alert>}
       {err && <Alert variant="error">{err}</Alert>}
-
-      <div className="flex gap-2">
-        {(["active", "inactive", "all"] as Filter[]).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize ${
-              filter === f ? "bg-[var(--color-ink)] text-white" : "bg-white border"
-            }`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
 
       {showCreate && (
         <Card>
@@ -721,6 +734,7 @@ export function AdminTeam() {
           </Card>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -230,11 +230,16 @@ export function AdminStock() {
   return (
     <div className="space-y-6">
       <PageHeader
+        kicker="Operations"
         title="Stock"
         subtitle="Track on-hand inventory; sync automatically when a POS sale comes in."
-        action={
-          <Button onClick={startCreate}>+ Add stock item</Button>
-        }
+        action={<Button onClick={startCreate}>+ Add stock item</Button>}
+        tabs={[
+          { id: "ALL", label: "Active", active: tab === "ALL", onClick: () => setTab("ALL"), badge: counts.ok + counts.low + counts.out },
+          { id: "LOW", label: "Low", active: tab === "LOW", onClick: () => setTab("LOW"), badge: counts.low },
+          { id: "OUT", label: "Out", active: tab === "OUT", onClick: () => setTab("OUT"), badge: counts.out },
+          { id: "ARCHIVED", label: "Archived", active: tab === "ARCHIVED", onClick: () => setTab("ARCHIVED"), badge: counts.archived },
+        ]}
       />
 
       {error && (
@@ -276,28 +281,7 @@ export function AdminStock() {
       </div>
 
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex gap-1">
-            {(["ALL", "LOW", "OUT", "ARCHIVED"] as Tab[]).map((t) => {
-              const active = tab === t;
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTab(t)}
-                  className={`tab-pill shrink-0 ${active ? "tab-pill-active" : "tab-pill-idle"}`}
-                >
-                  {t === "ALL"
-                    ? `Active (${counts.ok + counts.low + counts.out})`
-                    : t === "LOW"
-                    ? `Low (${counts.low})`
-                    : t === "OUT"
-                    ? `Out (${counts.out})`
-                    : `Archived (${counts.archived})`}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-3 mb-4">
           <input
             type="search"
             placeholder="Search by name, SKU, category…"

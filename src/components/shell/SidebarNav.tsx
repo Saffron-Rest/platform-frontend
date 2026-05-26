@@ -10,13 +10,13 @@ type Props = {
 
 export function SidebarNav({ groups, pathname }: Props) {
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6" aria-label="Main">
+    <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5" aria-label="Main">
       {groups.map((group) => (
         <div key={group.id}>
-          <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+          <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">
             {group.label}
           </p>
-          <ul className="space-y-0.5">
+          <ul className="space-y-px">
             {group.items.map((item) => {
               const active = isNavActive(pathname, item.to);
               const Icon = item.icon;
@@ -27,10 +27,8 @@ export function SidebarNav({ groups, pathname }: Props) {
                     data-tour={tourTargetFromPath(item.to)}
                     className={`nav-item ${active ? "nav-item-active" : "nav-item-idle"}`}
                   >
-                    <Icon className="w-5 h-5 shrink-0 opacity-90" />
-                    <span className="min-w-0">
-                      <span className="block truncate">{item.label}</span>
-                    </span>
+                    <Icon className="w-[18px] h-[18px] shrink-0" />
+                    <span className="min-w-0 truncate">{item.label}</span>
                   </Link>
                 </li>
               );

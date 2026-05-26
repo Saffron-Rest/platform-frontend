@@ -6,8 +6,9 @@ export function AdminAttendance() {
   return (
     <div className="space-y-4">
       <PageHeader
+        kicker="Operations"
         title="Schedule"
-        subtitle="Plan who works which days — these shifts drive the Salaries calculation"
+        subtitle="Plan who works which days — these shifts drive the payroll calculation."
         action={
           <Link
             to="/admin/hours"
