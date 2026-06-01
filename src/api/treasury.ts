@@ -25,7 +25,8 @@ export type TreasuryLedgerKind =
   | "MANUAL_DELIVERY"
   | "CARD_SETTLEMENT"
   | "STANDALONE_EXPENSE"
-  | "SALARY_PAYOUT";
+  | "SALARY_PAYOUT"
+  | "OWNER_REIMBURSEMENT";
 
 export type TreasuryLedgerRow = {
   date: string;
