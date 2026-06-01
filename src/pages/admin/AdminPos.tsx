@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   configureDotykacka,
   createPosIntegration,
@@ -371,6 +372,11 @@ export function AdminPos() {
       <PageHeader
         title="POS integrations"
         subtitle="Connect your POS so menu analytics and engineering use real receipt data."
+        action={
+          <Link to="/admin/pos/simulator">
+            <Button variant="secondary">Open sale simulator</Button>
+          </Link>
+        }
       />
 
       {error && <Alert variant="error">{error}</Alert>}

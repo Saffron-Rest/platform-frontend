@@ -77,3 +77,19 @@ export async function revertEntry(
 export async function syncEntry(entryId: string): Promise<DailyEntry> {
   return api<DailyEntry>(`/entries/${entryId}/sync`, { method: "POST" });
 }
+
+/**
+ * Reassign a shift report to a different calendar date. Admin only.
+ * Throws with a friendly message if the new date is in the future or
+ * already has a (possibly soft-deleted) report for the same cashier.
+ */
+export async function moveEntry(
+  entryId: string,
+  newDate: string,
+  reason?: string,
+): Promise<DailyEntry> {
+  return api<DailyEntry>(`/entries/${entryId}/move`, {
+    method: "POST",
+    body: JSON.stringify({ newDate, reason: reason ?? "" }),
+  });
+}

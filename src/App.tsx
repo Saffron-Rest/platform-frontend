@@ -28,6 +28,7 @@ import { AdminDataHealth } from "./pages/admin/AdminDataHealth";
 import { AdminMenu } from "./pages/admin/AdminMenu";
 import { AdminRecipes } from "./pages/admin/AdminRecipes";
 import { AdminPos } from "./pages/admin/AdminPos";
+import { AdminPosSimulator } from "./pages/admin/AdminPosSimulator";
 import { AdminStock } from "./pages/admin/AdminStock";
 import { AdminIncidents } from "./pages/admin/AdminIncidents";
 import { AdminCertifications } from "./pages/admin/AdminCertifications";
@@ -88,6 +89,7 @@ export default function App() {
                   <Route path="haccp" element={<HaccpLogs />} />
                   <Route path="security" element={<AdminSecurity />} />
                   <Route path="pos" element={<AdminPos />} />
+                  <Route path="pos/simulator" element={<AdminPosSimulator />} />
                 </Route>
               </Route>
             </Route>

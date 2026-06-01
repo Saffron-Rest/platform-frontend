@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { Role } from "../types";
 import {
   IconBadge,
+  IconBolt,
   IconBoxes,
   IconCalendar,
   IconCash,
@@ -140,6 +141,7 @@ function operationsGroups(includeAdmin: boolean): NavGroup[] {
           { kind: "link", to: "/admin/hours", label: "Hours", description: "Opening times", icon: IconClock },
           { kind: "link", to: "/admin/tags", label: "Tags", description: "Custom labels", icon: IconTag },
           { kind: "link", to: "/admin/pos", label: "POS", description: "Webhook integrations", icon: IconShield },
+          { kind: "link", to: "/admin/pos/simulator", label: "POS simulator", description: "Test stock decrement end-to-end", icon: IconBolt },
           { kind: "link", to: "/admin/security", label: "Security", description: "2FA & sessions", icon: IconKey },
         ],
       },

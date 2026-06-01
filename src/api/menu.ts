@@ -387,3 +387,54 @@ export async function sendTestReceipt(id: string) {
     { method: "POST" },
   );
 }
+
+export type SimulateSaleLine = {
+  menuItemId?: string | null;
+  sku?: string | null;
+  name?: string | null;
+  quantity: number;
+  unitPrice?: number | null;
+};
+
+export type SimulateSalePayload = {
+  items: SimulateSaleLine[];
+  paymentMethod?: string | null;
+  occurredAt?: string | null;
+  dryRun?: boolean;
+};
+
+export type SimulateSaleResult = {
+  ok: boolean;
+  externalId: string;
+  inserted: number;
+  skipped: number;
+  unmatched: number;
+  dryRun: boolean;
+  rolledBack?: boolean;
+  stockImpact: {
+    stockItemId: string;
+    name: string;
+    unit: string;
+    before: number;
+    after: number;
+    delta: number;
+  }[];
+  unlinkedLines: {
+    menuItemId: string | null;
+    sku: string | null;
+    name: string | null;
+    quantity: number;
+  }[];
+};
+
+/**
+ * Run an admin-only fake POS sale through the real ingest path. With
+ * dryRun=true everything is rolled back at the end, so it's safe to call
+ * repeatedly while iterating on menu→stock mappings.
+ */
+export async function simulatePosSale(id: string, payload: SimulateSalePayload) {
+  return api<SimulateSaleResult>(`/pos/integrations/${id}/simulate-sale`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

@@ -22,7 +22,7 @@ import {
   type WorkSchedule,
 } from "../types";
 import { useAuth } from "../context/AuthContext";
-import { canOperate } from "../lib/roles";
+import { canOperate, isAdmin } from "../lib/roles";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Alert } from "../components/ui/Alert";
 import { Button } from "../components/ui/Button";
@@ -43,7 +43,7 @@ import { ReportValidationPanel } from "../components/report/ReportValidationPane
 import { ReportActionBar } from "../components/report/ReportActionBar";
 import { WorkingHoursCard } from "../components/report/WorkingHoursCard";
 import { EntryHistoryDrawer } from "../components/entry/EntryHistoryDrawer";
-import { syncEntry } from "../api/entries";
+import { syncEntry, moveEntry } from "../api/entries";
 import type { WeeklyHours } from "../types";
 
 import { todayLocalIso } from "../lib/dates";
@@ -54,6 +54,7 @@ export function EntryPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const canManageReports = canOperate(user?.role);
+  const canMoveEntry = isAdmin(user?.role);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [entry, setEntry] = useState<DailyEntry | null>(null);
@@ -561,6 +562,51 @@ export function EntryPage() {
     }
   };
 
+  const moveToAnotherDate = async () => {
+    if (!entry?.id) return;
+    const who = selectedCashier?.name ?? "this cashier";
+    const fromLabel = reportDateRelativeLabel(entryDate);
+    const promptMsg =
+      `Move ${who}'s report from ${entryDate} (${fromLabel}) to another date.\n` +
+      `Enter the new date in YYYY-MM-DD format:`;
+    const newDate = prompt(promptMsg, entryDate);
+    if (!newDate) return;
+    const cleaned = newDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+      setMessage("Date must be in YYYY-MM-DD format.");
+      setMessageError(true);
+      return;
+    }
+    if (cleaned === entryDate) {
+      return;
+    }
+    const reason = prompt(
+      "Optional reason for the move (shown in the report's history):",
+      "",
+    );
+    setSaving(true);
+    setMessage("");
+    setMessageError(false);
+    try {
+      const moved = await moveEntry(entry.id, cleaned, reason ?? undefined);
+      const movedDate = moved.date.slice(0, 10);
+      setEntryDate(movedDate);
+      const params = new URLSearchParams();
+      params.set("date", movedDate);
+      if (selectedCashierId) params.set("cashierId", selectedCashierId);
+      setSearchParams(params, { replace: true });
+      await applyEntry(moved);
+      setMessage(
+        `Moved ${who}'s report to ${movedDate}.`
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Move failed");
+      setMessageError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const unlockForCashier = async () => {
     if (!entry?.id) return;
     const who = selectedCashier?.name ?? "this cashier";
@@ -680,6 +726,17 @@ export function EntryPage() {
                   title="See every edit on this report and roll back individual changes"
                 >
                   <span aria-hidden>⟲</span> View history
+                </button>
+              )}
+              {canMoveEntry && (
+                <button
+                  type="button"
+                  onClick={() => void moveToAnotherDate()}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-md bg-white border border-black/10 hover:bg-[var(--color-cream)]/60 disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="Reassign this report to a different calendar date (admin only)"
+                >
+                  <span aria-hidden>📅</span> Move to date…
                 </button>
               )}
             </>
