@@ -30,6 +30,7 @@ import { AdminMenu } from "./pages/admin/AdminMenu";
 import { AdminRecipes } from "./pages/admin/AdminRecipes";
 import { AdminPos } from "./pages/admin/AdminPos";
 import { AdminPosSimulator } from "./pages/admin/AdminPosSimulator";
+import { AdminPayables } from "./pages/admin/AdminPayables";
 import { AdminStock } from "./pages/admin/AdminStock";
 import { AdminIncidents } from "./pages/admin/AdminIncidents";
 import { AdminCertifications } from "./pages/admin/AdminCertifications";
@@ -130,6 +131,9 @@ export default function App() {
                 </Route>
                 <Route element={<RequirePermission anyOf={["POS_INTEGRATION_MANAGE"]} />}>
                   <Route path="pos/simulator" element={<AdminPosSimulator />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["PAYABLES_VIEW", "PAYABLES_MANAGE"]} />}>
+                  <Route path="payables" element={<AdminPayables />} />
                 </Route>
                 {/* Strictly admin: 2FA / session management. */}
                 <Route element={<AdminGuard />}>
