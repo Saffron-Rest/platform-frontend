@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useOnboarding } from "../../context/OnboardingContext";
-import { findActive, navGroupsForRole } from "../../lib/navigation";
-import { roleLabel } from "../../lib/roles";
+import { findActive, navGroupsForUser } from "../../lib/navigation";
+import { isAdmin, roleLabel } from "../../lib/roles";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -56,7 +56,7 @@ export function TopAppBar() {
     };
   }, [menuOpen]);
 
-  const groups = navGroupsForRole(user?.role);
+  const groups = navGroupsForUser(user);
   const active = findActive(groups, loc.pathname);
 
   // Show OS-correct modifier hint in the search button. Falls back to
@@ -149,12 +149,14 @@ export function TopAppBar() {
                     {roleLabel(user.role)}
                   </p>
                 </div>
-                <MenuLink
-                  to="/admin/security"
-                  onClick={() => setMenuOpen(false)}
-                  label="Security & 2FA"
-                  description="Personal settings"
-                />
+                {isAdmin(user.role) && (
+                  <MenuLink
+                    to="/admin/security"
+                    onClick={() => setMenuOpen(false)}
+                    label="Security & 2FA"
+                    description="Personal settings"
+                  />
+                )}
                 <MenuLink
                   to="/change-password"
                   onClick={() => setMenuOpen(false)}

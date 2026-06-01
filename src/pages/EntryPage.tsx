@@ -51,10 +51,12 @@ import { todayLocalIso } from "../lib/dates";
 const todayIso = todayLocalIso;
 
 export function EntryPage() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
   const canManageReports = canOperate(user?.role);
-  const canMoveEntry = isAdmin(user?.role);
+  // Admins always pass; managers/cashiers need REPORTS_EDIT_OTHERS,
+  // matching the backend's AuthHelper.requireAdminOr() guard.
+  const canMoveEntry = isAdmin(user?.role) || hasPermission("REPORTS_EDIT_OTHERS");
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [entry, setEntry] = useState<DailyEntry | null>(null);

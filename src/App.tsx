@@ -15,6 +15,7 @@ import { ProfitLoss } from "./pages/ProfitLoss";
 import { Schedule } from "./pages/Schedule";
 import { AdminGuard } from "./components/admin/AdminGuard";
 import { OperationsGuard } from "./components/admin/OperationsGuard";
+import { RequirePermission } from "./components/admin/RequirePermission";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { AdminTeam } from "./pages/admin/AdminTeam";
 import { AdminAttendance } from "./pages/admin/AdminAttendance";
@@ -69,27 +70,70 @@ export default function App() {
                 <Route path="/menu" element={<MenuAnalytics />} />
                 <Route path="/menu/engineering" element={<MenuEngineering />} />
               </Route>
-              <Route path="/admin" element={<AdminGuard />}>
-                <Route element={<AdminLayout />}>
-                  <Route index element={<Navigate to="team" replace />} />
+              {/*
+                  Admin routes are no longer blanket-gated by role —
+                  each page declares the permissions that grant entry,
+                  so an admin can delegate any operational page to a
+                  manager (or even a cashier) by toggling a permission
+                  in "Manage permissions". Admins always pass thanks to
+                  the isAdmin shortcut inside RequirePermission.
+
+                  Strictly-admin routes stay under <AdminGuard>.
+              */}
+              <Route path="/admin" element={<AdminLayout />}>
+                <Route index element={<Navigate to="team" replace />} />
+                <Route element={<RequirePermission anyOf={["TEAM_VIEW", "TEAM_MANAGE"]} />}>
                   <Route path="team" element={<AdminTeam />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"]} />}>
                   <Route path="attendance" element={<AdminAttendance />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE"]} />}>
                   <Route path="salaries" element={<AdminSalaries />} />
                   <Route path="payouts" element={<AdminPayouts />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["SETTINGS_VIEW", "SETTINGS_MANAGE"]} />}>
                   <Route path="hours" element={<AdminRestaurantHours />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["SETTINGS_VIEW", "SETTINGS_MANAGE", "TREASURY_VIEW", "TREASURY_MANAGE"]} />}>
                   <Route path="settings" element={<AdminSettings />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["TAGS_MANAGE"]} />}>
                   <Route path="tags" element={<AdminTagLibrary />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["REPORTS_VIEW"]} />}>
                   <Route path="inbox" element={<AdminDataHealth />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["MENU_VIEW", "MENU_MANAGE"]} />}>
                   <Route path="menu" element={<AdminMenu />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["MENU_VIEW", "MENU_RECIPES_MANAGE"]} />}>
                   <Route path="recipes" element={<AdminRecipes />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["STOCK_VIEW", "STOCK_ADJUST", "STOCK_MANAGE", "STOCK_DELETE"]} />}>
                   <Route path="stock" element={<AdminStock />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["INCIDENTS_VIEW", "INCIDENTS_FILE", "INCIDENTS_RESOLVE"]} />}>
                   <Route path="incidents" element={<AdminIncidents />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"]} />}>
                   <Route path="certifications" element={<AdminCertifications />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["CHECKLISTS_RUN", "CHECKLISTS_CONFIGURE"]} />}>
                   <Route path="checklists" element={<AdminChecklists />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["HACCP_LOG", "HACCP_EXPORT", "HACCP_CONFIGURE"]} />}>
                   <Route path="haccp" element={<HaccpLogs />} />
-                  <Route path="security" element={<AdminSecurity />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"]} />}>
                   <Route path="pos" element={<AdminPos />} />
+                </Route>
+                <Route element={<RequirePermission anyOf={["POS_INTEGRATION_MANAGE"]} />}>
                   <Route path="pos/simulator" element={<AdminPosSimulator />} />
+                </Route>
+                {/* Strictly admin: 2FA / session management. */}
+                <Route element={<AdminGuard />}>
+                  <Route path="security" element={<AdminSecurity />} />
                 </Route>
               </Route>
             </Route>

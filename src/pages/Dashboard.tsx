@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { useOnboarding } from "../context/OnboardingContext";
 import { Button } from "../components/ui/Button";
 import { canOperate, isCashier } from "../lib/roles";
-import { navGroupsForRole, allNavLinks } from "../lib/navigation";
+import { navGroupsForUser, allNavLinks } from "../lib/navigation";
 import { TreasurySummaryCards } from "../components/admin/TreasurySummaryCards";
 import { QuickActionGrid } from "../components/hub/QuickActionGrid";
 import { HubSection } from "../components/hub/HubSection";
@@ -51,11 +51,11 @@ export function Dashboard() {
   const [error, setError] = useState(false);
 
   const quickLinks = useMemo(() => {
-    const groups = navGroupsForRole(user?.role);
+    const groups = navGroupsForUser(user);
     const links = allNavLinks(groups).filter((l) => l.to !== "/");
     if (isCashier(user?.role)) return links;
     return links.slice(0, 6);
-  }, [user?.role]);
+  }, [user]);
 
   useEffect(() => {
     api<DashboardData>("/dashboard")

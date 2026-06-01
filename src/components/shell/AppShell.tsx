@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
   allNavLinks,
-  navGroupsForRole,
+  navGroupsForUser,
   primaryNavLinks,
 } from "../../lib/navigation";
 import { Spinner } from "../ui/Spinner";
@@ -42,7 +42,7 @@ function AppShellInner({
   const { openQuickGuide } = useOnboarding();
   const loc = useLocation();
 
-  const groups = useMemo(() => navGroupsForRole(user?.role), [user?.role]);
+  const groups = useMemo(() => navGroupsForUser(user), [user]);
   const primary = useMemo(() => primaryNavLinks(groups), [groups]);
   const primaryPaths = useMemo(() => new Set(primary.map((p) => p.to)), [primary]);
 

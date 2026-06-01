@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { Role } from "../types";
+import type { Role, User } from "../types";
 import {
   IconBadge,
   IconBolt,
@@ -22,7 +22,7 @@ import {
   IconWallet,
   IconWarning,
 } from "../components/icons";
-import { canOperate, isAdmin } from "./roles";
+import { canOperate, isAdmin, isCashier } from "./roles";
 
 export type NavIcon = ComponentType<{ className?: string }>;
 
@@ -34,6 +34,14 @@ export type NavLinkItem = {
   icon: NavIcon;
   /** When true, shown in mobile bottom bar (max 4 total with More button). */
   primary?: boolean;
+  /**
+   * Permission keys (any-of) that grant access to this destination.
+   * Mirrors the {@code anyOf} list passed to the corresponding
+   * {@code <RequirePermission>} guard in {@code App.tsx} so the sidebar
+   * never shows a link the user would be bounced away from. Empty or
+   * undefined means "always visible" (cashier-relevant pages).
+   */
+  requires?: string[];
 };
 
 export type NavGroup = {
@@ -51,18 +59,13 @@ export type NavGroup = {
  * Incidents, Checklists, HACCP) behind an "Administration" wall even
  * though managers and cashiers need them daily.</p>
  *
- * <p>The new structure groups every destination into five role-gated
- * sections that match how the team actually thinks about the work:
- * <ol>
- *   <li><b>Today</b> — what an individual does this shift</li>
- *   <li><b>Operations</b> — daily restaurant running (managers+)</li>
- *   <li><b>Reports</b> — analysis & history (managers+)</li>
- *   <li><b>People</b> — team, payroll, certifications (admins)</li>
- *   <li><b>Settings</b> — infrequent configuration (admins)</li>
- * </ol></p>
- *
- * <p>Routes are unchanged; only the <em>grouping</em> moved. Bookmarks
- * to {@code /admin/stock} etc. still work.</p>
+ * <p>v4 restructure (Jun 2026): role-based gating turned into
+ * permission-based gating. Each item below declares the permissions
+ * that grant entry — {@link navGroupsForUser} filters the list against
+ * the user's effective set. Admins always see everything thanks to the
+ * isAdmin shortcut. Net effect: a manager granted {@code TEAM_MANAGE}
+ * gets the People group in their sidebar without us inventing a custom
+ * role.</p>
  */
 function cashierGroups(): NavGroup[] {
   return [
@@ -80,8 +83,14 @@ function cashierGroups(): NavGroup[] {
   ];
 }
 
-function operationsGroups(includeAdmin: boolean): NavGroup[] {
-  const groups: NavGroup[] = [
+/**
+ * Full operations IA. Returned even for managers who lack some
+ * permissions — {@link navGroupsForUser} prunes items the user can't
+ * access and drops empty groups, so callers don't need to reason about
+ * which permissions matter for which destinations.
+ */
+function fullOperationsGroups(): NavGroup[] {
+  return [
     {
       id: "today",
       label: "Today",
@@ -96,64 +105,121 @@ function operationsGroups(includeAdmin: boolean): NavGroup[] {
       id: "operations",
       label: "Operations",
       items: [
-        { kind: "link", to: "/admin/inbox", label: "Inbox", description: "Open issues & data health", icon: IconInbox, primary: true },
-        { kind: "link", to: "/admin/attendance", label: "Schedule", description: "Who works when", icon: IconCalendar },
-        { kind: "link", to: "/admin/stock", label: "Stock", description: "Inventory & POS sync", icon: IconBoxes },
-        { kind: "link", to: "/admin/incidents", label: "Incidents", description: "Breakages, complaints, accidents", icon: IconWarning },
-        { kind: "link", to: "/admin/menu", label: "Menu items", description: "Items, prices, costs", icon: IconUtensils },
-        { kind: "link", to: "/admin/recipes", label: "Recipes", description: "Cost cards & price suggestions", icon: IconUtensils },
-        { kind: "link", to: "/admin/checklists", label: "Checklist templates", description: "Opening / closing tasks", icon: IconCheckSquare },
-        { kind: "link", to: "/admin/haccp", label: "HACCP history", description: "Food-safety records & export", icon: IconThermometer },
+        { kind: "link", to: "/admin/inbox", label: "Inbox", description: "Open issues & data health", icon: IconInbox, primary: true, requires: ["REPORTS_VIEW"] },
+        { kind: "link", to: "/admin/attendance", label: "Schedule", description: "Who works when", icon: IconCalendar, requires: ["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"] },
+        { kind: "link", to: "/admin/stock", label: "Stock", description: "Inventory & POS sync", icon: IconBoxes, requires: ["STOCK_VIEW", "STOCK_ADJUST", "STOCK_MANAGE", "STOCK_DELETE"] },
+        { kind: "link", to: "/admin/incidents", label: "Incidents", description: "Breakages, complaints, accidents", icon: IconWarning, requires: ["INCIDENTS_VIEW", "INCIDENTS_FILE", "INCIDENTS_RESOLVE"] },
+        { kind: "link", to: "/admin/menu", label: "Menu items", description: "Items, prices, costs", icon: IconUtensils, requires: ["MENU_VIEW", "MENU_MANAGE"] },
+        { kind: "link", to: "/admin/recipes", label: "Recipes", description: "Cost cards & price suggestions", icon: IconUtensils, requires: ["MENU_VIEW", "MENU_RECIPES_MANAGE"] },
+        { kind: "link", to: "/admin/checklists", label: "Checklist templates", description: "Opening / closing tasks", icon: IconCheckSquare, requires: ["CHECKLISTS_RUN", "CHECKLISTS_CONFIGURE"] },
+        { kind: "link", to: "/admin/haccp", label: "HACCP history", description: "Food-safety records & export", icon: IconThermometer, requires: ["HACCP_LOG", "HACCP_EXPORT", "HACCP_CONFIGURE"] },
       ],
     },
     {
       id: "reports",
       label: "Reports",
       items: [
-        { kind: "link", to: "/reports", label: "Shift reports", description: "All cashier reports", icon: IconClipboard, primary: true },
-        { kind: "link", to: "/finance", label: "Finance ledger", description: "Add delivery or expense", icon: IconWallet, primary: true },
-        { kind: "link", to: "/profit-loss", label: "Profit & loss", description: "P&L statement", icon: IconProfitLoss },
-        { kind: "link", to: "/analytics", label: "Analytics", description: "Exports & summaries", icon: IconChart },
-        { kind: "link", to: "/menu", label: "Menu analytics", description: "What sold, where the margin is", icon: IconChart },
-        { kind: "link", to: "/treasury/history", label: "Treasury history", description: "Balance changes", icon: IconWallet },
-        { kind: "link", to: "/audit", label: "Audit log", description: "Who changed what", icon: IconShield },
+        { kind: "link", to: "/reports", label: "Shift reports", description: "All cashier reports", icon: IconClipboard, primary: true, requires: ["REPORTS_VIEW"] },
+        { kind: "link", to: "/finance", label: "Finance ledger", description: "Add delivery or expense", icon: IconWallet, primary: true, requires: ["EXPENSES_VIEW", "EXPENSES_EDIT", "TREASURY_VIEW", "TREASURY_MANAGE"] },
+        { kind: "link", to: "/profit-loss", label: "Profit & loss", description: "P&L statement", icon: IconProfitLoss, requires: ["PROFIT_LOSS_VIEW"] },
+        { kind: "link", to: "/analytics", label: "Analytics", description: "Exports & summaries", icon: IconChart, requires: ["REPORTS_VIEW", "REPORTS_EXPORT"] },
+        { kind: "link", to: "/menu", label: "Menu analytics", description: "What sold, where the margin is", icon: IconChart, requires: ["MENU_VIEW", "REPORTS_VIEW"] },
+        { kind: "link", to: "/treasury/history", label: "Treasury history", description: "Balance changes", icon: IconWallet, requires: ["TREASURY_VIEW", "TREASURY_MANAGE"] },
+        { kind: "link", to: "/audit", label: "Audit log", description: "Who changed what", icon: IconShield, requires: ["AUDIT_VIEW"] },
+      ],
+    },
+    {
+      id: "people",
+      label: "People",
+      items: [
+        { kind: "link", to: "/admin/team", label: "Team", description: "People & roles", icon: IconUsers, requires: ["TEAM_VIEW", "TEAM_MANAGE"] },
+        { kind: "link", to: "/admin/salaries", label: "Payroll", description: "Calculate pay", icon: IconCash, requires: ["SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE"] },
+        { kind: "link", to: "/admin/payouts", label: "Payouts", description: "Approvals & history", icon: IconCash, requires: ["SALARIES_VIEW", "SALARIES_MANAGE"] },
+        { kind: "link", to: "/admin/certifications", label: "Certifications", description: "Sanepid, expiry alerts", icon: IconBadge, requires: ["CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"] },
+      ],
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      items: [
+        { kind: "link", to: "/admin/settings", label: "Treasury", description: "Balances & %", icon: IconWallet, requires: ["SETTINGS_VIEW", "SETTINGS_MANAGE", "TREASURY_VIEW", "TREASURY_MANAGE"] },
+        { kind: "link", to: "/admin/hours", label: "Hours", description: "Opening times", icon: IconClock, requires: ["SETTINGS_VIEW", "SETTINGS_MANAGE"] },
+        { kind: "link", to: "/admin/tags", label: "Tags", description: "Custom labels", icon: IconTag, requires: ["TAGS_MANAGE"] },
+        { kind: "link", to: "/admin/pos", label: "POS", description: "Webhook integrations", icon: IconShield, requires: ["POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"] },
+        { kind: "link", to: "/admin/pos/simulator", label: "POS simulator", description: "Test stock decrement end-to-end", icon: IconBolt, requires: ["POS_INTEGRATION_MANAGE"] },
+        // Truly admin-only — no permission can substitute, so the
+        // sidebar only ever surfaces this for ADMIN users (the empty
+        // requires list combined with the role check below).
+        { kind: "link", to: "/admin/security", label: "Security", description: "2FA & sessions", icon: IconKey, requires: ["__admin_only__"] },
       ],
     },
   ];
-
-  if (includeAdmin) {
-    groups.push(
-      {
-        id: "people",
-        label: "People",
-        items: [
-          { kind: "link", to: "/admin/team", label: "Team", description: "People & roles", icon: IconUsers },
-          { kind: "link", to: "/admin/salaries", label: "Payroll", description: "Calculate pay", icon: IconCash },
-          { kind: "link", to: "/admin/payouts", label: "Payouts", description: "Approvals & history", icon: IconCash },
-          { kind: "link", to: "/admin/certifications", label: "Certifications", description: "Sanepid, expiry alerts", icon: IconBadge },
-        ],
-      },
-      {
-        id: "settings",
-        label: "Settings",
-        items: [
-          { kind: "link", to: "/admin/settings", label: "Treasury", description: "Balances & %", icon: IconWallet },
-          { kind: "link", to: "/admin/hours", label: "Hours", description: "Opening times", icon: IconClock },
-          { kind: "link", to: "/admin/tags", label: "Tags", description: "Custom labels", icon: IconTag },
-          { kind: "link", to: "/admin/pos", label: "POS", description: "Webhook integrations", icon: IconShield },
-          { kind: "link", to: "/admin/pos/simulator", label: "POS simulator", description: "Test stock decrement end-to-end", icon: IconBolt },
-          { kind: "link", to: "/admin/security", label: "Security", description: "2FA & sessions", icon: IconKey },
-        ],
-      },
-    );
-  }
-
-  return groups;
 }
 
+/**
+ * Decide whether {@code user} can see a given navigation item.
+ *
+ * <p>Rules:
+ * <ul>
+ *   <li>No {@code requires} list ⇒ visible to anyone authenticated.</li>
+ *   <li>The sentinel {@code "__admin_only__"} short-circuits to admins
+ *       only — useful for routes like {@code /admin/security} that
+ *       have no graspable permission to delegate.</li>
+ *   <li>Otherwise: admins always pass; everyone else needs at least
+ *       one of the listed permissions in their effective set.</li>
+ * </ul></p>
+ */
+function canSeeItem(user: User | null | undefined, item: NavLinkItem): boolean {
+  if (!item.requires || item.requires.length === 0) return true;
+  if (item.requires.includes("__admin_only__")) {
+    return isAdmin(user?.role);
+  }
+  if (isAdmin(user?.role)) return true;
+  const held = new Set(user?.effectivePermissions ?? []);
+  return item.requires.some((p) => held.has(p));
+}
+
+function filterGroups(user: User | null | undefined, groups: NavGroup[]): NavGroup[] {
+  return groups
+    .map((g) => ({ ...g, items: g.items.filter((it) => canSeeItem(user, it)) }))
+    .filter((g) => g.items.length > 0);
+}
+
+/**
+ * Build the sidebar/breadcrumb structure for the current user.
+ *
+ * <p>Cashiers get a dedicated, simplified IA. Anyone else (manager or
+ * admin) sees the full operations tree filtered down to the permissions
+ * they actually hold. Empty groups are dropped so a manager without
+ * payroll grants doesn't see an empty "People" header.</p>
+ */
+export function navGroupsForUser(user: User | null | undefined): NavGroup[] {
+  if (!user) return [];
+  if (isCashier(user.role) && !isAdmin(user.role) && !canOperate(user.role)) {
+    return cashierGroups();
+  }
+  return filterGroups(user, fullOperationsGroups());
+}
+
+/**
+ * @deprecated Use {@link navGroupsForUser} so permission grants can
+ * influence the sidebar. Kept as a thin role-only fallback for tour
+ * helpers that don't have access to the full user object.
+ */
 export function navGroupsForRole(role: Role | string | undefined): NavGroup[] {
-  if (isAdmin(role)) return operationsGroups(true);
-  if (canOperate(role)) return operationsGroups(false);
+  if (isAdmin(role)) {
+    return fullOperationsGroups();
+  }
+  if (canOperate(role)) {
+    // Approximate a manager view by stripping admin-only sentinel items;
+    // not perfect, but only used by tour helpers that need a coarse list.
+    return fullOperationsGroups()
+      .map((g) => ({
+        ...g,
+        items: g.items.filter((it) => !it.requires?.includes("__admin_only__")),
+      }))
+      .filter((g) => g.items.length > 0);
+  }
   return cashierGroups();
 }
 
