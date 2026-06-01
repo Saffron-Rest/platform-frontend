@@ -18,6 +18,14 @@ type AuthCtx = {
   login: (username: string, password: string, totpCode?: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => void;
+  /**
+   * True when the current user effectively holds {@code permissionKey}.
+   * Always true for admins. Reads {@code user.effectivePermissions} —
+   * which the backend rebuilds from the database on every request, so
+   * grants/revokes by an admin take effect on the next API call without
+   * a forced logout.
+   */
+  hasPermission: (permissionKey: string) => boolean;
 };
 
 const AuthContext = createContext<AuthCtx | null>(null);
@@ -80,8 +88,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const hasPermission = (permissionKey: string): boolean => {
+    if (!user) return false;
+    if (user.role === "ADMIN") return true;
+    return user.effectivePermissions?.includes(permissionKey) ?? false;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, changePassword, logout }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, changePassword, logout, hasPermission }}
+    >
       {children}
     </AuthContext.Provider>
   );
