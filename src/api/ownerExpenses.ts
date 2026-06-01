@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, downloadUrl } from "./client";
 import type { PaymentMethod, PayableCategory } from "./payables";
 
 export type OwnerExpenseStatus = "PENDING" | "PARTIAL" | "REIMBURSED" | "VOID";
@@ -15,6 +15,7 @@ export type OwnerExpenseSummary = {
   outstanding: number;
   status: OwnerExpenseStatus;
   reference?: string;
+  receiptCount: number;
 };
 
 export type OwnerExpenseReimbursement = {
@@ -27,11 +28,18 @@ export type OwnerExpenseReimbursement = {
   createdAt?: string | null;
 };
 
+export type OwnerExpenseReceipt = {
+  id: string;
+  filename: string;
+  createdAt?: string | null;
+};
+
 export type OwnerExpenseDetail = OwnerExpenseSummary & {
   notes?: string;
   createdAt?: string | null;
   updatedAt?: string | null;
   reimbursements: OwnerExpenseReimbursement[];
+  receipts: OwnerExpenseReceipt[];
 };
 
 export type OwnerExpenseListResponse = {
@@ -120,4 +128,37 @@ export async function deleteOwnerReimbursement(
     `/owner-expenses/${encodeURIComponent(id)}/reimbursements/${encodeURIComponent(reimbursementId)}`,
     { method: "DELETE" },
   );
+}
+
+/**
+ * Attach a receipt photo / PDF to an owner expense.
+ *
+ * <p>Same backend storage as the existing receipt-file infrastructure
+ * (entry receipts, expense invoices) so file links and downloads share
+ * a single auth-enforced endpoint.</p>
+ */
+export async function uploadOwnerExpenseReceipt(
+  id: string,
+  file: File,
+): Promise<OwnerExpenseDetail> {
+  const fd = new FormData();
+  fd.append("receipt", file);
+  return api<OwnerExpenseDetail>(`/owner-expenses/${encodeURIComponent(id)}/receipts`, {
+    method: "POST",
+    body: fd,
+  });
+}
+
+export async function deleteOwnerExpenseReceipt(
+  id: string,
+  fileId: string,
+): Promise<OwnerExpenseDetail> {
+  return api<OwnerExpenseDetail>(
+    `/owner-expenses/${encodeURIComponent(id)}/receipts/${encodeURIComponent(fileId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function ownerExpenseReceiptUrl(fileId: string): string {
+  return downloadUrl(`/files/download/${encodeURIComponent(fileId)}`);
 }

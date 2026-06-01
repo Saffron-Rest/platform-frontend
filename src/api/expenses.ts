@@ -122,6 +122,8 @@ export async function loadExpenses(entryId: string) {
   return raw.map(mapExpense);
 }
 
+export type LedgerExpenseSource = "EXPENSE_ITEM" | "OWNER_EXPENSE";
+
 export type LedgerExpense = ExpenseLine & {
   effectiveDate?: string;
   standalone?: boolean;
@@ -129,6 +131,21 @@ export type LedgerExpense = ExpenseLine & {
   entryDate?: string;
   tags?: Tag[];
   commentCount?: number;
+  /** Where this row originates. EXPENSE_ITEM = the regular expense
+   *  table; OWNER_EXPENSE = a row sourced from the owner-reimbursement
+   *  feature, surfaced read-only here. Defaults to EXPENSE_ITEM if the
+   *  backend doesn't send it. */
+  source?: LedgerExpenseSource;
+  /** Whether this row can be edited / deleted from the Finance ledger.
+   *  Owner expenses are managed on their dedicated page so the
+   *  reimbursement lifecycle stays consistent. */
+  editable?: boolean;
+  ownerExpenseId?: string;
+  ownerUserId?: string;
+  ownerName?: string;
+  ownerExpenseStatus?: "PENDING" | "PARTIAL" | "REIMBURSED" | "VOID";
+  amountReimbursed?: number;
+  outstanding?: number;
 };
 
 /** Bulk-delete a list of standalone expenses. The backend returns an
@@ -156,6 +173,18 @@ export function mapTags(raw: unknown): Tag[] {
 
 function mapLedgerExpense(raw: Record<string, unknown>): LedgerExpense {
   const base = mapExpense(raw);
+  const sourceRaw = raw.source != null ? String(raw.source) : "EXPENSE_ITEM";
+  const source: LedgerExpenseSource =
+    sourceRaw === "OWNER_EXPENSE" ? "OWNER_EXPENSE" : "EXPENSE_ITEM";
+  const editable = raw.editable != null ? Boolean(raw.editable) : source === "EXPENSE_ITEM";
+  const status = raw.ownerExpenseStatus != null ? String(raw.ownerExpenseStatus) : undefined;
+  const validStatus =
+    status === "PENDING" ||
+    status === "PARTIAL" ||
+    status === "REIMBURSED" ||
+    status === "VOID"
+      ? status
+      : undefined;
   return {
     ...base,
     effectiveDate: raw.effectiveDate != null ? String(raw.effectiveDate) : undefined,
@@ -164,6 +193,15 @@ function mapLedgerExpense(raw: Record<string, unknown>): LedgerExpense {
     entryDate: raw.entryDate != null ? String(raw.entryDate) : undefined,
     tags: mapTags(raw.tags),
     commentCount: typeof raw.commentCount === "number" ? raw.commentCount : 0,
+    source,
+    editable,
+    ownerExpenseId: raw.ownerExpenseId != null ? String(raw.ownerExpenseId) : undefined,
+    ownerUserId: raw.ownerUserId != null ? String(raw.ownerUserId) : undefined,
+    ownerName: raw.ownerName != null ? String(raw.ownerName) : undefined,
+    ownerExpenseStatus: validStatus,
+    amountReimbursed:
+      typeof raw.amountReimbursed === "number" ? raw.amountReimbursed : undefined,
+    outstanding: typeof raw.outstanding === "number" ? raw.outstanding : undefined,
   };
 }
 

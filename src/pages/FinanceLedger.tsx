@@ -662,7 +662,7 @@ export function FinanceLedger() {
                   <li key={row.id ?? `${row.effectiveDate}-${row.description}`} className="border-b border-black/5 pb-4 last:border-0">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="flex items-start gap-3 min-w-0">
-                        {row.standalone && row.id && (
+                        {row.standalone && row.id && row.source !== "OWNER_EXPENSE" && (
                           <input
                             type="checkbox"
                             checked={selectedExpenseIds.has(row.id)}
@@ -683,10 +683,29 @@ export function FinanceLedger() {
                         <p className="font-medium">{row.description || categoryLabel(row.category)}</p>
                         <p className="text-sm text-[var(--color-muted)]">
                           {row.effectiveDate ?? row.entryDate} · {categoryLabel(row.category)} · {fmt(row.amount)} ·{" "}
-                          {row.paymentSource === "CARD" ? "Card" : "Cash"}
+                          {row.source === "OWNER_EXPENSE"
+                            ? `Owner-paid${row.ownerName ? ` by ${row.ownerName}` : ""}`
+                            : row.paymentSource === "CARD"
+                            ? "Card"
+                            : "Cash"}
                         </p>
                         <div className="flex gap-2 mt-1 flex-wrap">
-                          {row.standalone ? (
+                          {row.source === "OWNER_EXPENSE" ? (
+                            <>
+                              <Badge variant="draft">Owner-paid</Badge>
+                              {row.ownerExpenseStatus === "REIMBURSED" ? (
+                                <Badge variant="locked">Reimbursed</Badge>
+                              ) : row.ownerExpenseStatus === "PARTIAL" ? (
+                                <Badge variant="draft">
+                                  {fmt(row.outstanding ?? 0)} owed
+                                </Badge>
+                              ) : (
+                                <Badge variant="neutral">
+                                  {fmt(row.outstanding ?? row.amount)} owed
+                                </Badge>
+                              )}
+                            </>
+                          ) : row.standalone ? (
                             <Badge variant="neutral">Post-close</Badge>
                           ) : row.entryId ? (
                             <Link
@@ -697,7 +716,7 @@ export function FinanceLedger() {
                             </Link>
                           ) : null}
                         </div>
-                        {row.id && (
+                        {row.id && row.source !== "OWNER_EXPENSE" && (
                           <div className="mt-2 flex items-center gap-3 flex-wrap">
                             <TagPicker
                               entityType="EXPENSE"
@@ -728,7 +747,15 @@ export function FinanceLedger() {
                         )}
                         </div>
                       </div>
-                      {row.standalone && row.id && !isEditing && (
+                      {row.source === "OWNER_EXPENSE" && row.ownerExpenseId ? (
+                        <Link
+                          to={`/admin/owner-expenses?focus=${encodeURIComponent(row.ownerExpenseId)}`}
+                          className="text-[11px] font-medium text-[var(--color-saffron)] shrink-0 hover:underline"
+                          title="Manage on the Owner reimbursements page so the workflow stays consistent."
+                        >
+                          Manage →
+                        </Link>
+                      ) : row.standalone && row.id && !isEditing ? (
                         <div className="flex items-center gap-3 shrink-0">
                           <button
                             type="button"
@@ -745,12 +772,11 @@ export function FinanceLedger() {
                             Remove
                           </button>
                         </div>
-                      )}
-                      {!row.standalone && row.entryId && (
+                      ) : !row.standalone && row.entryId ? (
                         <span className="text-[11px] text-[var(--color-muted)] shrink-0" title="To edit this line, open the shift report it belongs to.">
                           Edit on report
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     {isEditing && editForm && (
                       <div className="mt-3 p-3 rounded-xl bg-white border border-black/10 space-y-3">

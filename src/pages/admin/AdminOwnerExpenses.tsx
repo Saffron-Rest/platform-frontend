@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { fmt } from "../../lib/calc";
 import { todayLocalIso } from "../../lib/dates";
 import { useAuth } from "../../context/AuthContext";
@@ -12,11 +13,14 @@ import { Spinner } from "../../components/ui/Spinner";
 import { Badge } from "../../components/ui/Badge";
 import type { User } from "../../types";
 import {
+  deleteOwnerExpenseReceipt,
   deleteOwnerReimbursement,
   fileOwnerExpense,
   getOwnerExpense,
   listOwnerExpenses,
+  ownerExpenseReceiptUrl,
   recordOwnerReimbursement,
+  uploadOwnerExpenseReceipt,
   voidOwnerExpense,
   type FileOwnerExpenseInput,
   type OwnerExpenseDetail,
@@ -82,6 +86,7 @@ export function AdminOwnerExpenses() {
   const canFile =
     canManage || hasPermission("OWNER_EXPENSES_FILE") || user?.role === "ADMIN";
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>("PENDING");
   const [data, setData] = useState<OwnerExpenseListResponse | null>(null);
   const [users, setUsers] = useState<User[] | null>(null);
@@ -121,6 +126,28 @@ export function AdminOwnerExpenses() {
       cancelled = true;
     };
   }, []);
+
+  // Deep-link from the Finance ledger ("Manage →" on an owner-paid
+  // row) lands here with ?focus=<id>. Open that expense's detail
+  // drawer once and clear the query so reloads behave normally.
+  const focusedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = searchParams.get("focus");
+    if (!id || focusedRef.current === id) return;
+    focusedRef.current = id;
+    void (async () => {
+      try {
+        const d = await getOwnerExpense(id);
+        setDetail(d);
+      } catch {
+        // Silently swallow — invalid id, no permission, etc.
+      } finally {
+        const next = new URLSearchParams(searchParams);
+        next.delete("focus");
+        setSearchParams(next, { replace: true });
+      }
+    })();
+  }, [searchParams, setSearchParams]);
 
   // Owners are typically admins, but the manager role can also have
   // OWNER_EXPENSES_FILE granted — so we include any active user as a
@@ -275,6 +302,7 @@ export function AdminOwnerExpenses() {
           detail={detail}
           ownerOptions={ownerOptions}
           canManage={canManage}
+          canFile={canFile}
           onClose={() => setDetail(null)}
           onChanged={async () => {
             const refreshed = await getOwnerExpense(detail.id);
@@ -320,6 +348,9 @@ function ListRow({
         <div className="text-xs text-[var(--color-muted)] mt-0.5">
           Paid by <span className="font-medium">{row.ownerName}</span>
           {row.reference ? ` · Ref ${row.reference}` : ""}
+          {row.receiptCount > 0
+            ? ` · 📎 ${row.receiptCount} receipt${row.receiptCount === 1 ? "" : "s"}`
+            : ""}
         </div>
       </div>
       <div className="text-right">
@@ -360,6 +391,7 @@ function CreateExpenseDialog({
   const [total, setTotal] = useState("");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
+  const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -387,7 +419,18 @@ function CreateExpenseDialog({
         reference: reference.trim() || null,
         notes: notes.trim() || null,
       };
-      await fileOwnerExpense(body);
+      const created = await fileOwnerExpense(body);
+      // Upload receipts after the expense exists. We swallow per-file
+      // errors into the dialog rather than rolling back — the expense
+      // is filed, the user can retry the upload from the detail view.
+      for (const f of receiptFiles) {
+        try {
+          await uploadOwnerExpenseReceipt(created.id, f);
+        } catch (uploadErr: unknown) {
+          const m = uploadErr instanceof Error ? uploadErr.message : "Upload failed";
+          setErr(`Filed but couldn't attach "${f.name}": ${m}`);
+        }
+      }
       onCreated();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Failed to file expense";
@@ -482,6 +525,42 @@ function CreateExpenseDialog({
             maxLength={1000}
           />
         </Field>
+        <Field label="Receipt photos / PDFs (optional but recommended)">
+          <div className="space-y-2">
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              onChange={(e) => {
+                const list = e.target.files ? Array.from(e.target.files) : [];
+                setReceiptFiles((prev) => [...prev, ...list]);
+                e.target.value = "";
+              }}
+              className="text-sm"
+            />
+            {receiptFiles.length > 0 && (
+              <ul className="text-xs text-[var(--color-muted)] space-y-1">
+                {receiptFiles.map((f, idx) => (
+                  <li key={`${f.name}-${idx}`} className="flex items-center justify-between gap-2">
+                    <span className="truncate">📎 {f.name}</span>
+                    <button
+                      type="button"
+                      className="text-[var(--color-saffron)] hover:underline"
+                      onClick={() =>
+                        setReceiptFiles((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                    >
+                      remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-[var(--color-muted)]">
+              JPG, PNG, WEBP or PDF — proof of the receipt for the books.
+            </p>
+          </div>
+        </Field>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
@@ -503,12 +582,14 @@ function DetailDrawer({
   detail,
   ownerOptions,
   canManage,
+  canFile,
   onClose,
   onChanged,
 }: {
   detail: OwnerExpenseDetail;
   ownerOptions: User[];
   canManage: boolean;
+  canFile: boolean;
   onClose: () => void;
   onChanged: () => void | Promise<void>;
 }) {
@@ -594,6 +675,16 @@ function DetailDrawer({
           {detail.reference && <Row label="Reference">{detail.reference}</Row>}
           {detail.notes && <Row label="Notes">{detail.notes}</Row>}
         </div>
+
+        {/* Receipts */}
+        <ReceiptsSection
+          detail={detail}
+          canEdit={(canManage || canFile) && detail.status !== "VOID"}
+          busy={busy}
+          setBusy={setBusy}
+          setErr={setErr}
+          onChanged={onChanged}
+        />
 
         {/* Reimbursements history */}
         <div>
@@ -790,6 +881,119 @@ function RecordReimbursementDialog({
         </div>
       </form>
     </DialogShell>
+  );
+}
+
+// ============================================================================
+// Receipts panel inside the detail drawer
+// ============================================================================
+
+function ReceiptsSection({
+  detail,
+  canEdit,
+  busy,
+  setBusy,
+  setErr,
+  onChanged,
+}: {
+  detail: OwnerExpenseDetail;
+  canEdit: boolean;
+  busy: boolean;
+  setBusy: (v: boolean) => void;
+  setErr: (v: string | null) => void;
+  onChanged: () => void | Promise<void>;
+}) {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (busy) return;
+    const list = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = "";
+    if (list.length === 0) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      // Sequential to keep error reporting clear and avoid hammering
+      // the disk on a list of huge PDFs.
+      for (const f of list) {
+        await uploadOwnerExpenseReceipt(detail.id, f);
+      }
+      await onChanged();
+    } catch (err: unknown) {
+      const m = err instanceof Error ? err.message : "Upload failed";
+      setErr(m);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (fileId: string) => {
+    if (busy) return;
+    if (!window.confirm("Remove this receipt? The file will be deleted.")) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await deleteOwnerExpenseReceipt(detail.id, fileId);
+      await onChanged();
+    } catch (err: unknown) {
+      const m = err instanceof Error ? err.message : "Delete failed";
+      setErr(m);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-[var(--color-ink)]">Receipts</h3>
+        {canEdit && (
+          <label className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-black/10 hover:bg-black/[0.04] text-[var(--color-ink)]">
+            + Add receipt
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              className="hidden"
+              onChange={(e) => void handleUpload(e)}
+              disabled={busy}
+            />
+          </label>
+        )}
+      </div>
+      {detail.receipts.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-black/[0.12] bg-black/[0.02] p-4 text-sm text-[var(--color-muted)]">
+          No receipts attached yet — upload a photo or PDF as proof.
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {detail.receipts.map((r) => (
+            <li
+              key={r.id}
+              className="flex items-center justify-between gap-2 rounded-lg border border-black/[0.06] p-2.5"
+            >
+              <a
+                href={ownerExpenseReceiptUrl(r.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 min-w-0 text-sm text-[var(--color-ink)] hover:text-[var(--color-saffron)] truncate"
+                title={r.filename}
+              >
+                📎 {r.filename}
+              </a>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => void handleDelete(r.id)}
+                  className="text-xs text-[var(--color-muted)] hover:text-[var(--color-danger)]"
+                  disabled={busy}
+                >
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
