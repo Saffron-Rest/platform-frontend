@@ -31,6 +31,7 @@ import { AdminRecipes } from "./pages/admin/AdminRecipes";
 import { AdminPos } from "./pages/admin/AdminPos";
 import { AdminPosSimulator } from "./pages/admin/AdminPosSimulator";
 import { AdminPayables } from "./pages/admin/AdminPayables";
+import { AdminOwnerExpenses } from "./pages/admin/AdminOwnerExpenses";
 import { AdminStock } from "./pages/admin/AdminStock";
 import { AdminIncidents } from "./pages/admin/AdminIncidents";
 import { AdminCertifications } from "./pages/admin/AdminCertifications";
@@ -134,6 +135,19 @@ export default function App() {
                 </Route>
                 <Route element={<RequirePermission anyOf={["PAYABLES_VIEW", "PAYABLES_MANAGE"]} />}>
                   <Route path="payables" element={<AdminPayables />} />
+                </Route>
+                <Route
+                  element={
+                    <RequirePermission
+                      anyOf={[
+                        "OWNER_EXPENSES_VIEW",
+                        "OWNER_EXPENSES_MANAGE",
+                        "OWNER_EXPENSES_FILE",
+                      ]}
+                    />
+                  }
+                >
+                  <Route path="owner-expenses" element={<AdminOwnerExpenses />} />
                 </Route>
                 {/* Strictly admin: 2FA / session management. */}
                 <Route element={<AdminGuard />}>
