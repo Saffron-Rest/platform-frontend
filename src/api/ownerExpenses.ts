@@ -120,6 +120,20 @@ export async function recordOwnerReimbursement(
   });
 }
 
+export async function updateOwnerReimbursement(
+  id: string,
+  reimbursementId: string,
+  patch: Partial<RecordReimbursementInput>,
+): Promise<OwnerExpenseDetail> {
+  return api<OwnerExpenseDetail>(
+    `/owner-expenses/${encodeURIComponent(id)}/reimbursements/${encodeURIComponent(reimbursementId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    },
+  );
+}
+
 export async function deleteOwnerReimbursement(
   id: string,
   reimbursementId: string,

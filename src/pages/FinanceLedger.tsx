@@ -845,6 +845,33 @@ export function FinanceLedger() {
                             </select>
                           </label>
                         </div>
+                        {row.id && (
+                          <div className="pt-2 border-t border-black/5">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)] mb-1">
+                              Receipts
+                            </p>
+                            <ExpenseInvoiceUploader
+                              expenseId={row.id}
+                              invoices={invoices}
+                              uploadImmediately
+                              disabled={editSaving}
+                              onChange={(patch) => {
+                                if (!patch.invoices) return;
+                                setExpenses((rows) =>
+                                  rows.map((r) =>
+                                    r.id === row.id
+                                      ? {
+                                          ...r,
+                                          invoices: patch.invoices,
+                                          invoice: patch.invoices?.[0] ?? r.invoice,
+                                        }
+                                      : r,
+                                  ),
+                                );
+                              }}
+                            />
+                          </div>
+                        )}
                         <div className="flex gap-2">
                           <Button
                             variant="dark"
@@ -863,7 +890,7 @@ export function FinanceLedger() {
                         </div>
                       </div>
                     )}
-                    {invoices.length > 0 && (
+                    {!isEditing && invoices.length > 0 && (
                       <InvoiceGallery invoices={invoices} />
                     )}
                   </li>

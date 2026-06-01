@@ -20,11 +20,14 @@ import {
   listOwnerExpenses,
   ownerExpenseReceiptUrl,
   recordOwnerReimbursement,
+  updateOwnerExpense,
+  updateOwnerReimbursement,
   uploadOwnerExpenseReceipt,
   voidOwnerExpense,
   type FileOwnerExpenseInput,
   type OwnerExpenseDetail,
   type OwnerExpenseListResponse,
+  type OwnerExpenseReimbursement as OwnerExpenseReimbursementRow,
   type OwnerExpenseStatus,
   type OwnerExpenseSummary,
   type RecordReimbursementInput,
@@ -594,6 +597,8 @@ function DetailDrawer({
   onChanged: () => void | Promise<void>;
 }) {
   const [reimbOpen, setReimbOpen] = useState(false);
+  const [editExpenseOpen, setEditExpenseOpen] = useState(false);
+  const [editingReimb, setEditingReimb] = useState<OwnerExpenseReimbursementRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const badge = statusBadge(detail.status);
@@ -647,6 +652,14 @@ function DetailDrawer({
       <div className="space-y-4">
         {err && (
           <Alert variant="error">{err}</Alert>
+        )}
+
+        {canManage && detail.status !== "VOID" && (
+          <div className="flex justify-end">
+            <Button variant="secondary" onClick={() => setEditExpenseOpen(true)}>
+              Edit details
+            </Button>
+          </div>
         )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -723,13 +736,22 @@ function DetailDrawer({
                     )}
                   </div>
                   {canManage && (
-                    <Button
-                      variant="secondary"
-                      onClick={() => void reverseReimbursement(r.id)}
-                      disabled={busy}
-                    >
-                      Reverse
-                    </Button>
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        variant="secondary"
+                        onClick={() => setEditingReimb(r)}
+                        disabled={busy}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void reverseReimbursement(r.id)}
+                        disabled={busy}
+                      >
+                        Reverse
+                      </Button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -755,6 +777,29 @@ function DetailDrawer({
           onClose={() => setReimbOpen(false)}
           onRecorded={async () => {
             setReimbOpen(false);
+            await onChanged();
+          }}
+        />
+      )}
+
+      {editExpenseOpen && (
+        <EditExpenseDialog
+          detail={detail}
+          onClose={() => setEditExpenseOpen(false)}
+          onSaved={async () => {
+            setEditExpenseOpen(false);
+            await onChanged();
+          }}
+        />
+      )}
+
+      {editingReimb && (
+        <EditReimbursementDialog
+          detail={detail}
+          reimb={editingReimb}
+          onClose={() => setEditingReimb(null)}
+          onSaved={async () => {
+            setEditingReimb(null);
             await onChanged();
           }}
         />
@@ -877,6 +922,275 @@ function RecordReimbursementDialog({
           </Button>
           <Button type="submit" disabled={busy}>
             {busy ? "Saving…" : "Record reimbursement"}
+          </Button>
+        </div>
+      </form>
+    </DialogShell>
+  );
+}
+
+// ============================================================================
+// Edit expense (parent) dialog
+// ============================================================================
+
+function EditExpenseDialog({
+  detail,
+  onClose,
+  onSaved,
+}: {
+  detail: OwnerExpenseDetail;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [expenseDate, setExpenseDate] = useState(detail.expenseDate);
+  const [category, setCategory] = useState<PayableCategory>(detail.category);
+  const [description, setDescription] = useState(detail.description);
+  const [total, setTotal] = useState(detail.total.toFixed(2));
+  const [reference, setReference] = useState(detail.reference ?? "");
+  const [notes, setNotes] = useState(detail.notes ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Total is locked once any reimbursement has been recorded —
+  // reverse reimbursements first if you need to change the principal.
+  const totalLocked = detail.amountReimbursed > 0;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (!description.trim()) {
+      setErr("Description is required.");
+      return;
+    }
+    const t = num(total);
+    if (!totalLocked && t <= 0) {
+      setErr("Amount must be greater than zero.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await updateOwnerExpense(detail.id, {
+        expenseDate,
+        category,
+        description: description.trim(),
+        ...(totalLocked ? {} : { total: t }),
+        reference: reference.trim() || null,
+        notes: notes.trim() || null,
+      });
+      await onSaved();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to save";
+      setErr(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <DialogShell title="Edit owner expense" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        {err && <Alert variant="error">{err}</Alert>}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Expense date">
+            <input
+              type="date"
+              className="field-input"
+              value={expenseDate}
+              onChange={(e) => setExpenseDate(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Category">
+            <select
+              className="field-input"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as PayableCategory)}
+            >
+              {CATEGORY_OPTIONS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <Field label="Description">
+          <input
+            className="field-input"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={300}
+            required
+          />
+        </Field>
+        <Field label={totalLocked ? "Amount (locked — reverse reimbursements to edit)" : "Amount"}>
+          <input
+            className="field-input"
+            value={total}
+            onChange={(e) => setTotal(e.target.value)}
+            inputMode="decimal"
+            disabled={totalLocked}
+            required
+          />
+        </Field>
+        <Field label="Reference (optional)">
+          <input
+            className="field-input"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            maxLength={120}
+          />
+        </Field>
+        <Field label="Notes (optional)">
+          <textarea
+            className="field-input"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            maxLength={1000}
+          />
+        </Field>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </form>
+    </DialogShell>
+  );
+}
+
+// ============================================================================
+// Edit reimbursement dialog
+// ============================================================================
+
+function EditReimbursementDialog({
+  detail,
+  reimb,
+  onClose,
+  onSaved,
+}: {
+  detail: OwnerExpenseDetail;
+  reimb: OwnerExpenseReimbursementRow;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [paidDate, setPaidDate] = useState(reimb.paidDate);
+  const [amount, setAmount] = useState(reimb.amount.toFixed(2));
+  const [method, setMethod] = useState<PaymentMethod>(reimb.method);
+  const [reference, setReference] = useState(reimb.reference ?? "");
+  const [notes, setNotes] = useState(reimb.notes ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Maximum allowed amount: outstanding + this reimbursement's
+  // current contribution (since we're swapping it out).
+  const maxAmount = detail.outstanding + reimb.amount;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    const a = num(amount);
+    if (a <= 0) {
+      setErr("Amount must be greater than zero.");
+      return;
+    }
+    if (a > maxAmount + 0.001) {
+      setErr(
+        `Amount can be at most ${maxAmount.toFixed(2)} — that's the outstanding balance plus this reimbursement's current value.`,
+      );
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await updateOwnerReimbursement(detail.id, reimb.id, {
+        paidDate,
+        amount: a,
+        method,
+        reference: reference.trim() || null,
+        notes: notes.trim() || null,
+      });
+      await onSaved();
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to save";
+      setErr(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <DialogShell title="Edit reimbursement" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        {err && <Alert variant="error">{err}</Alert>}
+        <div className="text-sm text-[var(--color-muted)]">
+          Reimbursing{" "}
+          <span className="font-medium text-[var(--color-ink)]">{detail.ownerName}</span>{" "}
+          for <span className="font-medium text-[var(--color-ink)]">{detail.description}</span>.
+          Max amount allowed:{" "}
+          <span className="font-semibold text-[var(--color-ink)]">{fmt(maxAmount)}</span>.
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Date paid">
+            <input
+              type="date"
+              className="field-input"
+              value={paidDate}
+              onChange={(e) => setPaidDate(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Method">
+            <select
+              className="field-input"
+              value={method}
+              onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+            >
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <Field label="Amount">
+          <input
+            className="field-input"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+            required
+          />
+        </Field>
+        <Field label="Reference (optional)">
+          <input
+            className="field-input"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            maxLength={120}
+          />
+        </Field>
+        <Field label="Notes (optional)">
+          <textarea
+            className="field-input"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            maxLength={1000}
+          />
+        </Field>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Save changes"}
           </Button>
         </div>
       </form>
