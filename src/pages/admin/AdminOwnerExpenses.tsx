@@ -32,7 +32,7 @@ type Tab = "PENDING" | "REIMBURSED" | "VOID" | "ALL";
 const TAB_DEFS: { id: Tab; label: string }[] = [
   { id: "PENDING", label: "Outstanding" },
   { id: "REIMBURSED", label: "Reimbursed" },
-  { id: "VOID", label: "Voided" },
+  { id: "VOID", label: "Cancelled" },
   { id: "ALL", label: "All" },
 ];
 
@@ -59,7 +59,7 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
 ];
 
 const statusBadge = (s: OwnerExpenseStatus) => {
-  if (s === "VOID") return { variant: "inactive" as const, label: "Voided" };
+  if (s === "VOID") return { variant: "inactive" as const, label: "Cancelled" };
   if (s === "REIMBURSED") return { variant: "locked" as const, label: "Reimbursed" };
   if (s === "PARTIAL") return { variant: "draft" as const, label: "Partial" };
   return { variant: "neutral" as const, label: "Pending" };
@@ -525,7 +525,7 @@ function DetailDrawer({
     if (busy) return;
     if (
       !window.confirm(
-        "Void this expense? It will be removed from the P&L. This is only available before any reimbursement is recorded.",
+        "Cancel this expense? It will be removed from the P&L. This is only available before any reimbursement is recorded.",
       )
     ) {
       return;
@@ -536,7 +536,7 @@ function DetailDrawer({
       await voidOwnerExpense(detail.id);
       await onChanged();
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to void";
+      const message = e instanceof Error ? e.message : "Failed to cancel";
       setErr(message);
     } finally {
       setBusy(false);
@@ -652,7 +652,7 @@ function DetailDrawer({
           detail.amountReimbursed === 0 && (
             <div className="flex justify-end pt-2">
               <Button variant="secondary" onClick={() => void doVoid()} disabled={busy}>
-                Void expense
+                Cancel expense
               </Button>
             </div>
           )}
