@@ -112,9 +112,10 @@ export function DailyChecklists() {
             {summary.done} complete · {summary.started} in progress · {summary.total - summary.done - summary.started} not started
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {data.map((row) => (
+            {data.map((row, index) => (
               <ChecklistCard
                 key={row.template.id}
+                index={index}
                 template={row.template}
                 runDate={date}
                 initialResponses={row.run?.responses ?? {}}
@@ -134,8 +135,9 @@ export function DailyChecklists() {
 }
 
 function ChecklistCard({
-  template, runDate, initialResponses, initialNotes, onSaved, onError,
+  index, template, runDate, initialResponses, initialNotes, onSaved, onError,
 }: {
+  index: number;
   template: ChecklistTemplate;
   runDate: string;
   initialResponses: Record<string, ChecklistResponse>;
@@ -146,7 +148,7 @@ function ChecklistCard({
   const [responses, setResponses] = useState<Record<string, ChecklistResponse>>(initialResponses);
   const [notes, setNotes] = useState(initialNotes);
   const [saving, setSaving] = useState(false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(index === 0);
 
   // Sync when the parent passes a fresh run (e.g. after reload).
   useEffect(() => { setResponses(initialResponses); }, [initialResponses]);
