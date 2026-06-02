@@ -69,29 +69,29 @@ function AppShellInner({
     <div className="min-h-screen bg-[var(--color-cream)] md:flex">
       {/* Desktop sidebar — navigation only. User info and logout live in
           the TopAppBar dropdown to free up vertical space for sections. */}
-      <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-[var(--sidebar-width)] bg-[var(--color-ink)] text-white">
-        <div className="px-5 pt-5 pb-3 border-b border-white/[0.08]">
+      <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-[var(--sidebar-width)] bg-[#0f172a] text-white border-r border-white/[0.05]">
+        <div className="px-4 pt-4 pb-3 border-b border-white/[0.06]">
           <Link to="/" className="block group">
-            <h1 className="font-[family-name:var(--font-display)] text-2xl tracking-tight leading-none group-hover:text-white/90 transition">
+            <h1 className="text-sm font-semibold tracking-tight leading-none text-white group-hover:text-white/90 transition">
               Saffron
             </h1>
-            <p className="text-white/40 text-[11px] mt-1 font-medium">Cash flow</p>
+            <p className="text-slate-500 text-[11px] mt-0.5 font-medium">Cash management</p>
           </Link>
         </div>
 
-        <div className="px-3 pt-3 pb-2">
+        <div className="px-3 pt-2 pb-1">
           <button
             type="button"
             onClick={openCommandPalette}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-sm text-white/55 hover:text-white transition border border-white/[0.04]"
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/[0.04] hover:bg-white/[0.07] text-xs text-slate-400 hover:text-white transition border border-white/[0.05]"
             aria-label="Search"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0">
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.3-4.3" />
             </svg>
             <span className="flex-1 text-left">Search</span>
-            <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-white/50">
+            <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.07] text-slate-500">
               ⌘K
             </kbd>
           </button>
@@ -105,11 +105,11 @@ function AppShellInner({
         <TopAppBar />
 
         {/* Mobile mini-header */}
-        <header className="md:hidden sticky top-0 z-30 bg-[var(--color-ink)] text-white px-4 py-3 border-b border-white/10">
+        <header className="md:hidden sticky top-0 z-30 bg-[#0f172a] text-white px-4 py-3 border-b border-white/[0.07]">
           <div className="flex items-center justify-between gap-3">
             <Link to="/" className="min-w-0">
-              <h1 className="font-[family-name:var(--font-display)] text-xl tracking-tight">Saffron</h1>
-              <p className="text-white/55 text-xs truncate">{user.name}</p>
+              <h1 className="text-sm font-semibold tracking-tight">Saffron</h1>
+              <p className="text-slate-400 text-xs truncate">{user.name}</p>
             </Link>
             <div className="flex shrink-0 items-center gap-2">
               <button
