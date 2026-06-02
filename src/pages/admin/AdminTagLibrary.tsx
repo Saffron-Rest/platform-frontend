@@ -35,7 +35,7 @@ const blank: FormState = { name: "", color: null, description: "" };
 
 /** Admin-only library for the tag system. Tags created here are then
  *  selectable from the inline TagPicker on every list page. */
-export function AdminTagLibrary() {
+export function AdminTagLibrary({ asTab = false }: { asTab?: boolean } = {}) {
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -119,10 +119,12 @@ export function AdminTagLibrary() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Tag library"
-        subtitle="Custom labels you can apply to reports, expenses, payouts and delivery income"
-      />
+      {!asTab && (
+        <PageHeader
+          title="Tag library"
+          subtitle="Custom labels you can apply to reports, expenses, payouts and delivery income"
+        />
+      )}
 
       {error && <Alert variant="error">{error}</Alert>}
       {message && <Alert variant="success">{message}</Alert>}

@@ -24,7 +24,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 
 type Vendor = "generic" | "dotykacka";
 
-export function AdminPos() {
+export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
   const [integrations, setIntegrations] = useState<PosIntegration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -369,15 +369,17 @@ export function AdminPos() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="POS integrations"
-        subtitle="Connect your POS so menu analytics and engineering use real receipt data."
-        action={
-          <Link to="/admin/pos/simulator">
-            <Button variant="secondary">Open sale simulator</Button>
-          </Link>
-        }
-      />
+      {!asTab && (
+        <PageHeader
+          title="POS integrations"
+          subtitle="Connect your POS so menu analytics and engineering use real receipt data."
+          action={
+            <Link to="/admin/pos/simulator">
+              <Button variant="secondary">Open sale simulator</Button>
+            </Link>
+          }
+        />
+      )}
 
       {error && <Alert variant="error">{error}</Alert>}
       {message && <Alert variant="success">{message}</Alert>}

@@ -21,7 +21,7 @@ const fmt = (iso: string | null) => {
 
 type Phase = "STATUS" | "ENROLLING" | "DISABLING";
 
-export function AdminSecurity() {
+export function AdminSecurity({ asTab = false }: { asTab?: boolean } = {}) {
   const [status, setStatus] = useState<TotpStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -92,10 +92,12 @@ export function AdminSecurity() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Security"
-        subtitle="Two-factor authentication and account access."
-      />
+      {!asTab && (
+        <PageHeader
+          title="Security"
+          subtitle="Two-factor authentication and account access."
+        />
+      )}
 
       {error && (
         <Alert variant="error">

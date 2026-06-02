@@ -145,14 +145,14 @@ function fullOperationsGroups(): NavGroup[] {
       label: "Settings",
       items: [
         { kind: "link", to: "/admin/settings", label: "Treasury", description: "Balances & %", icon: IconWallet, requires: ["SETTINGS_VIEW", "SETTINGS_MANAGE", "TREASURY_VIEW", "TREASURY_MANAGE"] },
-        { kind: "link", to: "/admin/hours", label: "Hours", description: "Opening times", icon: IconClock, requires: ["SETTINGS_VIEW", "SETTINGS_MANAGE"] },
-        { kind: "link", to: "/admin/tags", label: "Tags", description: "Custom labels", icon: IconTag, requires: ["TAGS_MANAGE"] },
-        { kind: "link", to: "/admin/pos", label: "POS", description: "Webhook integrations", icon: IconShield, requires: ["POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"] },
-        { kind: "link", to: "/admin/pos/simulator", label: "POS simulator", description: "Test stock decrement end-to-end", icon: IconBolt, requires: ["POS_INTEGRATION_MANAGE"] },
+        { kind: "link", to: "/admin/settings?tab=hours", label: "Hours", description: "Opening times", icon: IconClock, requires: ["SETTINGS_VIEW", "SETTINGS_MANAGE"] },
+        { kind: "link", to: "/admin/settings?tab=tags", label: "Tags", description: "Custom labels", icon: IconTag, requires: ["TAGS_MANAGE"] },
+        { kind: "link", to: "/admin/settings?tab=pos", label: "POS", description: "Webhook integrations", icon: IconShield, requires: ["POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"] },
+        { kind: "link", to: "/admin/settings?tab=pos", label: "POS simulator", description: "Test stock decrement end-to-end", icon: IconBolt, requires: ["POS_INTEGRATION_MANAGE"] },
         // Truly admin-only — no permission can substitute, so the
         // sidebar only ever surfaces this for ADMIN users (the empty
         // requires list combined with the role check below).
-        { kind: "link", to: "/admin/security", label: "Security", description: "2FA & sessions", icon: IconKey, requires: ["__admin_only__"] },
+        { kind: "link", to: "/admin/settings?tab=security", label: "Security", description: "2FA & sessions", icon: IconKey, requires: ["__admin_only__"] },
       ],
     },
   ];

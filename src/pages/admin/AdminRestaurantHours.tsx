@@ -25,7 +25,7 @@ function openDuration(open: string, close: string): string {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-export function AdminRestaurantHours() {
+export function AdminRestaurantHours({ asTab = false }: { asTab?: boolean } = {}) {
   const [weeklyHours, setWeeklyHours] = useState<WeeklyHours>(DEFAULT_WEEKLY_HOURS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,10 +78,12 @@ export function AdminRestaurantHours() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Restaurant hours"
-        subtitle="Open and close times per weekday — used for till-close shifts and daily pay"
-      />
+      {!asTab && (
+        <PageHeader
+          title="Restaurant hours"
+          subtitle="Open and close times per weekday — used for till-close shifts and daily pay"
+        />
+      )}
 
       {error && <Alert variant="error">{error}</Alert>}
       {msg && <Alert variant="success">{msg}</Alert>}

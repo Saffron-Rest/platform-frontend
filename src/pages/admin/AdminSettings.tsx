@@ -25,7 +25,7 @@ type TelegramStatus = {
   unreadAlerts: number;
 };
 
-export function AdminSettings() {
+export function AdminSettings({ asTab = false }: { asTab?: boolean } = {}) {
   const navigate = useNavigate();
   const [platforms, setPlatforms] = useState<Platforms>({
     wolt: true,
@@ -145,7 +145,7 @@ export function AdminSettings() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Settings" subtitle="Treasury, platforms, alerts, and audit log" />
+      {!asTab && <PageHeader title="Settings" subtitle="Treasury, platforms, alerts, and audit log" />}
       {msg && <Alert variant={msg.kind}>{msg.text}</Alert>}
 
       <TreasurySettingsCard />

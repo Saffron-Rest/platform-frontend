@@ -33,21 +33,16 @@ const MenuEngineering = lazy(() => import("./pages/MenuEngineering").then((m) =>
 /* ── Admin pages — heaviest in the codebase, always lazy. ── */
 const AdminPeople = lazy(() => import("./pages/admin/AdminPeople").then((m) => ({ default: m.AdminPeople })));
 const AdminAttendance = lazy(() => import("./pages/admin/AdminAttendance").then((m) => ({ default: m.AdminAttendance })));
-const AdminRestaurantHours = lazy(() => import("./pages/admin/AdminRestaurantHours").then((m) => ({ default: m.AdminRestaurantHours })));
-const AdminSettings = lazy(() => import("./pages/admin/AdminSettings").then((m) => ({ default: m.AdminSettings })));
+const AdminSettingsHub = lazy(() => import("./pages/admin/AdminSettingsHub").then((m) => ({ default: m.AdminSettingsHub })));
 const AdminAudit = lazy(() => import("./pages/admin/AdminAudit").then((m) => ({ default: m.AdminAudit })));
-const AdminTagLibrary = lazy(() => import("./pages/admin/AdminTagLibrary").then((m) => ({ default: m.AdminTagLibrary })));
 const AdminDataHealth = lazy(() => import("./pages/admin/AdminDataHealth").then((m) => ({ default: m.AdminDataHealth })));
 const AdminMenu = lazy(() => import("./pages/admin/AdminMenu").then((m) => ({ default: m.AdminMenu })));
 const AdminRecipes = lazy(() => import("./pages/admin/AdminRecipes").then((m) => ({ default: m.AdminRecipes })));
-const AdminPos = lazy(() => import("./pages/admin/AdminPos").then((m) => ({ default: m.AdminPos })));
-const AdminPosSimulator = lazy(() => import("./pages/admin/AdminPosSimulator").then((m) => ({ default: m.AdminPosSimulator })));
 const AdminPayables = lazy(() => import("./pages/admin/AdminPayables").then((m) => ({ default: m.AdminPayables })));
 const AdminOwnerExpenses = lazy(() => import("./pages/admin/AdminOwnerExpenses").then((m) => ({ default: m.AdminOwnerExpenses })));
 const AdminStock = lazy(() => import("./pages/admin/AdminStock").then((m) => ({ default: m.AdminStock })));
 const AdminIncidents = lazy(() => import("./pages/admin/AdminIncidents").then((m) => ({ default: m.AdminIncidents })));
 const AdminChecklists = lazy(() => import("./pages/admin/AdminChecklists").then((m) => ({ default: m.AdminChecklists })));
-const AdminSecurity = lazy(() => import("./pages/admin/AdminSecurity").then((m) => ({ default: m.AdminSecurity })));
 
 /** Suspense fallback used while a lazy chunk loads. Matches the rest of
  *  the app's spinner styling so the in-flight transition feels native. */
@@ -140,14 +135,16 @@ export default function App() {
                     <Route element={<RequirePermission anyOf={["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"]} />}>
                       <Route path="attendance" element={<LazyRoute><AdminAttendance /></LazyRoute>} />
                     </Route>
-                    <Route element={<RequirePermission anyOf={["SETTINGS_VIEW", "SETTINGS_MANAGE"]} />}>
-                      <Route path="hours" element={<LazyRoute><AdminRestaurantHours /></LazyRoute>} />
+                    {/* Unified settings hub */}
+                    <Route element={<RequirePermission anyOf={["SETTINGS_VIEW", "SETTINGS_MANAGE", "TREASURY_VIEW", "TREASURY_MANAGE", "TAGS_MANAGE", "POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"]} />}>
+                      <Route path="settings" element={<LazyRoute><AdminSettingsHub /></LazyRoute>} />
                     </Route>
-                    <Route element={<RequirePermission anyOf={["SETTINGS_VIEW", "SETTINGS_MANAGE", "TREASURY_VIEW", "TREASURY_MANAGE"]} />}>
-                      <Route path="settings" element={<LazyRoute><AdminSettings /></LazyRoute>} />
+                    {/* Legacy redirects — preserve old bookmarks/links */}
+                    <Route element={<RequirePermission anyOf={["SETTINGS_VIEW", "SETTINGS_MANAGE"]} />}>
+                      <Route path="hours" element={<Navigate to="/admin/settings?tab=hours" replace />} />
                     </Route>
                     <Route element={<RequirePermission anyOf={["TAGS_MANAGE"]} />}>
-                      <Route path="tags" element={<LazyRoute><AdminTagLibrary /></LazyRoute>} />
+                      <Route path="tags" element={<Navigate to="/admin/settings?tab=tags" replace />} />
                     </Route>
                     <Route element={<RequirePermission anyOf={["REPORTS_VIEW"]} />}>
                       <Route path="inbox" element={<LazyRoute><AdminDataHealth /></LazyRoute>} />
@@ -171,10 +168,10 @@ export default function App() {
                       <Route path="haccp" element={<RouteErrorBoundary><HaccpLogs /></RouteErrorBoundary>} />
                     </Route>
                     <Route element={<RequirePermission anyOf={["POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"]} />}>
-                      <Route path="pos" element={<LazyRoute><AdminPos /></LazyRoute>} />
+                      <Route path="pos" element={<Navigate to="/admin/settings?tab=pos" replace />} />
                     </Route>
                     <Route element={<RequirePermission anyOf={["POS_INTEGRATION_MANAGE"]} />}>
-                      <Route path="pos/simulator" element={<LazyRoute><AdminPosSimulator /></LazyRoute>} />
+                      <Route path="pos/simulator" element={<Navigate to="/admin/settings?tab=pos" replace />} />
                     </Route>
                     <Route element={<RequirePermission anyOf={["PAYABLES_VIEW", "PAYABLES_MANAGE"]} />}>
                       <Route path="payables" element={<LazyRoute><AdminPayables /></LazyRoute>} />
@@ -192,9 +189,9 @@ export default function App() {
                     >
                       <Route path="owner-expenses" element={<LazyRoute><AdminOwnerExpenses /></LazyRoute>} />
                     </Route>
-                    {/* Strictly admin: 2FA / session management. */}
+                    {/* security tab is admin-only, handled inside AdminSettingsHub via tab visibility */}
                     <Route element={<AdminGuard />}>
-                      <Route path="security" element={<LazyRoute><AdminSecurity /></LazyRoute>} />
+                      <Route path="security" element={<Navigate to="/admin/settings?tab=security" replace />} />
                     </Route>
                   </Route>
                 </Route>
