@@ -4,46 +4,40 @@
   --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-display: "Inter", system-ui, sans-serif;
 
-  /* ── Brand: Forest Green + Lime ──────────────────────────────────── */
-  --color-forest:       #163300;   /* primary brand — sidebar, headers, CTAs */
-  --color-forest-deep:  #0D2200;   /* pressed / very dark variant */
-  --color-lime:         #9FE870;   /* accent — CTAs, active states, highlights */
-  --color-lime-soft:    #C8F5A0;   /* tinted fill — success bg, tag bg, callouts */
+  /* Primary accent — indigo */
+  --color-saffron:       #4f46e5;
+  --color-saffron-dark:  #4338ca;
+  --color-saffron-light: #eef2ff;
 
-  /* Legacy alias so existing `var(--color-saffron)` references auto-update */
-  --color-saffron:      #9FE870;   /* → Lime Accent */
-  --color-saffron-dark: #163300;   /* → Forest Green */
-  --color-saffron-light:#C8F5A0;   /* → Soft Lime */
+  /* Surfaces */
+  --color-cream:   #f1f5f9;
+  --color-surface: #ffffff;
+  --color-card:    #ffffff;
+  --color-stone:   #e2e8f0;
 
-  /* ── Surfaces ────────────────────────────────────────────────────── */
-  --color-cream:    #FAFAF7;   /* Warm White — page backgrounds */
-  --color-surface:  #ffffff;
-  --color-card:     #ffffff;
-  --color-stone:    #E8E8E3;   /* dividers, borders, disabled bg */
+  /* Text */
+  --color-ink:   #0f172a;
+  --color-muted: #64748b;
 
-  /* ── Text ────────────────────────────────────────────────────────── */
-  --color-ink:   #0E0F0C;   /* Near Black */
-  --color-muted: #9A9A95;   /* Slate — secondary text, labels */
+  /* Status */
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger:  #dc2626;
+  --color-info:    #2563eb;
 
-  /* ── Semantic status ─────────────────────────────────────────────── */
-  --color-success: #9FE870;   /* Lime — success always matches brand accent */
-  --color-warning: #F5C842;
-  --color-danger:  #E84545;
-  --color-info:    #4A90D9;
-
-  /* ── Shell ───────────────────────────────────────────────────────── */
+  /* Shell */
   --sidebar-width: 14rem;
   --nav-height: 4rem;
 
-  /* ── Radius — tight, professional ───────────────────────────────── */
+  /* Radius */
   --radius-lg: 0.375rem;
   --radius-xl: 0.5rem;
 
-  /* ── Shadows ─────────────────────────────────────────────────────── */
+  /* Shadows */
   --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.03);
-  --shadow-card: 0 0 0 1px rgb(0 0 0 / 0.07), 0 2px 6px rgb(0 0 0 / 0.04);
+  --shadow-card: 0 0 0 1px rgb(0 0 0 / 0.07), 0 2px 6px rgb(0 0 0 / 0.05);
 
-  /* ── Z-index layers ──────────────────────────────────────────────── */
+  /* Z-index layers */
   --z-popover: 30;
   --z-overlay: 40;
   --z-modal: 50;
@@ -65,12 +59,9 @@ input[type="number"] {
 
 @layer components {
   .field-input {
-    @apply w-full mt-1.5 px-3 py-2 rounded-md border bg-white text-sm;
-    border-color: var(--color-stone);
-    @apply focus:outline-none focus:ring-2 focus:border-[var(--color-forest)];
-    focus-ring-color: var(--color-lime);
-    @apply disabled:opacity-60;
-    background-color: var(--color-cream);
+    @apply w-full mt-1.5 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm;
+    @apply focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]/25 focus:border-[var(--color-saffron)];
+    @apply disabled:opacity-60 disabled:bg-slate-50;
     min-height: 2.75rem;
   }
 
@@ -93,8 +84,7 @@ input[type="number"] {
   }
 
   .surface-card {
-    @apply bg-white rounded-md;
-    border: 1px solid var(--color-stone);
+    @apply bg-white rounded-md border border-slate-200/80;
     box-shadow: var(--shadow-card);
   }
 
@@ -130,36 +120,26 @@ input[type="number"] {
   }
 
   .nav-item-active {
-    background-color: var(--color-lime);
-    color: var(--color-forest);
-    font-weight: 600;
+    @apply bg-[var(--color-saffron)] text-white;
   }
 
   .nav-item-idle {
-    color: rgb(159 232 112 / 0.55);
-  }
-
-  .nav-item-idle:hover {
-    background-color: rgb(255 255 255 / 0.06);
-    color: var(--color-lime);
+    @apply text-slate-400 hover:bg-white/[0.06] hover:text-white;
   }
 
   .hub-tile {
-    @apply flex flex-col gap-2 p-4 rounded-md bg-white text-left transition;
-    border: 1px solid var(--color-stone);
+    @apply flex flex-col gap-2 p-4 rounded-md border border-slate-200/80 bg-white text-left transition;
     box-shadow: var(--shadow-card);
   }
 
   .hub-tile:hover {
-    border-color: var(--color-forest);
-    box-shadow: var(--shadow-card);
+    @apply border-[var(--color-saffron)]/40;
   }
 
   .hub-tile-accent {
-    @apply border-transparent;
-    color: var(--color-forest);
-    background: var(--color-lime);
-    box-shadow: 0 4px 16px rgb(159 232 112 / 0.4);
+    @apply border-transparent text-white;
+    background: linear-gradient(135deg, var(--color-saffron) 0%, var(--color-saffron-dark) 100%);
+    box-shadow: 0 4px 16px rgb(79 70 229 / 0.35);
   }
 
   .tab-pill {

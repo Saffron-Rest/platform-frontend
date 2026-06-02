@@ -69,13 +69,13 @@ function AppShellInner({
     <div className="min-h-screen bg-[var(--color-cream)] md:flex">
       {/* Desktop sidebar — navigation only. User info and logout live in
           the TopAppBar dropdown to free up vertical space for sections. */}
-      <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-[var(--sidebar-width)] bg-[var(--color-forest)] border-r border-[var(--color-forest-deep)]">
+      <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-[var(--sidebar-width)] bg-[var(--color-ink)] border-r border-white/[0.05]">
         <div className="px-4 pt-4 pb-3 border-b border-white/[0.06]">
           <Link to="/" className="block group">
-            <h1 className="text-sm font-semibold tracking-tight leading-none text-[var(--color-lime)] group-hover:text-[var(--color-lime-soft)] transition">
+            <h1 className="text-sm font-semibold tracking-tight leading-none text-white group-hover:text-white/90 transition">
               Saffron
             </h1>
-            <p className="text-[11px] mt-0.5 font-medium" style={{ color: "rgb(159 232 112 / 0.45)" }}>Cash management</p>
+            <p className="text-slate-500 text-[11px] mt-0.5 font-medium">Cash management</p>
           </Link>
         </div>
 
@@ -83,8 +83,7 @@ function AppShellInner({
           <button
             type="button"
             onClick={openCommandPalette}
-            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/[0.05] hover:bg-white/[0.09] text-xs transition border border-white/[0.05]"
-            style={{ color: "rgb(159 232 112 / 0.5)" }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/[0.04] hover:bg-white/[0.07] text-xs text-slate-400 hover:text-white transition border border-white/[0.05]"
             aria-label="Search"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0">
@@ -92,7 +91,7 @@ function AppShellInner({
               <path d="m21 21-4.3-4.3" />
             </svg>
             <span className="flex-1 text-left">Search</span>
-            <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.07]">
+            <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.07] text-slate-500">
               ⌘K
             </kbd>
           </button>
@@ -106,11 +105,11 @@ function AppShellInner({
         <TopAppBar />
 
         {/* Mobile mini-header */}
-        <header className="md:hidden sticky top-0 z-30 bg-[var(--color-forest)] px-4 py-3 border-b border-[var(--color-forest-deep)]">
+        <header className="md:hidden sticky top-0 z-30 bg-[var(--color-ink)] px-4 py-3 border-b border-white/[0.07]">
           <div className="flex items-center justify-between gap-3">
             <Link to="/" className="min-w-0">
-              <h1 className="text-sm font-semibold tracking-tight text-[var(--color-lime)]">Saffron</h1>
-              <p className="text-xs truncate" style={{ color: "rgb(159 232 112 / 0.5)" }}>{user.name}</p>
+              <h1 className="text-sm font-semibold tracking-tight text-white">Saffron</h1>
+              <p className="text-slate-400 text-xs truncate">{user.name}</p>
             </Link>
             <div className="flex shrink-0 items-center gap-2">
               <button

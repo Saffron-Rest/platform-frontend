@@ -13,7 +13,7 @@ export function SidebarNav({ groups, pathname }: Props) {
     <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-4" aria-label="Main">
       {groups.map((group) => (
         <div key={group.id}>
-          <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: "rgb(159 232 112 / 0.35)" }}>
+          <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
             {group.label}
           </p>
           <ul className="space-y-px">
