@@ -144,15 +144,6 @@ function PaySalaryForm({
           </button>
         ))}
       </div>
-      <label className="field-label">
-        Note (optional)
-        <input
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="field-input"
-          placeholder="e.g. May payroll"
-        />
-      </label>
       <label className="flex items-start gap-2 text-xs cursor-pointer select-none rounded-lg border border-black/10 bg-amber-50/40 px-2.5 py-2">
         <input
           type="checkbox"

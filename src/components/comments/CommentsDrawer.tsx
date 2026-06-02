@@ -7,6 +7,7 @@ import {
   type Comment,
 } from "../../api/comments";
 import type { TaggedEntityType } from "../../api/tags";
+import { useToast } from "../../context/ToastContext";
 
 /**
  * Slide-in drawer for record comments. Stays mounted as a portal-like
@@ -42,6 +43,7 @@ export function CommentsDrawer({
   const [saving, setSaving] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     if (!entityType || !entityId) return;
@@ -130,7 +132,6 @@ export function CommentsDrawer({
   };
 
   const remove = async (c: Comment) => {
-    if (!confirm("Delete this comment? This cannot be undone.")) return;
     try {
       await deleteComment(c.id);
       setItems((prev) => {
@@ -138,6 +139,7 @@ export function CommentsDrawer({
         if (entityId) onCountChange?.(entityId, next.length);
         return next;
       });
+      toast.info("Comment deleted");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete");
     }

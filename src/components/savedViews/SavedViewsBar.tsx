@@ -6,6 +6,7 @@ import {
   updateSavedView,
   type SavedView,
 } from "../../api/savedViews";
+import { useToast } from "../../context/ToastContext";
 
 /**
  * Compact pinned-filters bar. The page passes the current filter object
@@ -29,6 +30,7 @@ export function SavedViewsBar<Filters>({
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [error, setError] = useState("");
+  const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,11 +119,11 @@ export function SavedViewsBar<Filters>({
   };
 
   const remove = async (v: SavedView) => {
-    if (!confirm(`Delete saved view "${v.name}"?`)) return;
     try {
       await deleteSavedView(v.id);
       setViews((prev) => prev.filter((x) => x.id !== v.id));
       if (activeId === v.id) setActiveId(null);
+      toast.info(`View "${v.name}" deleted`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete");
     }

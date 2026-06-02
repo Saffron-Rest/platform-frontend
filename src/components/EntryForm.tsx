@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { MoneyInput } from "./MoneyInput";
 import { ExpenseLines } from "./ExpenseLines";
 import { OpeningBalanceField } from "./OpeningBalanceField";
@@ -73,6 +74,11 @@ export function EntryForm({
   const set = (key: keyof EntryFormData, value: number | string) =>
     onChange({ ...data, [key]: value });
 
+  const platformTotal =
+    num(data.woltSales) + num(data.boltSales) + num(data.uberEatsSales) +
+    num(data.glovoSales) + num(data.otherPlatformSales);
+  const [showPlatforms, setShowPlatforms] = useState(() => platformTotal > 0);
+
   const closing = closingBalance(data, expenses);
   const diff = cashDifference(data, expenses);
   const cashExpenses = expenseTotalBySource(expenses, "CASH");
@@ -134,44 +140,48 @@ export function EntryForm({
             onChange={onPosReportChange}
           />
         )}
-        {platforms.wolt && (
-          <MoneyInput label="Wolt" value={data.woltSales} onChange={(v) => set("woltSales", v)} disabled={disabled} />
-        )}
-        {platforms.bolt && (
-          <MoneyInput
-            label="Bolt Food"
-            value={data.boltSales}
-            onChange={(v) => set("boltSales", v)}
-            disabled={disabled}
-          />
-        )}
-        {platforms.uberEats && (
-          <MoneyInput
-            label="Uber Eats"
-            value={data.uberEatsSales}
-            onChange={(v) => set("uberEatsSales", v)}
-            disabled={disabled}
-          />
-        )}
-        {platforms.glovo && (
-          <MoneyInput label="Glovo" value={data.glovoSales} onChange={(v) => set("glovoSales", v)} disabled={disabled} />
-        )}
-        {platforms.other && (
-          <MoneyInput
-            label="Other platforms"
-            value={data.otherPlatformSales}
-            onChange={(v) => set("otherPlatformSales", v)}
-            disabled={disabled}
-          />
-        )}
-        {treasurySettings && (
-          <DeliverySettlementFields
-            data={data}
-            onChange={onChange}
-            disabled={disabled}
-            platforms={platforms}
-            treasurySettings={treasurySettings}
-          />
+        {(platforms.wolt || platforms.bolt || platforms.uberEats || platforms.glovo || platforms.other) && (
+          <div className="sm:col-span-2">
+            <button
+              type="button"
+              onClick={() => setShowPlatforms((v) => !v)}
+              className="flex items-center gap-2 text-sm text-[var(--color-saffron-dark)] font-medium py-1"
+            >
+              <span>{showPlatforms ? "−" : "+"}</span>
+              <span>Delivery platforms</span>
+              {!showPlatforms && platformTotal > 0 && (
+                <span className="text-xs text-[var(--color-muted)] font-normal">({fmt(platformTotal)})</span>
+              )}
+            </button>
+            {showPlatforms && (
+              <div className="grid gap-3 sm:grid-cols-2 mt-2">
+                {platforms.wolt && (
+                  <MoneyInput label="Wolt" value={data.woltSales} onChange={(v) => set("woltSales", v)} disabled={disabled} />
+                )}
+                {platforms.bolt && (
+                  <MoneyInput label="Bolt Food" value={data.boltSales} onChange={(v) => set("boltSales", v)} disabled={disabled} />
+                )}
+                {platforms.uberEats && (
+                  <MoneyInput label="Uber Eats" value={data.uberEatsSales} onChange={(v) => set("uberEatsSales", v)} disabled={disabled} />
+                )}
+                {platforms.glovo && (
+                  <MoneyInput label="Glovo" value={data.glovoSales} onChange={(v) => set("glovoSales", v)} disabled={disabled} />
+                )}
+                {platforms.other && (
+                  <MoneyInput label="Other platforms" value={data.otherPlatformSales} onChange={(v) => set("otherPlatformSales", v)} disabled={disabled} />
+                )}
+                {treasurySettings && (
+                  <DeliverySettlementFields
+                    data={data}
+                    onChange={onChange}
+                    disabled={disabled}
+                    platforms={platforms}
+                    treasurySettings={treasurySettings}
+                  />
+                )}
+              </div>
+            )}
+          </div>
         )}
       </CollapsibleSection>
 
