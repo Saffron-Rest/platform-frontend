@@ -151,25 +151,51 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable, o
               />
             </label>
 
-            {(canEditInvoices || (line.invoices?.length ?? 0) > 0) && (
-              <ExpenseInvoiceUploader
-                expenseId={line.id}
-                invoices={line.invoices ?? (line.invoice ? [line.invoice] : [])}
-                pendingFiles={[
-                  ...(line.pendingFiles ?? []),
-                  ...(line.pendingFile ? [line.pendingFile] : []),
-                ]}
-                disabled={!canEditInvoices}
-                uploadImmediately={canEditFields}
-                onChange={(patch) =>
-                  update(i, {
-                    ...patch,
-                    invoice: patch.invoices?.[0] ?? line.invoice,
-                    pendingFile: patch.pendingFiles?.[0],
-                  })
-                }
-              />
-            )}
+            {(line.invoices?.length ?? 0) > 0 || (line.pendingFiles?.length ?? 0) > 0 || line.pendingFile
+              ? (
+                <ExpenseInvoiceUploader
+                  expenseId={line.id}
+                  invoices={line.invoices ?? (line.invoice ? [line.invoice] : [])}
+                  pendingFiles={[
+                    ...(line.pendingFiles ?? []),
+                    ...(line.pendingFile ? [line.pendingFile] : []),
+                  ]}
+                  disabled={!canEditInvoices}
+                  uploadImmediately={canEditFields}
+                  onChange={(patch) =>
+                    update(i, {
+                      ...patch,
+                      invoice: patch.invoices?.[0] ?? line.invoice,
+                      pendingFile: patch.pendingFiles?.[0],
+                    })
+                  }
+                />
+              )
+              : line.id && canEditInvoices
+              ? (
+                <ExpenseInvoiceUploader
+                  expenseId={line.id}
+                  invoices={[]}
+                  pendingFiles={[]}
+                  disabled={false}
+                  uploadImmediately={canEditFields}
+                  onChange={(patch) =>
+                    update(i, {
+                      ...patch,
+                      invoice: patch.invoices?.[0] ?? line.invoice,
+                      pendingFile: patch.pendingFiles?.[0],
+                    })
+                  }
+                />
+              )
+              : canEditInvoices && !line.id
+              ? (
+                <p className="text-xs text-[var(--color-muted)]">
+                  📎 Save the report to attach a receipt.
+                </p>
+              )
+              : null
+            }
 
             {canEditFields && (
               <button

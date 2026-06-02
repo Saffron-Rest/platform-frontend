@@ -100,7 +100,18 @@ export function HaccpLogs() {
         title="HACCP log"
         subtitle="Daily food-safety checks — temperatures, cleaning, deliveries."
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
+            {(["FRIDGE_TEMP", "FREEZER_TEMP", "COOK_TEMP"] as HaccpKind[]).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setCreatingKind(kind)}
+                className="px-3 py-1.5 rounded-lg ring-1 ring-black/10 bg-white text-sm hover:bg-[var(--color-cream)] flex items-center gap-1.5"
+              >
+                <span>{KIND_ICON[kind]}</span>
+                <span>{KIND_LABEL[kind].replace(" temp", "")} OK</span>
+              </button>
+            ))}
             <button
               type="button"
               onClick={exportPdf}
@@ -108,7 +119,7 @@ export function HaccpLogs() {
             >
               Export PDF
             </button>
-            <Button onClick={() => setCreating(true)}>+ Log entry</Button>
+            <Button onClick={() => setCreatingKind("FRIDGE_TEMP")}>+ Log entry</Button>
           </div>
         }
       />
@@ -157,7 +168,7 @@ export function HaccpLogs() {
           <EmptyState
             title="No entries yet"
             description="Start with today's fridge temperatures. Even a one-line entry counts."
-            action={<Button onClick={() => setCreating(true)}>Log entry</Button>}
+            action={<Button onClick={() => setCreatingKind("FRIDGE_TEMP")}>Log entry</Button>}
           />
         </Card>
       ) : (
@@ -222,11 +233,12 @@ export function HaccpLogs() {
         </div>
       )}
 
-      {creating && (
+      {creatingKind !== null && (
         <HaccpCreator
-          onCancel={() => setCreating(false)}
+          initialKind={creatingKind}
+          onCancel={() => setCreatingKind(null)}
           onSaved={async (msg) => {
-            setCreating(false);
+            setCreatingKind(null);
             setInfo(msg);
             await load();
           }}
@@ -237,13 +249,14 @@ export function HaccpLogs() {
   );
 }
 
-function HaccpCreator({ onCancel, onSaved, onError }: {
+function HaccpCreator({ onCancel, onSaved, onError, initialKind }: {
   onCancel: () => void;
   onSaved: (msg: string) => void;
   onError: (msg: string) => void;
+  initialKind?: HaccpKind;
 }) {
   const [draft, setDraft] = useState<HaccpPayload>({
-    kind: "FRIDGE_TEMP",
+    kind: initialKind ?? "FRIDGE_TEMP",
     recordedOn: todayIso(),
     location: "",
     temperatureC: null,
