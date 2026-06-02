@@ -19,6 +19,15 @@
   --radius-xl: 1.25rem;
   --shadow-soft: 0 1px 1px rgb(26 22 20 / 0.03), 0 1px 2px rgb(26 22 20 / 0.04);
   --shadow-card: 0 2px 4px rgb(26 22 20 / 0.04), 0 8px 24px rgb(26 22 20 / 0.06);
+  /* Stacking-order tokens. Use these instead of bare z-30/z-50/z-[60]
+     literals so layered surfaces (popovers under modals under toasts)
+     stay in the right order. */
+  --z-popover: 30;
+  --z-overlay: 40;
+  --z-modal: 50;
+  --z-drawer: 50;
+  --z-toast: 60;
+  --z-tour: 70;
 }
 
 body {
@@ -277,6 +286,91 @@ input[type="number"] {
   @media (prefers-reduced-motion: reduce) {
     .skeleton-shimmer::after {
       animation: none;
+    }
+  }
+
+  /* —— Dialog / Drawer chrome ——
+     Centralized animations + z-index for the new Dialog and Drawer
+     primitives. Backdrops fade, panels rise+scale on desktop and slide
+     up from the bottom on mobile, drawers slide in from the side. All
+     respect prefers-reduced-motion. */
+  .dialog-anim-backdrop {
+    animation: dialog-fade 160ms ease-out both;
+  }
+
+  .dialog-anim-panel {
+    animation: dialog-rise 200ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  @media (min-width: 768px) {
+    .dialog-anim-panel {
+      animation-name: dialog-pop;
+    }
+  }
+
+  .drawer-anim-right {
+    animation: drawer-slide-right 240ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  .drawer-anim-left {
+    animation: drawer-slide-left 240ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  @keyframes dialog-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes dialog-rise {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes dialog-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes drawer-slide-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes drawer-slide-left {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dialog-anim-backdrop,
+    .dialog-anim-panel,
+    .drawer-anim-right,
+    .drawer-anim-left {
+      animation-duration: 0.001ms;
     }
   }
 

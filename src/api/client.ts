@@ -2,6 +2,33 @@ import { parseApiError } from "./errors";
 
 export { parseApiError };
 
+/**
+ * Thrown when a request can't reach the server at all (offline, DNS,
+ * CORS, server down). The message is end-user-facing and intentionally
+ * does not leak dev-only details like the local backend port. Callers
+ * that want to distinguish offline from a real HTTP error can check
+ * {@code error instanceof NetworkError}.
+ */
+export class NetworkError extends Error {
+  constructor(message?: string) {
+    super(message ?? "Can't reach the server. Check your connection and try again.");
+    this.name = "NetworkError";
+  }
+}
+
+/** Thrown when the backend returned an HTTP error (4xx/5xx). Carries
+ *  the parsed message and original status code for finer-grained UI. */
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  constructor(message: string, status: number, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 /** Relative in browser; full URL when web runs inside Expo WebView on another host. */
 const API =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
@@ -37,14 +64,19 @@ export async function api<T>(
   let res: Response;
   try {
     res = await fetch(`${API}${path}`, { ...options, headers });
-  } catch {
-    throw new Error("Cannot reach server. Is the backend running on port 3001?");
+  } catch (cause) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn("[api] network error", path, cause);
+    }
+    throw new NetworkError();
   }
 
   const { text, json } = await readBody(res);
 
   if (!res.ok) {
-    throw new Error(parseApiError(json ?? {}, res.statusText || "Request failed"));
+    const message = parseApiError(json ?? {}, res.statusText || "Request failed");
+    throw new ApiError(message, res.status, json);
   }
 
   if (res.status === 204 || !text.trim()) {
@@ -61,12 +93,17 @@ export function downloadUrl(path: string) {
 
 export async function downloadFile(path: string, filename: string) {
   const token = getToken();
-  const res = await fetch(`${API}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new NetworkError();
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(parseApiError(err, "Download failed"));
+    throw new ApiError(parseApiError(err, "Download failed"), res.status, err);
   }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

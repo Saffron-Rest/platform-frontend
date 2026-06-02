@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { Spinner } from "../ui/Spinner";
 
@@ -14,7 +14,8 @@ type Props = {
   /** When provided, renders inline. When omitted, renders an Outlet so
    *  the guard can wrap a nested route subtree. */
   children?: ReactNode;
-  /** Where to bounce on denial. Defaults to the home page. */
+  /** Where to bounce on denial. Defaults to the friendly /no-access
+   *  page so the user knows why the redirect happened. */
   redirectTo?: string;
 };
 
@@ -30,9 +31,10 @@ type Props = {
 export function RequirePermission({
   anyOf = [],
   children,
-  redirectTo = "/",
+  redirectTo = "/no-access",
 }: Props) {
   const { user, loading, hasPermission } = useAuth();
+  const loc = useLocation();
 
   if (loading) {
     return (
@@ -43,12 +45,12 @@ export function RequirePermission({
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
   }
 
   const allowed = anyOf.length === 0 || anyOf.some((key) => hasPermission(key));
   if (!allowed) {
-    return <Navigate to={redirectTo} replace />;
+    return <Navigate to={redirectTo} replace state={{ from: loc.pathname }} />;
   }
 
   return children ? <>{children}</> : <Outlet />;

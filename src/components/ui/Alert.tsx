@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 type Variant = "success" | "error" | "info" | "warning";
 
 const styles: Record<Variant, string> = {
@@ -7,21 +9,50 @@ const styles: Record<Variant, string> = {
   warning: "bg-amber-50 text-amber-900 border-amber-200",
 };
 
+/**
+ * Variant → ARIA role mapping. Only error/warning announce immediately
+ * (`alert`); success/info use {@code status} so screen readers don't
+ * interrupt the user with non-urgent content.
+ */
+const roles: Record<Variant, "alert" | "status"> = {
+  success: "status",
+  info: "status",
+  warning: "alert",
+  error: "alert",
+};
+
+type Props = {
+  children: ReactNode;
+  variant?: Variant;
+  /** Optional bold lead. Pairs nicely with a longer description in {@code children}. */
+  title?: ReactNode;
+  /** Optional action slot rendered on the right (e.g. a Retry button). */
+  action?: ReactNode;
+  className?: string;
+};
+
+/**
+ * Inline alert/notice block. Renders a {@code <div>} (not a {@code <p>})
+ * so titles, lists, and buttons can nest inside it. Use the {@link
+ * useToast} hook for transient/dismissible messages instead.
+ */
 export function Alert({
   children,
   variant = "info",
+  title,
+  action,
   className = "",
-}: {
-  children: React.ReactNode;
-  variant?: Variant;
-  className?: string;
-}) {
+}: Props) {
   return (
-    <p
-      role="alert"
-      className={`text-sm py-2.5 px-3 rounded-xl border ${styles[variant]} ${className}`}
+    <div
+      role={roles[variant]}
+      className={`text-sm py-2.5 px-3 rounded-xl border flex items-start gap-3 ${styles[variant]} ${className}`}
     >
-      {children}
-    </p>
+      <div className="flex-1 min-w-0">
+        {title ? <p className="font-semibold mb-0.5">{title}</p> : null}
+        <div className={title ? "" : ""}>{children}</div>
+      </div>
+      {action ? <div className="shrink-0 self-center">{action}</div> : null}
+    </div>
   );
 }
