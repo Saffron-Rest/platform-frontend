@@ -50,6 +50,7 @@ export function ClosingEntryForm({
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-[var(--color-muted)]">Fields marked <span className="text-[var(--color-danger)]">*</span> are required</p>
       <div className="rounded-2xl p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200/80">
         <p className="text-sm text-blue-950 leading-relaxed">
           <strong className="font-semibold">Closing shift</strong> — count the drawer at hand-over.
@@ -72,7 +73,7 @@ export function ClosingEntryForm({
           Count physical cash, coins, and IOUs. Enter the total.
         </p>
         <MoneyInput
-          label="Actual cash counted"
+          label={<>Actual cash counted <span className="text-[var(--color-danger)] ml-0.5" aria-hidden>*</span></>}
           value={data.actualCashCounted}
           onChange={(v) => set("actualCashCounted", v)}
           disabled={disabled}

@@ -46,6 +46,7 @@ input[type="number"] {
     @apply w-full mt-1.5 px-3.5 py-3 rounded-xl border border-black/[0.08] bg-white text-base;
     @apply focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]/35 focus:border-[var(--color-saffron)];
     @apply disabled:opacity-60 disabled:bg-stone-50;
+    min-height: 2.75rem; /* 44px — WCAG 2.5.5 touch target minimum */
   }
 
   .field-label {

@@ -17,6 +17,7 @@ import { entryStatus } from "../lib/statusBadges";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Skeleton, SkeletonText } from "../components/ui/Skeleton";
 import { Alert } from "../components/ui/Alert";
+import { Stat, StatGroup } from "../components/ui/Stat";
 import type { WorkSchedule } from "../types";
 
 type MonthTotals = {
@@ -85,6 +86,11 @@ export function Dashboard() {
 
   const greeting = canOperate(user?.role) ? "Restaurant overview" : `Hi, ${user?.name?.split(" ")[0] ?? "there"}`;
 
+  // Task 4: compute action items for managers/operators
+  const draftEntries = data.entries.filter((e) => e.status !== "LOCKED");
+  const drawerShort = data.difference < -0.01;
+  const hasActionItems = canOperate(user?.role) && (draftEntries.length > 0 || drawerShort);
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -107,9 +113,28 @@ export function Dashboard() {
         }
       />
 
-      <HubSection title="Quick actions" tourId="tour-quick-actions">
-        <QuickActionGrid items={quickLinks} accentFirst={isCashier(user?.role)} />
-      </HubSection>
+      {/* Task 1: Cashier hero CTA replaces Quick Actions grid */}
+      {isCashier(user?.role) ? (
+        <Link to="/entry" className="block">
+          <div className="rounded-2xl bg-[var(--color-saffron)] p-6 flex items-center justify-between gap-4 shadow-md hover:brightness-105 transition">
+            <div>
+              <p className="text-white/75 text-xs font-bold uppercase tracking-widest mb-1">
+                Shift report
+              </p>
+              <p className="text-white text-2xl font-bold leading-tight">
+                {data.entries.length > 0 ? "Continue Shift Report" : "Start Shift Report"}
+              </p>
+            </div>
+            <span className="text-white/90 text-4xl font-light select-none" aria-hidden>
+              →
+            </span>
+          </div>
+        </Link>
+      ) : (
+        <HubSection title="Quick actions" tourId="tour-quick-actions">
+          <QuickActionGrid items={quickLinks} accentFirst={false} />
+        </HubSection>
+      )}
 
       {canOperate(user?.role) && (
         <HubSection title="Record quickly" tourId="tour-record-quickly">
@@ -151,33 +176,36 @@ export function Dashboard() {
         </Alert>
       )}
 
-      <HubSection title="Today’s numbers" tourId="tour-today-numbers">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <StatTile label="Total sales" value={data.totalSales} highlight />
-          <StatTile label="Cash" value={data.cashSales} />
-          <StatTile label="Card" value={data.cardSales} />
-          <StatTile
-            label="Platforms"
+      {/* Task 2 & 3: 3 hero stats using <Stat> + <StatGroup> */}
+      <HubSection title="Today's numbers" tourId="tour-today-numbers">
+        <StatGroup cols={{ base: 1, md: 3, lg: 3 }}>
+          <Stat
+            label="Total Sales"
+            value={fmt(data.totalSales)}
+            emphasis="hero"
+            tone="brand"
+          />
+          <Stat
+            label="Drawer Diff."
             value={
-              data.platforms.wolt +
-              data.platforms.bolt +
-              data.platforms.uber +
-              data.platforms.glovo +
-              data.platforms.other
+              isCashier(user?.role) && data.entries.length === 0
+                ? "—"
+                : fmt(data.difference)
+            }
+            tone={
+              isCashier(user?.role) && data.entries.length === 0
+                ? "neutral"
+                : data.difference < -0.01
+                ? "negative"
+                : "neutral"
             }
           />
-          {/* Cashier without a report = no meaningful drawer diff yet;
-              showing 0.00 would falsely signal "balanced". */}
-          {isCashier(user?.role) && data.entries.length === 0 ? (
-            <StatTile label="Drawer diff." placeholder="—" />
-          ) : (
-            <StatTile
-              label="Drawer diff."
-              value={data.difference}
-              warn={data.difference < -0.01}
-            />
-          )}
-        </div>
+          <Stat
+            label="Expenses"
+            value={fmt(data.expenses)}
+            tone="neutral"
+          />
+        </StatGroup>
         {canOperate(user?.role) && (
           <p className="text-xs text-[var(--color-muted)] mt-2">
             Total sales = Cash + Card + Platforms (Wolt, Bolt, Uber, Glovo, other).
@@ -190,6 +218,46 @@ export function Dashboard() {
           </p>
         )}
       </HubSection>
+
+      {/* Task 4: Action items for managers/operators */}
+      {hasActionItems && (
+        <div className="space-y-2">
+          {draftEntries.length > 0 && (
+            <Alert variant="warning">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  <strong>{draftEntries.length}</strong> draft report
+                  {draftEntries.length > 1 ? "s" : ""} not yet submitted
+                </span>
+                <Link
+                  to="/reports"
+                  className="shrink-0 font-semibold text-amber-900 hover:underline"
+                >
+                  View reports →
+                </Link>
+              </div>
+            </Alert>
+          )}
+          {drawerShort && (
+            <Alert variant="error">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  Drawer is short{" "}
+                  <strong className="tabular-nums">{fmt(data.difference)}</strong>
+                </span>
+                {data.entries.length > 0 && (
+                  <Link
+                    to={`/entry?date=${encodeURIComponent(data.date)}&cashierId=${encodeURIComponent(data.entries[0].cashierId)}`}
+                    className="shrink-0 font-semibold text-[var(--color-danger)] hover:underline"
+                  >
+                    View entry →
+                  </Link>
+                )}
+              </div>
+            </Alert>
+          )}
+        </div>
+      )}
 
       {canOperate(user?.role) && monthTotals && (
         <Card className="!p-5">
@@ -238,7 +306,7 @@ export function Dashboard() {
 
       {data.entries.length > 0 && (
         <HubSection
-          title={canOperate(user?.role) ? "Today’s reports" : "Your report"}
+          title={canOperate(user?.role) ? "Today's reports" : "Your report"}
           tourId={canOperate(user?.role) ? "tour-today-reports" : "tour-your-report"}
           action={
             canOperate(user?.role) ? (
@@ -275,45 +343,6 @@ export function Dashboard() {
           </Card>
         </HubSection>
       )}
-    </div>
-  );
-}
-
-function StatTile({
-  label,
-  value,
-  highlight,
-  warn,
-  placeholder,
-}: {
-  label: string;
-  value?: number;
-  highlight?: boolean;
-  warn?: boolean;
-  /** When set, renders this string instead of the formatted value
-   *  (used e.g. for "—" when there is no data yet for this metric). */
-  placeholder?: string;
-}) {
-  return (
-    <div
-      className={`rounded-2xl p-4 border ${
-        highlight
-          ? "bg-[var(--color-saffron)] text-white border-transparent col-span-2 lg:col-span-1"
-          : warn
-            ? "bg-red-50 border-red-200"
-            : "surface-card"
-      }`}
-    >
-      <p
-        className={`text-xs font-bold uppercase tracking-wide ${
-          highlight ? "text-white/75" : "text-[var(--color-muted)]"
-        }`}
-      >
-        {label}
-      </p>
-      <p className="text-xl font-bold tabular-nums mt-1">
-        {placeholder ?? fmt(value ?? 0)}
-      </p>
     </div>
   );
 }

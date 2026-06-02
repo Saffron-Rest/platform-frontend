@@ -90,6 +90,7 @@ export function EntryPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [weeklyHours, setWeeklyHours] = useState<WeeklyHours | null>(null);
+  const [expensesSkipped, setExpensesSkipped] = useState(false);
   /** True while the user has unsaved edits; pauses focus/visibility auto-refresh
    *  so opening the file picker or switching tabs never wipes work in progress. */
   const dirtyRef = useRef(false);
@@ -268,6 +269,7 @@ export function EntryPage() {
       allFiles.filter((f) => (f.category ?? "").toLowerCase() === POS_REPORT_CATEGORY)
     );
     setPendingPosReports([]);
+    setExpensesSkipped(false);
     markPristine();
   };
 
@@ -929,7 +931,11 @@ export function EntryPage() {
           {/* Stepper helps cashiers navigate a long full report, but it's
               noise for a 2-step closing-only flow (the ClosingEntryForm
               already shows explicit "Step 1 / Step 2" badges). */}
-          {!readOnly && !closingOnly && <ReportStepper steps={steps} />}
+          {!readOnly && !closingOnly && (
+            <div className="sticky top-14 z-10 bg-[var(--color-bg,#faf8f5)] pt-2 pb-2 -mx-4 px-4 md:mx-0 md:px-0 border-b border-black/[0.06] mb-4">
+              <ReportStepper steps={steps} />
+            </div>
+          )}
 
           {!readOnly && hasAttemptedSubmit && (
             <ReportValidationPanel issues={validationIssues} ready={canSubmit} />

@@ -74,7 +74,7 @@ export function AdminDataHealth() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Inbox"
+        title="Issues"
         subtitle="Open issues across reports, cash, schedules and people. Resolve them right from here."
       />
 

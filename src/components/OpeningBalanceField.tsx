@@ -35,7 +35,7 @@ export function OpeningBalanceField({
         </div>
       ) : (
         <MoneyInput
-          label="Cash in drawer at start"
+          label={<>Cash in drawer at start <span className="text-[var(--color-danger)] ml-0.5" aria-hidden>*</span></>}
           value={value}
           onChange={onChange}
           disabled={disabled}

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoneyForInput, parseMoneyInput } from "../lib/numbers";
 
 type Props = {
-  label: string;
+  label: ReactNode;
   value: number;
   onChange: (v: number) => void;
   disabled?: boolean;

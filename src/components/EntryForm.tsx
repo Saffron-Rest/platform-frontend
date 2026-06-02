@@ -43,6 +43,8 @@ type Props = {
   entryId?: string;
   /** Receives uploader changes (uploaded files + pending files). */
   onPosReportChange?: (patch: { files?: EntryFile[]; pendingFiles?: File[] }) => void;
+  /** Called when the user confirms there are no expenses for this shift */
+  onExpensesSkip?: () => void;
 };
 
 export function EntryForm({
@@ -60,6 +62,7 @@ export function EntryForm({
   pendingPosReports = [],
   entryId,
   onPosReportChange,
+  onExpensesSkip,
 }: Props) {
   const set = (key: keyof EntryFormData, value: number | string) =>
     onChange({ ...data, [key]: value });
@@ -79,6 +82,7 @@ export function EntryForm({
 
   return (
     <div>
+      <p className="text-xs text-[var(--color-muted)] mb-4">Fields marked <span className="text-[var(--color-danger)]">*</span> are required</p>
       <CollapsibleSection
         sectionId="opening"
         done={num(data.openingBalance) > 0}
@@ -103,7 +107,7 @@ export function EntryForm({
         defaultOpen
       >
         <MoneyInput
-          label="Cash sales"
+          label={<>Cash sales <span className="text-[var(--color-danger)] ml-0.5" aria-hidden>*</span></>}
           value={data.cashSales}
           onChange={(v) => set("cashSales", v)}
           disabled={disabled}
@@ -212,6 +216,7 @@ export function EntryForm({
         onChange={onExpensesChange}
         disabled={disabled}
         invoicesEditable={invoicesEditable}
+        onSkip={onExpensesSkip}
       />
 
       <section
@@ -247,7 +252,7 @@ export function EntryForm({
           </div>
           <div className="sm:col-span-2">
             <MoneyInput
-              label="Actual cash counted"
+              label={<>Actual cash counted <span className="text-[var(--color-danger)] ml-0.5" aria-hidden>*</span></>}
               value={data.actualCashCounted}
               onChange={(v) => set("actualCashCounted", v)}
               disabled={disabled}

@@ -96,7 +96,7 @@ function fullOperationsGroups(): NavGroup[] {
       label: "Today",
       items: [
         { kind: "link", to: "/", label: "Home", description: "Restaurant overview", icon: IconHome, primary: true },
-        { kind: "link", to: "/entry", label: "Shift entry", description: "Open or continue today", icon: IconClipboard, primary: true },
+        { kind: "link", to: "/entry", label: "Shift report", description: "Open or continue today", icon: IconClipboard, primary: true },
         { kind: "link", to: "/checklists", label: "Checklists", description: "Opening / closing tasks", icon: IconCheckSquare },
         { kind: "link", to: "/haccp", label: "HACCP", description: "Food-safety logs", icon: IconThermometer },
       ],
@@ -105,7 +105,7 @@ function fullOperationsGroups(): NavGroup[] {
       id: "operations",
       label: "Operations",
       items: [
-        { kind: "link", to: "/admin/inbox", label: "Inbox", description: "Open issues & data health", icon: IconInbox, primary: true, requires: ["REPORTS_VIEW"] },
+        { kind: "link", to: "/admin/inbox", label: "Issues", description: "Data health & open issues", icon: IconInbox, primary: true, requires: ["REPORTS_VIEW"] },
         { kind: "link", to: "/admin/attendance", label: "Schedule", description: "Who works when", icon: IconCalendar, requires: ["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"] },
         { kind: "link", to: "/admin/stock", label: "Stock", description: "Inventory & POS sync", icon: IconBoxes, requires: ["STOCK_VIEW", "STOCK_ADJUST", "STOCK_MANAGE", "STOCK_DELETE"] },
         { kind: "link", to: "/admin/incidents", label: "Incidents", description: "Breakages, complaints, accidents", icon: IconWarning, requires: ["INCIDENTS_VIEW", "INCIDENTS_FILE", "INCIDENTS_RESOLVE"] },

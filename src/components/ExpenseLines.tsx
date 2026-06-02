@@ -13,6 +13,12 @@ type Props = {
   disabled?: boolean;
   /** Allow adding/removing receipt photos (admin can do this on locked reports) */
   invoicesEditable?: boolean;
+  /** Called when the user confirms there are no expenses for this shift */
+  onSkip?: () => void;
+  /** When true, shows a "No expenses confirmed" badge instead of the empty editor */
+  skipped?: boolean;
+  /** Called when the user wants to undo the skip and add expenses */
+  onUnskip?: () => void;
 };
 
 const emptyLine = (): ExpenseLine => ({
@@ -22,7 +28,7 @@ const emptyLine = (): ExpenseLine => ({
   paymentSource: "CASH",
 });
 
-export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }: Props) {
+export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable, onSkip, skipped, onUnskip }: Props) {
   const total = totalExpenseLines(expenses);
   const fromCash = expenseTotalBySource(expenses, "CASH");
   const fromCard = expenseTotalBySource(expenses, "CARD");
@@ -45,7 +51,25 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }:
       className="report-section-anchor bg-white rounded-2xl p-4 shadow-sm border border-black/5 mb-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h3 className="font-semibold text-lg text-[var(--color-saffron-dark)]">Expenses</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-lg text-[var(--color-saffron-dark)]">Expenses</h3>
+          {skipped && expenses.length === 0 && (
+            <>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                No expenses confirmed
+              </span>
+              {onUnskip && (
+                <button
+                  type="button"
+                  onClick={onUnskip}
+                  className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
+                >
+                  Change
+                </button>
+              )}
+            </>
+          )}
+        </div>
         <div className="flex items-center gap-2 ml-auto">
           <span className="text-sm text-[var(--color-muted)]">
             Total: <strong className="text-[var(--color-ink)]">{fmt(total)}</strong>
@@ -169,6 +193,16 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable }:
           className="w-full py-3 rounded-xl border-2 border-dashed border-[var(--color-saffron)]/50 text-[var(--color-saffron-dark)] font-medium text-sm"
         >
           + Add another expense
+        </button>
+      )}
+
+      {canEditFields && expenses.length === 0 && (
+        <button
+          type="button"
+          onClick={() => onSkip?.()}
+          className="w-full py-2 text-sm font-medium text-[var(--color-muted)] hover:text-[var(--color-ink)] transition-colors"
+        >
+          No expenses this shift
         </button>
       )}
 
