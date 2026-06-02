@@ -7,16 +7,16 @@ const styles: Record<Variant, string> = {
   primary:
     "bg-[var(--color-saffron)] text-white hover:bg-[var(--color-saffron-dark)] shadow-sm shadow-[var(--color-saffron)]/20",
   secondary:
-    "border-2 border-[var(--color-saffron)] text-[var(--color-saffron)] bg-white hover:bg-[var(--color-saffron)]/5",
-  ghost: "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--color-ink)]",
+    "border border-slate-300 text-[var(--color-ink)] bg-white hover:bg-slate-50",
+  ghost: "text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)]",
   danger: "bg-red-50 text-[var(--color-danger)] border border-red-200 hover:bg-red-100",
-  dark: "bg-[var(--color-ink)] text-white hover:bg-black",
+  dark: "bg-[var(--color-ink)] text-white hover:bg-slate-800",
 };
 
 const sizes: Record<Size, string> = {
-  sm: "px-3 py-2 text-xs md:text-sm min-h-11 md:min-h-9",
-  md: "px-5 py-3 text-sm md:text-base min-h-12 md:min-h-11",
-  lg: "px-6 py-3.5 text-base md:text-lg min-h-12",
+  sm: "px-3 py-1.5 text-xs font-medium min-h-11 md:min-h-8",
+  md: "px-4 py-2 text-sm font-semibold min-h-12 md:min-h-9",
+  lg: "px-5 py-2.5 text-sm font-semibold min-h-12 md:min-h-10",
 };
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -70,7 +70,7 @@ export function Button({
       aria-busy={loading || undefined}
       onClick={loading ? undefined : onClick}
       className={[
-        "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition",
+        "inline-flex items-center justify-center gap-2 rounded-md font-semibold transition",
         sizes[size],
         "disabled:opacity-50 disabled:pointer-events-none",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] focus-visible:ring-offset-2",
