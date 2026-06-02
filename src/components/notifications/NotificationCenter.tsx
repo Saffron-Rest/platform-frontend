@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   fetchNotificationInbox,
@@ -101,6 +101,39 @@ export function NotificationCenter() {
     }
     if (n.url) navigate(n.url);
   };
+
+  const [expandedKinds, setExpandedKinds] = useState<Set<string>>(new Set());
+
+  const grouped = useMemo(() => {
+    if (!inbox) return [];
+    const groups = new Map<string, NotificationItem[]>();
+    for (const item of inbox.items) {
+      const key = item.kind;
+      const arr = groups.get(key) ?? [];
+      arr.push(item);
+      groups.set(key, arr);
+    }
+    // Preserve server order: first occurrence of each kind determines position.
+    const seen = new Set<string>();
+    const order: string[] = [];
+    for (const item of inbox.items) {
+      if (!seen.has(item.kind)) { seen.add(item.kind); order.push(item.kind); }
+    }
+    return order.map((kind) => ({ kind, items: groups.get(kind)! }));
+  }, [inbox]);
+
+  const toggleKind = (kind: string) =>
+    setExpandedKinds((prev) => {
+      const next = new Set(prev);
+      next.has(kind) ? next.delete(kind) : next.add(kind);
+      return next;
+    });
+
+  const kindLabel = (kind: string): string =>
+    kind
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
 
   const onMarkAll = async () => {
     try {

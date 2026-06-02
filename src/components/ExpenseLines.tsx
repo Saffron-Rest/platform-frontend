@@ -68,6 +68,20 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable, o
   const fromCard = expenseTotalBySource(expenses, "CARD");
   const canEditInvoices = invoicesEditable ?? !disabled;
   const canEditFields = !disabled;
+  const [activeSuggestIdx, setActiveSuggestIdx] = useState<number | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const suggestRef = useRef<HTMLDivElement>(null);
+
+  // Close suggestions on outside click.
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (suggestRef.current && !suggestRef.current.contains(e.target as Node)) {
+        setActiveSuggestIdx(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const update = (index: number, patch: Partial<ExpenseLine>) => {
     const next = [...expenses];
@@ -77,6 +91,28 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable, o
 
   const remove = (index: number) => {
     onChange(expenses.filter((_, i) => i !== index));
+  };
+
+  const handleDescriptionChange = (index: number, value: string) => {
+    update(index, { description: value });
+    const matches = matchSuggestions(value);
+    setSuggestions(matches);
+    setActiveSuggestIdx(matches.length > 0 ? index : null);
+  };
+
+  const pickSuggestion = (index: number, s: Suggestion) => {
+    update(index, { description: s.description, category: s.category });
+    setActiveSuggestIdx(null);
+    setSuggestions([]);
+  };
+
+  const handleDescriptionBlur = (index: number) => {
+    const line = expenses[index];
+    if (line?.description && line.amount > 0) {
+      saveSuggestion(line.description, line.category as ExpenseCategory);
+    }
+    // Delay close so click on suggestion fires first.
+    setTimeout(() => setActiveSuggestIdx(null), 150);
   };
 
   return (
@@ -173,17 +209,38 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable, o
                 className="text-sm"
               />
             </div>
-            <label className="text-sm block">
-              Description
-              <input
-                type="text"
-                disabled={disabled}
-                placeholder="What was this expense for?"
-                value={line.description}
-                onChange={(e) => update(i, { description: e.target.value })}
-                className="w-full mt-1 px-3 py-2 rounded-lg border bg-white"
-              />
-            </label>
+            <div className="text-sm relative" ref={activeSuggestIdx === i ? suggestRef : undefined}>
+              <label className="block">
+                Description
+                <input
+                  type="text"
+                  disabled={disabled}
+                  placeholder="What was this expense for?"
+                  value={line.description}
+                  onChange={(e) => handleDescriptionChange(i, e.target.value)}
+                  onBlur={() => handleDescriptionBlur(i)}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border bg-white"
+                />
+              </label>
+              {activeSuggestIdx === i && suggestions.length > 0 && (
+                <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-black/10 rounded-lg shadow-lg overflow-hidden text-sm">
+                  {suggestions.map((s, si) => (
+                    <li key={si}>
+                      <button
+                        type="button"
+                        onMouseDown={() => pickSuggestion(i, s)}
+                        className="w-full text-left px-3 py-2 hover:bg-[var(--color-cream)]/60 flex items-center justify-between gap-2"
+                      >
+                        <span className="truncate">{s.description}</span>
+                        <span className="text-xs text-[var(--color-muted)] shrink-0">
+                          {EXPENSE_CATEGORIES.find((c) => c.value === s.category)?.label ?? s.category}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
             {(line.invoices?.length ?? 0) > 0 || (line.pendingFiles?.length ?? 0) > 0 || line.pendingFile
               ? (
