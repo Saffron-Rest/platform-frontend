@@ -69,7 +69,7 @@ function categoryLabel(value: string) {
 type ViewTab = "expenses" | "delivery";
 type AddKind = "expense" | "delivery";
 
-export function FinanceLedger() {
+export function FinanceLedger({ asTab }: { asTab?: boolean } = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState(todayIso());
@@ -308,10 +308,12 @@ export function FinanceLedger() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Finance"
-        subtitle="Delivery income outside shift reports, post-close purchases, and all invoices"
-      />
+      {!asTab && (
+        <PageHeader
+          title="Finance"
+          subtitle="Delivery income outside shift reports, post-close purchases, and all invoices"
+        />
+      )}
 
       <Card className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">

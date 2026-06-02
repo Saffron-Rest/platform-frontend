@@ -69,7 +69,7 @@ function fmtAmount(n: number) {
   return fmt(n);
 }
 
-export function ProfitLoss() {
+export function ProfitLoss({ asTab }: { asTab?: boolean } = {}) {
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(today);
   const [template, setTemplate] = useState(() => localStorage.getItem(TEMPLATE_KEY) || "EU");
@@ -140,11 +140,13 @@ export function ProfitLoss() {
 
   return (
     <div className="max-w-4xl mx-auto w-full">
-      <PageHeader
-        title="Profit & Loss"
-        subtitle="Automated statement from shift reports — revenue, expenses, and margins update as entries are submitted"
-        badge={data?.templateLabel}
-      />
+      {!asTab && (
+        <PageHeader
+          title="Profit & Loss"
+          subtitle="Automated statement from shift reports — revenue, expenses, and margins update as entries are submitted"
+          badge={data?.templateLabel}
+        />
+      )}
 
       <Card className="mb-6 space-y-4" data-tour="tour-pl-dates">
         <div className="flex flex-wrap gap-2">

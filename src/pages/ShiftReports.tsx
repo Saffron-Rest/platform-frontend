@@ -188,7 +188,7 @@ function ReportListCard({
   );
 }
 
-export function ShiftReports() {
+export function ShiftReports({ asTab }: { asTab?: boolean } = {}) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canRemove = canOperate(user?.role);
@@ -418,7 +418,7 @@ export function ShiftReports() {
   if (tab === "summary") {
     return (
       <div className="space-y-6">
-        <PageHeader title="Shift reports" subtitle="Totals grouped by day" />
+        {!asTab && <PageHeader title="Shift reports" subtitle="Totals grouped by day" />}
         <div className="flex gap-2 flex-wrap">
           <button type="button" onClick={() => setTab("list")} className="tab-pill tab-pill-active">
             ← Back to list
@@ -432,6 +432,7 @@ export function ShiftReports() {
 
   return (
     <div className="space-y-6">
+      {!asTab && (
       <PageHeader
         title="Shift reports"
         subtitle="Find, create, and edit cashier daily reports"
@@ -448,6 +449,7 @@ export function ShiftReports() {
           </button>
         }
       />
+      )}
 
       <div className="flex gap-2 flex-wrap">
         <button type="button" onClick={() => setTab("list")} className="tab-pill tab-pill-active">

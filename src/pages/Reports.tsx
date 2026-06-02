@@ -15,7 +15,7 @@ type Summary = {
   totals: { sales: number; returns: number; expenses: number; difference: number };
 };
 
-export function Reports() {
+export function Reports({ asTab }: { asTab?: boolean } = {}) {
   const [period, setPeriod] = useState("daily");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -49,10 +49,12 @@ export function Reports() {
 
   return (
     <div>
-      <PageHeader
-        title="Analytics"
-        subtitle="Summaries and exports for locked (submitted) reports only"
-      />
+      {!asTab && (
+        <PageHeader
+          title="Analytics"
+          subtitle="Summaries and exports for locked (submitted) reports only"
+        />
+      )}
 
       <Card className="mb-6 space-y-4">
         <div className="flex gap-2 flex-wrap">

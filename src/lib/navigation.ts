@@ -120,9 +120,9 @@ function fullOperationsGroups(): NavGroup[] {
       label: "Reports",
       items: [
         { kind: "link", to: "/reports", label: "Shift reports", description: "All cashier reports", icon: IconClipboard, primary: true, requires: ["REPORTS_VIEW"] },
-        { kind: "link", to: "/finance", label: "Finance ledger", description: "Add delivery or expense", icon: IconWallet, primary: true, requires: ["EXPENSES_VIEW", "EXPENSES_EDIT", "TREASURY_VIEW", "TREASURY_MANAGE"] },
-        { kind: "link", to: "/profit-loss", label: "Profit & loss", description: "P&L statement", icon: IconProfitLoss, requires: ["PROFIT_LOSS_VIEW"] },
-        { kind: "link", to: "/analytics", label: "Analytics", description: "Exports & summaries", icon: IconChart, requires: ["REPORTS_VIEW", "REPORTS_EXPORT"] },
+        { kind: "link", to: "/reports?tab=expenses", label: "Expenses & Income", description: "Add delivery or expense", icon: IconWallet, primary: true, requires: ["EXPENSES_VIEW", "EXPENSES_EDIT", "TREASURY_VIEW", "TREASURY_MANAGE"] },
+        { kind: "link", to: "/reports?tab=pl", label: "Profit & loss", description: "P&L statement", icon: IconProfitLoss, requires: ["PROFIT_LOSS_VIEW"] },
+        { kind: "link", to: "/reports?tab=export", label: "Export", description: "Exports & summaries", icon: IconChart, requires: ["REPORTS_VIEW", "REPORTS_EXPORT"] },
         { kind: "link", to: "/menu", label: "Menu analytics", description: "What sold, where the margin is", icon: IconChart, requires: ["MENU_VIEW", "REPORTS_VIEW"] },
         { kind: "link", to: "/treasury/history", label: "Treasury history", description: "Balance changes", icon: IconWallet, requires: ["TREASURY_VIEW", "TREASURY_MANAGE"] },
         { kind: "link", to: "/admin/payables", label: "Payables", description: "Supplier credit & due dates", icon: IconWallet, requires: ["PAYABLES_VIEW", "PAYABLES_MANAGE"] },

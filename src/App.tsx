@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
@@ -25,10 +25,7 @@ import { AdminLayout } from "./components/admin/AdminLayout";
 
 /* ── Operations + finance pages (used by manager+) lazy-load so the
    cashier login bundle stays slim. Each section is a separate chunk. */
-const Reports = lazy(() => import("./pages/Reports").then((m) => ({ default: m.Reports })));
-const ShiftReports = lazy(() => import("./pages/ShiftReports").then((m) => ({ default: m.ShiftReports })));
-const ProfitLoss = lazy(() => import("./pages/ProfitLoss").then((m) => ({ default: m.ProfitLoss })));
-const FinanceLedger = lazy(() => import("./pages/FinanceLedger").then((m) => ({ default: m.FinanceLedger })));
+const ReportsFinance = lazy(() => import("./pages/ReportsFinance").then((m) => ({ default: m.ReportsFinance })));
 const TreasuryHistory = lazy(() => import("./pages/TreasuryHistory").then((m) => ({ default: m.TreasuryHistory })));
 const MenuAnalytics = lazy(() => import("./pages/MenuAnalytics").then((m) => ({ default: m.MenuAnalytics })));
 const MenuEngineering = lazy(() => import("./pages/MenuEngineering").then((m) => ({ default: m.MenuEngineering })));
@@ -65,6 +62,15 @@ function ChunkFallback() {
   );
 }
 
+/** Preserves the `add` search param when redirecting old /finance URLs
+ *  to the new unified /reports?tab=expenses page. */
+function FinanceRedirect() {
+  const [searchParams] = useSearchParams();
+  const add = searchParams.get("add");
+  const to = add ? `/reports?tab=expenses&add=${add}` : "/reports?tab=expenses";
+  return <Navigate to={to} replace />;
+}
+
 /** Wraps each lazy route in its own Suspense + per-route ErrorBoundary
  *  so a chunk-load failure or a render bug only takes down that one
  *  page, not the whole shell. */
@@ -97,12 +103,12 @@ export default function App() {
                   <Route path="/checklists" element={<RouteErrorBoundary><DailyChecklists /></RouteErrorBoundary>} />
                   <Route path="/haccp" element={<RouteErrorBoundary><HaccpLogs /></RouteErrorBoundary>} />
                   <Route element={<OperationsGuard />}>
-                    <Route path="/reports" element={<LazyRoute><ShiftReports /></LazyRoute>} />
-                    <Route path="/analytics" element={<LazyRoute><Reports /></LazyRoute>} />
-                    <Route path="/profit-loss" element={<LazyRoute><ProfitLoss /></LazyRoute>} />
+                    <Route path="/reports" element={<LazyRoute><ReportsFinance /></LazyRoute>} />
+                    <Route path="/analytics" element={<Navigate to="/reports?tab=export" replace />} />
+                    <Route path="/profit-loss" element={<Navigate to="/reports?tab=pl" replace />} />
                     <Route path="/history" element={<Navigate to="/reports" replace />} />
                     <Route path="/audit" element={<LazyRoute><AdminAudit /></LazyRoute>} />
-                    <Route path="/finance" element={<LazyRoute><FinanceLedger /></LazyRoute>} />
+                    <Route path="/finance" element={<FinanceRedirect />} />
                     <Route path="/treasury/history" element={<LazyRoute><TreasuryHistory /></LazyRoute>} />
                     <Route path="/menu" element={<LazyRoute><MenuAnalytics /></LazyRoute>} />
                     <Route path="/menu/engineering" element={<LazyRoute><MenuEngineering /></LazyRoute>} />
