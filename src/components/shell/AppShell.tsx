@@ -143,7 +143,7 @@ function AppShellInner({
           </div>
         </header>
 
-        <main className="flex-1 w-full mx-auto px-4 py-5 md:px-10 md:py-8 page-main max-w-6xl">
+        <main className="flex-1 w-full mx-auto px-4 py-5 md:px-8 md:py-6 page-main max-w-5xl">
           <Outlet />
         </main>
 

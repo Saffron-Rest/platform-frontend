@@ -63,7 +63,7 @@ export function PageHeader({
   meta?: ReactNode;
 }) {
   return (
-    <header className="mb-6 md:mb-8">
+    <header className="mb-5 md:mb-6">
       {back && <div className="mb-3">{back}</div>}
 
       {breadcrumbs && breadcrumbs.length > 0 && (
@@ -92,21 +92,21 @@ export function PageHeader({
       )}
 
       {kicker && (
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-saffron-dark)] mb-1.5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--color-saffron)] mb-1">
           {kicker}
         </p>
       )}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[var(--color-ink)]">
+            <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-[var(--color-ink)]">
               {title}
             </h1>
             {badge && <Badge variant={badgeVariant ?? "neutral"}>{badge}</Badge>}
           </div>
           {subtitle && (
-            <p className="text-sm md:text-base text-[var(--color-muted)] mt-1.5 max-w-xl">
+            <p className="text-sm text-[var(--color-muted)] mt-1 max-w-xl">
               {subtitle}
             </p>
           )}
