@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { fmt } from "../../lib/calc";
 import { todayLocalIso } from "../../lib/dates";
 import { useAuth } from "../../context/AuthContext";
+import { useConfirm } from "../../context/ConfirmContext";
+import { payableStatus, agingTone } from "../../lib/statusBadges";
+import { parseMoneyInput } from "../../lib/numbers";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
@@ -9,6 +11,21 @@ import { Alert } from "../../components/ui/Alert";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Spinner } from "../../components/ui/Spinner";
 import { Badge } from "../../components/ui/Badge";
+import { Money } from "../../components/ui/Money";
+import { Stat, StatGroup, type StatTone } from "../../components/ui/Stat";
+import {
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogForm,
+  DialogTitle,
+} from "../../components/ui/Dialog";
+import {
+  Field,
+  Input,
+  Select,
+  Textarea,
+} from "../../components/ui/Field";
 import {
   createPayable,
   deletePayablePayment,
@@ -61,13 +78,11 @@ const CATEGORY_OPTIONS: { value: PayableCategory; label: string }[] = [
   { value: "OTHER", label: "Other" },
 ];
 
-const statusBadge = (s: PayableStatus, overdue: boolean) => {
-  if (s === "VOID") return { variant: "inactive" as const, label: "Voided" };
-  if (s === "PAID") return { variant: "locked" as const, label: "Paid" };
-  if (overdue) return { variant: "draft" as const, label: "Overdue" };
-  if (s === "PARTIAL") return { variant: "draft" as const, label: "Partial" };
-  return { variant: "neutral" as const, label: "Unpaid" };
-};
+/** Display helper for the table — picks the right badge based on
+ *  status + days overdue. Centralised in {@code lib/statusBadges} so
+ *  Payables and the dashboard agree on terminology. */
+const rowBadge = (s: PayableStatus, daysPastDue?: number) =>
+  payableStatus({ status: s, daysOverdue: daysPastDue });
 
 const fmtDate = (iso: string) => {
   if (!iso) return "—";
@@ -92,8 +107,8 @@ const blankLine = (): LineDraft => ({
 });
 
 const num = (s: string): number => {
-  const v = Number((s || "").replace(",", "."));
-  return Number.isFinite(v) ? v : 0;
+  const parsed = parseMoneyInput(s);
+  return parsed === null ? 0 : parsed;
 };
 
 export function AdminPayables() {
@@ -210,44 +225,54 @@ export function AdminPayables() {
               ? "When you record a credit invoice it'll appear here until fully paid."
               : "Switch to a different tab to see other invoices."
           }
+          action={
+            canManage && tab === "OUTSTANDING" ? (
+              <Button
+                onClick={() => {
+                  void ensurePickerData();
+                  setOpenCreate(true);
+                }}
+              >
+                + Record credit invoice
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <PayablesTable items={data.items} totals={data.totals} onOpen={setDetail} />
       )}
 
-      {openCreate && suppliers && stockItems && (
-        <CreateInvoiceDialog
-          suppliers={suppliers}
-          stockItems={stockItems}
-          onClose={() => setOpenCreate(false)}
-          onCreated={async () => {
-            setOpenCreate(false);
-            await reload();
-          }}
-        />
-      )}
+      <CreateInvoiceDialog
+        open={openCreate && Boolean(suppliers && stockItems)}
+        suppliers={suppliers ?? []}
+        stockItems={stockItems ?? []}
+        onClose={() => setOpenCreate(false)}
+        onCreated={async () => {
+          setOpenCreate(false);
+          await reload();
+        }}
+      />
 
-      {openSupplier && (
-        <SupplierDialog
-          onClose={() => setOpenSupplier(false)}
-          onCreated={async (s) => {
-            setSuppliers((cur) => (cur ? [...cur, s].sort((a, b) => a.name.localeCompare(b.name)) : [s]));
-            setOpenSupplier(false);
-          }}
-        />
-      )}
+      <SupplierDialog
+        open={openSupplier}
+        onClose={() => setOpenSupplier(false)}
+        onCreated={async (s) => {
+          setSuppliers((cur) =>
+            cur ? [...cur, s].sort((a, b) => a.name.localeCompare(b.name)) : [s],
+          );
+          setOpenSupplier(false);
+        }}
+      />
 
-      {detail && (
-        <DetailDrawer
-          invoice={detail}
-          canManage={canManage}
-          onClose={() => setDetail(null)}
-          onChanged={async (next) => {
-            setDetail(next);
-            await reload();
-          }}
-        />
-      )}
+      <DetailDrawer
+        invoice={detail}
+        canManage={canManage}
+        onClose={() => setDetail(null)}
+        onChanged={async (next) => {
+          setDetail(next);
+          await reload();
+        }}
+      />
     </>
   );
 }
@@ -257,27 +282,40 @@ export function AdminPayables() {
 // ───────────────────────────────────────────────────────────────────────────
 
 function AgingPanel({ aging }: { aging: PayableAging }) {
-  const buckets = [
-    { key: "current", label: "Not yet due", value: aging.current, tone: "text-emerald-700" },
-    { key: "d1to7", label: "1–7 days late", value: aging.d1to7, tone: "text-amber-700" },
-    { key: "d8to30", label: "8–30 days late", value: aging.d8to30, tone: "text-orange-700" },
-    { key: "d31to60", label: "31–60 days late", value: aging.d31to60, tone: "text-red-700" },
-    { key: "d60plus", label: "60+ days late", value: aging.d60plus, tone: "text-red-800" },
+  // Map bucket day-window to a StatTone via the shared {@code agingTone}
+  // helper so the Dashboard summary, payables list, and this panel all
+  // colour overdue debt the same way.
+  const toneFromBadge = (b: ReturnType<typeof agingTone>): StatTone => {
+    if (b === "success") return "positive";
+    if (b === "warning") return "warning";
+    if (b === "danger") return "negative";
+    return "neutral";
+  };
+  const buckets: Array<{ key: string; label: string; value: number; tone: StatTone }> = [
+    { key: "current", label: "Not yet due", value: aging.current, tone: toneFromBadge(agingTone(0)) },
+    { key: "d1to7", label: "1–7 days late", value: aging.d1to7, tone: toneFromBadge(agingTone(7)) },
+    { key: "d8to30", label: "8–30 days late", value: aging.d8to30, tone: toneFromBadge(agingTone(30)) },
+    { key: "d31to60", label: "31–60 days late", value: aging.d31to60, tone: toneFromBadge(agingTone(60)) },
+    { key: "d60plus", label: "60+ days late", value: aging.d60plus, tone: toneFromBadge(agingTone(90)) },
   ];
   return (
     <Card className="mb-4" padding="md">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-[var(--color-ink)]">Outstanding by age</h2>
-        <span className="text-sm text-[var(--color-muted)]">Total {fmt(aging.total)}</span>
+        <span className="text-sm text-[var(--color-muted)]">
+          Total <Money value={aging.total} emphasis="strong" />
+        </span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <StatGroup cols={{ md: 3, lg: 5 }}>
         {buckets.map((b) => (
-          <div key={b.key} className="rounded-xl border border-black/[0.06] bg-white px-3 py-2">
-            <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">{b.label}</p>
-            <p className={`text-lg font-semibold ${b.tone}`}>{fmt(b.value)}</p>
-          </div>
+          <Stat
+            key={b.key}
+            label={b.label}
+            value={<Money value={b.value} />}
+            tone={b.tone}
+          />
         ))}
-      </div>
+      </StatGroup>
     </Card>
   );
 }
@@ -319,7 +357,7 @@ function PayablesTable({
           </thead>
           <tbody className="divide-y divide-black/[0.05]">
             {items.map((row) => {
-              const badge = statusBadge(row.status, row.overdue);
+              const badge = rowBadge(row.status, row.daysPastDue);
               return (
                 <tr key={row.id} className="hover:bg-[var(--color-cream)]/60">
                   <td className="px-3 py-2.5 font-medium text-[var(--color-ink)]">
@@ -331,23 +369,26 @@ function PayablesTable({
                   <td className="px-3 py-2.5 text-[var(--color-muted)]">{fmtDate(row.invoiceDate)}</td>
                   <td className="px-3 py-2.5 text-[var(--color-muted)]">
                     {fmtDate(row.dueDate)}
-                    {row.overdue && row.daysPastDue !== undefined && (
-                      <span className="ml-1 text-xs text-red-700">({row.daysPastDue}d)</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    <Money value={row.total} />
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    {row.status === "PAID" || row.status === "VOID" ? (
+                      <span className="text-[var(--color-muted)]">—</span>
+                    ) : (
+                      <Money value={row.outstanding} emphasis="strong" />
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmt(row.total)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold">
-                    {row.status === "PAID" || row.status === "VOID" ? "—" : fmt(row.outstanding)}
-                  </td>
                   <td className="px-3 py-2.5">
-                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                    <Badge tone={badge.tone}>{badge.label}</Badge>
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <button
                       type="button"
                       onClick={() => open(row.id)}
                       disabled={busyId === row.id}
-                      className="text-sm font-medium text-[var(--color-saffron-dark)] hover:underline disabled:opacity-50"
+                      className="text-sm font-medium text-[var(--color-saffron-dark)] hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] rounded"
                     >
                       {busyId === row.id ? "…" : "Open"}
                     </button>
@@ -361,13 +402,14 @@ function PayablesTable({
               <td colSpan={4} className="px-3 py-2">
                 {totals.count} invoice{totals.count === 1 ? "" : "s"}
                 {totals.overdueCount > 0 && (
-                  <span className="ml-2 text-red-700">
-                    · {totals.overdueCount} overdue ({fmt(totals.overdueAmount)})
+                  <span className="ml-2 text-[var(--color-danger)]">
+                    · {totals.overdueCount} overdue (
+                    <Money value={totals.overdueAmount} />)
                   </span>
                 )}
               </td>
               <td className="px-3 py-2 text-right" colSpan={2}>
-                Outstanding {fmt(totals.outstanding)}
+                Outstanding <Money value={totals.outstanding} emphasis="strong" />
               </td>
               <td colSpan={2} />
             </tr>
@@ -383,11 +425,13 @@ function PayablesTable({
 // ───────────────────────────────────────────────────────────────────────────
 
 function CreateInvoiceDialog({
+  open,
   suppliers,
   stockItems,
   onClose,
   onCreated,
 }: {
+  open: boolean;
   suppliers: Supplier[];
   stockItems: StockItem[];
   onClose: () => void;
@@ -404,6 +448,23 @@ function CreateInvoiceDialog({
   const [lines, setLines] = useState<LineDraft[]>([blankLine()]);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Reset every time the dialog re-opens. We deliberately don't depend
+  // on `suppliers` so changing the supplier list while the dialog is
+  // open doesn't reset the user's draft.
+  useEffect(() => {
+    if (!open) return;
+    setSupplierId(suppliers[0]?.id ?? "");
+    setInvoiceNumber("");
+    setInvoiceDate(today);
+    setDueDate("");
+    setCategory("SUPPLIER");
+    setVat("0");
+    setNotes("");
+    setLines([blankLine()]);
+    setErr(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Pre-fill due date when supplier or invoice date change.
   useEffect(() => {
@@ -469,137 +530,141 @@ function CreateInvoiceDialog({
   };
 
   return (
-    <DialogShell title="Record credit invoice" onClose={onClose} wide>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        <Field label="Supplier">
-          <select
-            value={supplierId}
-            onChange={(e) => setSupplierId(e.target.value)}
-            className="field-input"
-          >
-            <option value="" disabled>
-              Pick a supplier…
-            </option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="xl"
+      dismissOnBackdrop={false}
+      ariaLabel="Record credit invoice"
+    >
+      <DialogTitle
+        description="Booking the invoice posts stock + COGS today; payments only move cash later."
+      >
+        Record credit invoice
+      </DialogTitle>
+      <DialogBody className="space-y-4">
+        {err && <Alert variant="error">{err}</Alert>}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Supplier" required>
+            <Select
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}
+            >
+              <option value="" disabled>
+                Pick a supplier…
               </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Invoice number (optional)">
-          <input
-            value={invoiceNumber}
-            onChange={(e) => setInvoiceNumber(e.target.value)}
-            className="field-input"
-            placeholder="INV-2026-042"
-          />
-        </Field>
-        <Field label="Delivery / invoice date">
-          <input
-            type="date"
-            value={invoiceDate}
-            onChange={(e) => setInvoiceDate(e.target.value)}
-            className="field-input"
-            max={today}
-          />
-        </Field>
-        <Field label="Due date">
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className="field-input"
-          />
-        </Field>
-        <Field label="Category">
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as PayableCategory)}
-            className="field-input"
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Invoice number" optional>
+            <Input
+              value={invoiceNumber}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
+              placeholder="INV-2026-042"
+            />
+          </Field>
+          <Field label="Delivery / invoice date" required>
+            <Input
+              type="date"
+              value={invoiceDate}
+              onChange={(e) => setInvoiceDate(e.target.value)}
+              max={today}
+            />
+          </Field>
+          <Field
+            label="Due date"
+            optional
+            hint="Auto-filled from the supplier's payment terms."
           >
-            {CATEGORY_OPTIONS.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </Field>
+          <Field label="Category" required>
+            <Select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as PayableCategory)}
+            >
+              {CATEGORY_OPTIONS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="VAT (PLN, added to subtotal)" optional>
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={vat}
+              onChange={(e) => setVat(e.target.value)}
+            />
+          </Field>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-[var(--color-ink)]">Lines</h3>
+            <Button type="button" variant="ghost" size="sm" onClick={addLine}>
+              + Add line
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {lines.map((line, i) => (
+              <LineRow
+                key={i}
+                line={line}
+                stockItems={stockItems}
+                onChange={(patch) => setLine(i, patch)}
+                onRemove={lines.length > 1 ? () => removeLine(i) : undefined}
+              />
             ))}
-          </select>
-        </Field>
-        <Field label="VAT (added to subtotal)">
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
-            value={vat}
-            onChange={(e) => setVat(e.target.value)}
-            className="field-input"
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-[var(--color-cream)] px-4 py-3 text-sm space-y-1">
+          <div className="flex justify-between">
+            <span className="text-[var(--color-muted)]">Subtotal</span>
+            <Money value={subtotal} />
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--color-muted)]">VAT</span>
+            <Money value={num(vat)} />
+          </div>
+          <div className="flex justify-between pt-1 border-t border-black/10">
+            <span className="font-semibold">Total to pay</span>
+            <Money value={total} emphasis="strong" />
+          </div>
+        </div>
+
+        <Field label="Notes" optional>
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            placeholder="e.g. monthly delivery"
           />
         </Field>
-      </div>
-
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[var(--color-ink)]">Lines</h3>
-        <button
-          type="button"
-          onClick={addLine}
-          className="text-sm font-medium text-[var(--color-saffron-dark)] hover:underline"
-        >
-          + Add line
-        </button>
-      </div>
-      <div className="space-y-2 mb-4">
-        {lines.map((line, i) => (
-          <LineRow
-            key={i}
-            line={line}
-            stockItems={stockItems}
-            onChange={(patch) => setLine(i, patch)}
-            onRemove={lines.length > 1 ? () => removeLine(i) : undefined}
-          />
-        ))}
-      </div>
-
-      <div className="mb-4 rounded-xl bg-[var(--color-cream)] px-4 py-3 text-sm">
-        <div className="flex justify-between">
-          <span className="text-[var(--color-muted)]">Subtotal</span>
-          <span className="tabular-nums">{fmt(subtotal)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-[var(--color-muted)]">VAT</span>
-          <span className="tabular-nums">{fmt(num(vat))}</span>
-        </div>
-        <div className="flex justify-between mt-1 pt-1 border-t border-black/10 font-semibold">
-          <span>Total to pay</span>
-          <span className="tabular-nums">{fmt(total)}</span>
-        </div>
-      </div>
-
-      <Field label="Notes (optional)">
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="field-input"
-          rows={2}
-          placeholder="e.g. monthly delivery"
-        />
-      </Field>
-
-      {err && (
-        <Alert variant="error" className="mt-3">
-          {err}
-        </Alert>
-      )}
-
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose} disabled={submitting}>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
-        <Button onClick={submit} disabled={submitting || !supplierId}>
-          {submitting ? "Saving…" : "Record invoice"}
+        <Button type="submit" loading={submitting} disabled={!supplierId}>
+          Record invoice
         </Button>
-      </div>
-    </DialogShell>
+      </DialogFooter>
+    </DialogForm>
   );
 }
 
@@ -618,90 +683,84 @@ function LineRow({
   return (
     <div className="grid grid-cols-12 gap-2 items-end p-2 rounded-lg border border-black/[0.06] bg-white">
       <div className="col-span-12 md:col-span-4">
-        <label className="block text-[11px] uppercase tracking-wide text-[var(--color-muted)]">
-          Stock item / description
-        </label>
-        <select
-          value={line.stockItemId}
-          onChange={(e) => {
-            const id = e.target.value;
-            const it = stockItems.find((s) => s.id === id);
-            onChange({
-              stockItemId: id,
-              description: it?.name ?? line.description,
-              unit: it?.unit ?? line.unit,
-              unitCost: it?.unitCost ? String(it.unitCost) : line.unitCost,
-            });
-          }}
-          className="field-input"
-        >
-          <option value="">— Custom (no stock) —</option>
-          {stockItems
-            .filter((s) => s.active)
-            .map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.sku ? ` (${s.sku})` : ""}
-              </option>
-            ))}
-        </select>
+        <Field label="Stock item / description">
+          <Select
+            value={line.stockItemId}
+            onChange={(e) => {
+              const id = e.target.value;
+              const it = stockItems.find((s) => s.id === id);
+              onChange({
+                stockItemId: id,
+                description: it?.name ?? line.description,
+                unit: it?.unit ?? line.unit,
+                unitCost: it?.unitCost ? String(it.unitCost) : line.unitCost,
+              });
+            }}
+          >
+            <option value="">— Custom (no stock) —</option>
+            {stockItems
+              .filter((s) => s.active)
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.sku ? ` (${s.sku})` : ""}
+                </option>
+              ))}
+          </Select>
+        </Field>
         {!line.stockItemId && (
-          <input
+          <Input
             value={line.description}
             onChange={(e) => onChange({ description: e.target.value })}
             placeholder="Description (e.g. Cleaning service Jan)"
-            className="field-input mt-2"
+            className="mt-2"
           />
         )}
       </div>
       <div className="col-span-4 md:col-span-2">
-        <label className="block text-[11px] uppercase tracking-wide text-[var(--color-muted)]">
-          Qty
-        </label>
-        <input
-          type="number"
-          inputMode="decimal"
-          step="0.001"
-          min="0"
-          value={line.quantity}
-          onChange={(e) => onChange({ quantity: e.target.value })}
-          className="field-input"
-        />
+        <Field label="Qty">
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="0.001"
+            min="0"
+            value={line.quantity}
+            onChange={(e) => onChange({ quantity: e.target.value })}
+          />
+        </Field>
       </div>
       <div className="col-span-3 md:col-span-2">
-        <label className="block text-[11px] uppercase tracking-wide text-[var(--color-muted)]">
-          Unit
-        </label>
-        <input
-          value={line.unit}
-          onChange={(e) => onChange({ unit: e.target.value })}
-          className="field-input"
-        />
+        <Field label="Unit">
+          <Input
+            value={line.unit}
+            onChange={(e) => onChange({ unit: e.target.value })}
+          />
+        </Field>
       </div>
       <div className="col-span-5 md:col-span-2">
-        <label className="block text-[11px] uppercase tracking-wide text-[var(--color-muted)]">
-          Unit cost
-        </label>
-        <input
-          type="number"
-          inputMode="decimal"
-          step="0.01"
-          min="0"
-          value={line.unitCost}
-          onChange={(e) => onChange({ unitCost: e.target.value })}
-          className="field-input"
-        />
+        <Field label="Unit cost">
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            min="0"
+            value={line.unitCost}
+            onChange={(e) => onChange({ unitCost: e.target.value })}
+          />
+        </Field>
       </div>
       <div className="col-span-9 md:col-span-1 text-right">
         <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">Total</p>
-        <p className="tabular-nums font-semibold">{fmt(total)}</p>
+        <p className="font-semibold">
+          <Money value={total} />
+        </p>
       </div>
       <div className="col-span-3 md:col-span-1 text-right">
         {onRemove && (
           <button
             type="button"
             onClick={onRemove}
-            className="text-[var(--color-danger)] hover:underline text-sm"
+            className="text-[var(--color-danger)] hover:underline text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] rounded"
             aria-label="Remove line"
           >
             Remove
@@ -722,18 +781,39 @@ function DetailDrawer({
   onClose,
   onChanged,
 }: {
-  invoice: PayableDetail;
+  invoice: PayableDetail | null;
   canManage: boolean;
   onClose: () => void;
   onChanged: (next: PayableDetail) => void;
 }) {
+  const confirm = useConfirm();
   const [recordOpen, setRecordOpen] = useState(false);
   const [voidPending, setVoidPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const badge = statusBadge(invoice.status, invoice.overdue);
+
+  // Reset transient state when the dialog closes.
+  useEffect(() => {
+    if (!invoice) {
+      setRecordOpen(false);
+      setVoidPending(false);
+      setErr(null);
+    }
+  }, [invoice]);
+
+  const open = invoice !== null;
+  const badge = invoice
+    ? payableStatus({ status: invoice.status, daysOverdue: invoice.daysPastDue })
+    : null;
 
   const onVoid = async () => {
-    if (!confirm("Void this invoice? Stock movements will be reversed.")) return;
+    if (!invoice) return;
+    const ok = await confirm({
+      title: "Void this invoice?",
+      description: "Stock movements will be reversed and the invoice removed from the P&L.",
+      confirmLabel: "Void invoice",
+      tone: "danger",
+    });
+    if (!ok) return;
     setVoidPending(true);
     setErr(null);
     try {
@@ -747,7 +827,14 @@ function DetailDrawer({
   };
 
   const onDeletePayment = async (paymentId: string) => {
-    if (!confirm("Reverse this payment? The outstanding balance will go back up.")) return;
+    if (!invoice) return;
+    const ok = await confirm({
+      title: "Reverse this payment?",
+      description: "The outstanding balance will go back up.",
+      confirmLabel: "Reverse",
+      tone: "danger",
+    });
+    if (!ok) return;
     setErr(null);
     try {
       const next = await deletePayablePayment(invoice.id, paymentId);
@@ -758,135 +845,189 @@ function DetailDrawer({
   };
 
   return (
-    <DialogShell
-      title={`${invoice.supplier.name}${invoice.invoiceNumber ? ` · ${invoice.invoiceNumber}` : ""}`}
+    <Dialog
+      open={open}
       onClose={onClose}
-      wide
+      size="xl"
+      ariaLabel={
+        invoice
+          ? `${invoice.supplier.name}${invoice.invoiceNumber ? ` · ${invoice.invoiceNumber}` : ""}`
+          : undefined
+      }
     >
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Badge variant={badge.variant}>{badge.label}</Badge>
-        <span className="text-sm text-[var(--color-muted)]">
-          Invoice {fmtDate(invoice.invoiceDate)} · due {fmtDate(invoice.dueDate)}
-        </span>
-        {invoice.overdue && invoice.daysPastDue !== undefined && (
-          <span className="text-sm font-semibold text-red-700">
-            {invoice.daysPastDue} day{invoice.daysPastDue === 1 ? "" : "s"} overdue
-          </span>
-        )}
-      </div>
+      {invoice && badge && (
+        <>
+          <DialogTitle
+            description={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <Badge tone={badge.tone}>{badge.label}</Badge>
+                <span className="text-[var(--color-muted)]">
+                  Invoice {fmtDate(invoice.invoiceDate)} · due {fmtDate(invoice.dueDate)}
+                </span>
+              </span>
+            }
+          >
+            {invoice.supplier.name}
+            {invoice.invoiceNumber ? ` · ${invoice.invoiceNumber}` : ""}
+          </DialogTitle>
+          <DialogBody className="space-y-5">
+            {err && <Alert variant="error">{err}</Alert>}
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <Stat label="Total" value={fmt(invoice.total)} />
-        <Stat label="Paid" value={fmt(invoice.amountPaid)} tone="text-emerald-700" />
-        <Stat
-          label="Outstanding"
-          value={fmt(invoice.outstanding)}
-          tone={invoice.outstanding > 0 ? "text-red-700" : "text-[var(--color-muted)]"}
-        />
-      </div>
+            <StatGroup cols={{ md: 3, lg: 3 }}>
+              <Stat
+                label="Total"
+                value={<Money value={invoice.total} />}
+                emphasis="hero"
+              />
+              <Stat
+                label="Paid"
+                value={<Money value={invoice.amountPaid} />}
+                tone={invoice.amountPaid > 0 ? "positive" : "neutral"}
+              />
+              <Stat
+                label="Outstanding"
+                value={<Money value={invoice.outstanding} />}
+                tone={invoice.outstanding > 0 ? "warning" : "neutral"}
+              />
+            </StatGroup>
 
-      <h3 className="text-sm font-semibold mb-2">Lines</h3>
-      <div className="overflow-x-auto mb-4">
-        <table className="min-w-full text-sm">
-          <thead className="text-xs uppercase tracking-wide text-[var(--color-muted)]">
-            <tr>
-              <th className="px-2 py-1 text-left">Description</th>
-              <th className="px-2 py-1 text-right">Qty</th>
-              <th className="px-2 py-1 text-left">Unit</th>
-              <th className="px-2 py-1 text-right">Unit cost</th>
-              <th className="px-2 py-1 text-right">Line total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-black/[0.05]">
-            {invoice.lines.map((l) => (
-              <tr key={l.id ?? `${l.description}-${l.lineTotal}`}>
-                <td className="px-2 py-1.5">
-                  {l.description}
-                  {l.stockItemId && (
-                    <span className="ml-2 text-xs text-[var(--color-muted)]">(stock-linked)</span>
+            <section aria-labelledby="lines-heading">
+              <h3
+                id="lines-heading"
+                className="text-sm font-semibold mb-2 text-[var(--color-ink)]"
+              >
+                Lines
+              </h3>
+              <div className="overflow-x-auto -mx-2">
+                <table className="min-w-full text-sm">
+                  <thead className="text-xs uppercase tracking-wide text-[var(--color-muted)]">
+                    <tr>
+                      <th className="px-2 py-1 text-left">Description</th>
+                      <th className="px-2 py-1 text-right">Qty</th>
+                      <th className="px-2 py-1 text-left">Unit</th>
+                      <th className="px-2 py-1 text-right">Unit cost</th>
+                      <th className="px-2 py-1 text-right">Line total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black/[0.05]">
+                    {invoice.lines.map((l) => (
+                      <tr key={l.id ?? `${l.description}-${l.lineTotal}`}>
+                        <td className="px-2 py-1.5">
+                          {l.description}
+                          {l.stockItemId && (
+                            <span className="ml-2 text-xs text-[var(--color-muted)]">
+                              (stock-linked)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{l.quantity}</td>
+                        <td className="px-2 py-1.5">{l.unit}</td>
+                        <td className="px-2 py-1.5 text-right">
+                          <Money value={l.unitCost} />
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          <Money value={l.lineTotal} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section aria-labelledby="payments-heading">
+              <div className="flex items-center justify-between mb-2">
+                <h3
+                  id="payments-heading"
+                  className="text-sm font-semibold text-[var(--color-ink)]"
+                >
+                  Payments
+                </h3>
+                {canManage &&
+                  invoice.status !== "VOID" &&
+                  invoice.status !== "PAID" && (
+                    <Button size="sm" onClick={() => setRecordOpen(true)}>
+                      + Record payment
+                    </Button>
                   )}
-                </td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{l.quantity}</td>
-                <td className="px-2 py-1.5">{l.unit}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(l.unitCost)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(l.lineTotal)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              </div>
+              {invoice.payments.length === 0 ? (
+                <p className="text-sm text-[var(--color-muted)]">No payments yet.</p>
+              ) : (
+                <div className="overflow-x-auto -mx-2">
+                  <table className="min-w-full text-sm">
+                    <thead className="text-xs uppercase tracking-wide text-[var(--color-muted)]">
+                      <tr>
+                        <th className="px-2 py-1 text-left">Date</th>
+                        <th className="px-2 py-1 text-right">Amount</th>
+                        <th className="px-2 py-1 text-left">Method</th>
+                        <th className="px-2 py-1 text-left">Reference</th>
+                        <th className="px-2 py-1" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/[0.05]">
+                      {invoice.payments.map((p) => (
+                        <tr key={p.id}>
+                          <td className="px-2 py-1.5">{fmtDate(p.paymentDate)}</td>
+                          <td className="px-2 py-1.5 text-right">
+                            <Money value={p.amount} />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            {p.method.replace("_", " ").toLowerCase()}
+                          </td>
+                          <td className="px-2 py-1.5 text-[var(--color-muted)]">
+                            {p.reference || "—"}
+                          </td>
+                          <td className="px-2 py-1.5 text-right">
+                            {canManage && (
+                              <button
+                                type="button"
+                                onClick={() => void onDeletePayment(p.id)}
+                                className="text-sm text-[var(--color-danger)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] rounded"
+                              >
+                                Reverse
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
 
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold">Payments</h3>
-        {canManage && invoice.status !== "VOID" && invoice.status !== "PAID" && (
-          <Button onClick={() => setRecordOpen(true)}>+ Record payment</Button>
-        )}
-      </div>
-      {invoice.payments.length === 0 ? (
-        <p className="text-sm text-[var(--color-muted)] mb-4">No payments yet.</p>
-      ) : (
-        <div className="overflow-x-auto mb-4">
-          <table className="min-w-full text-sm">
-            <thead className="text-xs uppercase tracking-wide text-[var(--color-muted)]">
-              <tr>
-                <th className="px-2 py-1 text-left">Date</th>
-                <th className="px-2 py-1 text-right">Amount</th>
-                <th className="px-2 py-1 text-left">Method</th>
-                <th className="px-2 py-1 text-left">Reference</th>
-                <th className="px-2 py-1" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-black/[0.05]">
-              {invoice.payments.map((p) => (
-                <tr key={p.id}>
-                  <td className="px-2 py-1.5">{fmtDate(p.paymentDate)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{fmt(p.amount)}</td>
-                  <td className="px-2 py-1.5">{p.method.replace("_", " ").toLowerCase()}</td>
-                  <td className="px-2 py-1.5 text-[var(--color-muted)]">{p.reference || "—"}</td>
-                  <td className="px-2 py-1.5 text-right">
-                    {canManage && (
-                      <button
-                        type="button"
-                        onClick={() => onDeletePayment(p.id)}
-                        className="text-sm text-[var(--color-danger)] hover:underline"
-                      >
-                        Reverse
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            {invoice.notes && (
+              <section>
+                <h3 className="text-sm font-semibold mb-1 text-[var(--color-ink)]">Notes</h3>
+                <p className="text-sm text-[var(--color-muted)] whitespace-pre-wrap">
+                  {invoice.notes}
+                </p>
+              </section>
+            )}
+          </DialogBody>
+          <DialogFooter justify="between">
+            <div>
+              {canManage && invoice.status !== "VOID" && invoice.amountPaid <= 0 && (
+                <Button
+                  variant="danger"
+                  onClick={() => void onVoid()}
+                  loading={voidPending}
+                >
+                  Void invoice
+                </Button>
+              )}
+            </div>
+            <Button variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+          </DialogFooter>
+        </>
       )}
 
-      {invoice.notes && (
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold mb-1">Notes</h3>
-          <p className="text-sm text-[var(--color-muted)] whitespace-pre-wrap">{invoice.notes}</p>
-        </div>
-      )}
-
-      {err && (
-        <Alert variant="error" className="mb-3">
-          {err}
-        </Alert>
-      )}
-
-      <div className="flex justify-between mt-4">
-        {canManage && invoice.status !== "VOID" && invoice.amountPaid <= 0 && (
-          <Button variant="danger" onClick={onVoid} disabled={voidPending}>
-            {voidPending ? "Voiding…" : "Void invoice"}
-          </Button>
-        )}
-        <Button variant="ghost" onClick={onClose} className="ml-auto">
-          Close
-        </Button>
-      </div>
-
-      {recordOpen && (
+      {invoice && (
         <RecordPaymentDialog
+          open={recordOpen}
           invoice={invoice}
           onClose={() => setRecordOpen(false)}
           onRecorded={async (next) => {
@@ -895,15 +1036,17 @@ function DetailDrawer({
           }}
         />
       )}
-    </DialogShell>
+    </Dialog>
   );
 }
 
 function RecordPaymentDialog({
+  open,
   invoice,
   onClose,
   onRecorded,
 }: {
+  open: boolean;
   invoice: PayableDetail;
   onClose: () => void;
   onRecorded: (next: PayableDetail) => void;
@@ -916,6 +1059,17 @@ function RecordPaymentDialog({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Fresh draft each time the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    setPaymentDate(today);
+    setAmount(invoice.outstanding.toFixed(2));
+    setMethod("BANK_TRANSFER");
+    setReference("");
+    setNotes("");
+    setErr(null);
+  }, [open, invoice.outstanding, today]);
 
   const submit = async () => {
     setErr(null);
@@ -942,74 +1096,86 @@ function RecordPaymentDialog({
   };
 
   return (
-    <DialogShell title="Record payment" onClose={onClose}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-        <Field label="Payment date">
-          <input
-            type="date"
-            value={paymentDate}
-            onChange={(e) => setPaymentDate(e.target.value)}
-            min={invoice.invoiceDate}
-            max={today}
-            className="field-input"
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="md"
+      dismissOnBackdrop={false}
+      ariaLabel="Record payment"
+    >
+      <DialogTitle
+        description={
+          <>
+            Outstanding <Money value={invoice.outstanding} emphasis="strong" /> on{" "}
+            {invoice.supplier.name}
+            {invoice.invoiceNumber ? ` · ${invoice.invoiceNumber}` : ""}.
+          </>
+        }
+      >
+        Record payment
+      </DialogTitle>
+      <DialogBody className="space-y-3">
+        {err && <Alert variant="error">{err}</Alert>}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Payment date" required>
+            <Input
+              type="date"
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              min={invoice.invoiceDate}
+              max={today}
+            />
+          </Field>
+          <Field label="Amount (PLN)" required hint={`Max ${invoice.outstanding.toFixed(2)}`}>
+            <Input
+              autoFocus
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0.01"
+              max={invoice.outstanding}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </Field>
+          <Field label="Method" required>
+            <Select
+              value={method}
+              onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+            >
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Reference" optional>
+            <Input
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="e.g. transfer id, cheque #"
+            />
+          </Field>
+        </div>
+        <Field label="Notes" optional>
+          <Textarea
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
           />
         </Field>
-        <Field label={`Amount (max ${fmt(invoice.outstanding)})`}>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0.01"
-            max={invoice.outstanding}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="field-input"
-          />
-        </Field>
-        <Field label="Method">
-          <select
-            value={method}
-            onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-            className="field-input"
-          >
-            {PAYMENT_METHODS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Reference (optional)">
-          <input
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            placeholder="e.g. transfer id, cheque #"
-            className="field-input"
-          />
-        </Field>
-      </div>
-      <Field label="Notes (optional)">
-        <textarea
-          rows={2}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className="field-input"
-        />
-      </Field>
-      {err && (
-        <Alert variant="error" className="mt-3">
-          {err}
-        </Alert>
-      )}
-      <div className="flex justify-end gap-2 mt-4">
-        <Button variant="ghost" onClick={onClose} disabled={submitting}>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
-        <Button onClick={submit} disabled={submitting}>
-          {submitting ? "Saving…" : "Record payment"}
+        <Button type="submit" loading={submitting}>
+          Record payment
         </Button>
-      </div>
-    </DialogShell>
+      </DialogFooter>
+    </DialogForm>
   );
 }
 
@@ -1018,9 +1184,11 @@ function RecordPaymentDialog({
 // ───────────────────────────────────────────────────────────────────────────
 
 function SupplierDialog({
+  open,
   onClose,
   onCreated,
 }: {
+  open: boolean;
   onClose: () => void;
   onCreated: (s: Supplier) => void;
 }) {
@@ -1032,6 +1200,17 @@ function SupplierDialog({
   const [paymentTermsDays, setPaymentTermsDays] = useState("7");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setName("");
+    setContactName("");
+    setPhone("");
+    setEmail("");
+    setVatId("");
+    setPaymentTermsDays("7");
+    setErr(null);
+  }, [open]);
 
   const submit = async () => {
     if (!name.trim()) {
@@ -1058,142 +1237,69 @@ function SupplierDialog({
   };
 
   return (
-    <DialogShell title="New supplier" onClose={onClose}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Field label="Name">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="field-input"
-            placeholder="e.g. Makro"
-          />
-        </Field>
-        <Field label="Contact (optional)">
-          <input
-            value={contactName}
-            onChange={(e) => setContactName(e.target.value)}
-            className="field-input"
-          />
-        </Field>
-        <Field label="Phone">
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="field-input"
-          />
-        </Field>
-        <Field label="Email">
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            className="field-input"
-          />
-        </Field>
-        <Field label="VAT id (optional)">
-          <input
-            value={vatId}
-            onChange={(e) => setVatId(e.target.value)}
-            className="field-input"
-          />
-        </Field>
-        <Field label="Default payment terms (days)">
-          <input
-            type="number"
-            min="0"
-            max="365"
-            value={paymentTermsDays}
-            onChange={(e) => setPaymentTermsDays(e.target.value)}
-            className="field-input"
-          />
-        </Field>
-      </div>
-      {err && (
-        <Alert variant="error" className="mt-3">
-          {err}
-        </Alert>
-      )}
-      <div className="flex justify-end gap-2 mt-4">
-        <Button variant="ghost" onClick={onClose} disabled={submitting}>
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="md"
+      dismissOnBackdrop={false}
+      ariaLabel="New supplier"
+    >
+      <DialogTitle>New supplier</DialogTitle>
+      <DialogBody className="space-y-3">
+        {err && <Alert variant="error">{err}</Alert>}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Name" required>
+            <Input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Makro"
+            />
+          </Field>
+          <Field label="Contact" optional>
+            <Input
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+            />
+          </Field>
+          <Field label="Phone" optional>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </Field>
+          <Field label="Email" optional>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </Field>
+          <Field label="VAT id" optional>
+            <Input value={vatId} onChange={(e) => setVatId(e.target.value)} />
+          </Field>
+          <Field
+            label="Default payment terms"
+            required
+            hint="Days from invoice date until due."
+          >
+            <Input
+              type="number"
+              min="0"
+              max="365"
+              value={paymentTermsDays}
+              onChange={(e) => setPaymentTermsDays(e.target.value)}
+            />
+          </Field>
+        </div>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
-        <Button onClick={submit} disabled={submitting}>
-          {submitting ? "Saving…" : "Create supplier"}
+        <Button type="submit" loading={submitting}>
+          Create supplier
         </Button>
-      </div>
-    </DialogShell>
+      </DialogFooter>
+    </DialogForm>
   );
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Lightweight UI primitives shared by the dialogs above
-// ───────────────────────────────────────────────────────────────────────────
-
-function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
-  return (
-    <div className="rounded-xl border border-black/[0.06] bg-white px-3 py-2">
-      <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-      <p className={`text-lg font-semibold tabular-nums ${tone ?? ""}`}>{value}</p>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="block text-xs font-medium text-[var(--color-muted)] mb-1">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function DialogShell({
-  title,
-  onClose,
-  children,
-  wide,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  wide?: boolean;
-}) {
-  // Close on ESC for keyboard friendliness; the backdrop click also
-  // dismisses unless the user is interacting with a form element. We
-  // intentionally keep this as plain CSS instead of pulling in a modal
-  // library since the rest of the app rolls its own.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 px-2 py-4 md:p-6">
-      <div
-        className={`relative w-full ${wide ? "max-w-3xl" : "max-w-md"} max-h-full overflow-y-auto rounded-2xl bg-[var(--color-cream)] shadow-2xl`}
-      >
-        <div className="sticky top-0 flex items-center justify-between gap-2 px-5 py-4 bg-[var(--color-cream)] border-b border-black/[0.06]">
-          <h2 className="text-lg font-semibold text-[var(--color-ink)] truncate">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="p-1 -m-1 rounded-md hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--color-ink)]"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="px-5 py-4">{children}</div>
-      </div>
-    </div>
-  );
-}

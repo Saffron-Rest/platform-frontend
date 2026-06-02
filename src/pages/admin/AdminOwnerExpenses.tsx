@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { fmt } from "../../lib/calc";
 import { todayLocalIso } from "../../lib/dates";
 import { useAuth } from "../../context/AuthContext";
+import { useConfirm } from "../../context/ConfirmContext";
+import { ownerExpenseStatus } from "../../lib/statusBadges";
+import { parseMoneyInput } from "../../lib/numbers";
 import { api } from "../../api/client";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Card } from "../../components/ui/Card";
@@ -11,6 +13,22 @@ import { Alert } from "../../components/ui/Alert";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Spinner } from "../../components/ui/Spinner";
 import { Badge } from "../../components/ui/Badge";
+import { Money } from "../../components/ui/Money";
+import { Stat, StatGroup } from "../../components/ui/Stat";
+import {
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogForm,
+  DialogTitle,
+} from "../../components/ui/Dialog";
+import {
+  Field,
+  Input,
+  Select,
+  Textarea,
+} from "../../components/ui/Field";
+import { IconPaperclip } from "../../components/icons";
 import type { User } from "../../types";
 import {
   deleteOwnerExpenseReceipt,
@@ -28,7 +46,6 @@ import {
   type OwnerExpenseDetail,
   type OwnerExpenseListResponse,
   type OwnerExpenseReimbursement as OwnerExpenseReimbursementRow,
-  type OwnerExpenseStatus,
   type OwnerExpenseSummary,
   type RecordReimbursementInput,
 } from "../../api/ownerExpenses";
@@ -65,22 +82,18 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "OTHER", label: "Other" },
 ];
 
-const statusBadge = (s: OwnerExpenseStatus) => {
-  if (s === "VOID") return { variant: "inactive" as const, label: "Cancelled" };
-  if (s === "REIMBURSED") return { variant: "locked" as const, label: "Reimbursed" };
-  if (s === "PARTIAL") return { variant: "draft" as const, label: "Partial" };
-  return { variant: "neutral" as const, label: "Pending" };
-};
-
 const fmtDate = (iso: string) => {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 };
 
+/** Coerce a typed-money string (PL-style "12,5" or "12.5") to a number,
+ *  falling back to 0 when the value is invalid. Mirrors the local
+ *  helper used throughout the file. */
 const num = (s: string): number => {
-  const v = Number((s || "").replace(",", "."));
-  return Number.isFinite(v) ? v : 0;
+  const parsed = parseMoneyInput(s);
+  return parsed === null ? 0 : parsed;
 };
 
 export function AdminOwnerExpenses() {
@@ -171,111 +184,95 @@ export function AdminOwnerExpenses() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
+        kicker="Finance"
         title="Owner reimbursements"
         subtitle="Money the restaurant owes its owner(s) for out-of-pocket payments. Filing here recognises the expense on the P&L on its expense date; reimbursing posts the cash event later."
+        action={
+          canFile ? (
+            <Button onClick={() => setOpenCreate(true)}>+ I paid for something</Button>
+          ) : null
+        }
+        tabs={TAB_DEFS.map((t) => ({
+          id: t.id,
+          label: t.label,
+          active: tab === t.id,
+          onClick: () => setTab(t.id),
+        }))}
       />
 
       {error && (
-        <Alert variant="error" className="mb-2">
+        <Alert variant="error" className="mb-4">
           {error}
         </Alert>
       )}
 
-      {/* Top summary: who do we owe what? */}
+      {/* Top summary: who do we owe what? Each owner is an interactive
+          Stat tile that filters the list when clicked. */}
       {data && data.byOwner.length > 0 && (
-        <Card>
-          <div className="p-4 md:p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-[var(--color-ink)]">
-                Outstanding by owner
-              </h3>
-              <span className="text-sm text-[var(--color-muted)]">
-                Total: <span className="font-semibold text-[var(--color-ink)]">{fmt(data.totals.outstanding)}</span>
-              </span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {data.byOwner.map((row) => (
-                <button
-                  key={row.ownerUserId}
-                  type="button"
-                  onClick={() =>
-                    setOwnerFilter(
-                      ownerFilter === row.ownerUserId ? "" : row.ownerUserId,
-                    )
-                  }
-                  className={`text-left rounded-lg px-3 py-2 border transition-colors ${
-                    ownerFilter === row.ownerUserId
-                      ? "border-[var(--color-saffron)] bg-[var(--color-saffron)]/10"
-                      : "border-black/10 hover:bg-black/[0.03]"
-                  }`}
-                >
-                  <div className="text-xs text-[var(--color-muted)]">{row.ownerName}</div>
-                  <div className="text-base font-semibold text-[var(--color-ink)]">
-                    {fmt(row.outstanding)}
-                  </div>
-                </button>
-              ))}
-            </div>
-            {ownerFilter && (
+        <Card padding="md" className="mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-[var(--color-ink)]">
+              Outstanding by owner
+            </h2>
+            <span className="text-sm text-[var(--color-muted)]">
+              Total{" "}
+              <Money value={data.totals.outstanding} emphasis="strong" />
+            </span>
+          </div>
+          <StatGroup cols={{ md: 3, lg: 4 }}>
+            {data.byOwner.map((row) => (
+              <Stat
+                key={row.ownerUserId}
+                label={row.ownerName}
+                value={<Money value={row.outstanding} />}
+                tone={row.outstanding > 0 ? "brand" : "neutral"}
+                active={ownerFilter === row.ownerUserId}
+                onClick={() =>
+                  setOwnerFilter(
+                    ownerFilter === row.ownerUserId ? "" : row.ownerUserId,
+                  )
+                }
+              />
+            ))}
+          </StatGroup>
+          {ownerFilter && (
+            <div className="mt-3">
               <button
                 type="button"
                 onClick={() => setOwnerFilter("")}
-                className="mt-3 text-xs text-[var(--color-saffron)] hover:underline"
+                className="text-xs text-[var(--color-saffron)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] rounded"
               >
                 Clear owner filter
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </Card>
       )}
 
-      {/* Toolbar */}
-      <Card>
-        <div className="p-3 md:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-1">
-            {TAB_DEFS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  tab === t.id
-                    ? "bg-[var(--color-saffron)] text-white"
-                    : "text-[var(--color-muted)] hover:text-[var(--color-ink)] hover:bg-black/[0.04]"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={() => void reload()} variant="secondary">
-              Refresh
-            </Button>
-            {canFile && (
-              <Button onClick={() => setOpenCreate(true)}>+ I paid for something</Button>
-            )}
-          </div>
-        </div>
-      </Card>
-
       {/* List */}
-      <Card>
+      <Card padding="none">
         {loading ? (
-          <div className="p-8 flex justify-center">
+          <div className="p-8">
             <Spinner />
           </div>
         ) : !data || data.items.length === 0 ? (
-          <EmptyState
-            title="Nothing here yet"
-            description={
-              tab === "PENDING"
-                ? "No outstanding owner-paid expenses. When an owner covers a restaurant bill from their own pocket, file it here so it can be reimbursed and reflected in the P&L."
-                : "No matching records."
-            }
-          />
+          <div className="p-6">
+            <EmptyState
+              title="Nothing here yet"
+              description={
+                tab === "PENDING"
+                  ? "No outstanding owner-paid expenses. When an owner covers a restaurant bill from their own pocket, file it here so it can be reimbursed and reflected in the P&L."
+                  : "No matching records."
+              }
+              action={
+                canFile && tab === "PENDING" ? (
+                  <Button onClick={() => setOpenCreate(true)}>+ File one now</Button>
+                ) : undefined
+              }
+            />
+          </div>
         ) : (
           <div className="divide-y divide-black/[0.06]">
             {data.items.map((row) => (
@@ -286,35 +283,33 @@ export function AdminOwnerExpenses() {
       </Card>
 
       {/* Create dialog */}
-      {openCreate && (
-        <CreateExpenseDialog
-          onClose={() => setOpenCreate(false)}
-          onCreated={() => {
-            setOpenCreate(false);
-            void reload();
-          }}
-          defaultOwnerId={user?.id ?? ""}
-          ownerOptions={ownerOptions}
-          canPickOwner={canManage}
-        />
-      )}
+      <CreateExpenseDialog
+        open={openCreate}
+        onClose={() => setOpenCreate(false)}
+        onCreated={() => {
+          setOpenCreate(false);
+          void reload();
+        }}
+        defaultOwnerId={user?.id ?? ""}
+        ownerOptions={ownerOptions}
+        canPickOwner={canManage}
+      />
 
-      {/* Detail drawer */}
-      {detail && (
-        <DetailDrawer
-          detail={detail}
-          ownerOptions={ownerOptions}
-          canManage={canManage}
-          canFile={canFile}
-          onClose={() => setDetail(null)}
-          onChanged={async () => {
-            const refreshed = await getOwnerExpense(detail.id);
-            setDetail(refreshed);
-            void reload();
-          }}
-        />
-      )}
-    </div>
+      {/* Detail dialog */}
+      <DetailDrawer
+        detail={detail}
+        ownerOptions={ownerOptions}
+        canManage={canManage}
+        canFile={canFile}
+        onClose={() => setDetail(null)}
+        onChanged={async () => {
+          if (!detail) return;
+          const refreshed = await getOwnerExpense(detail.id);
+          setDetail(refreshed);
+          void reload();
+        }}
+      />
+    </>
   );
 }
 
@@ -329,40 +324,48 @@ function ListRow({
   row: OwnerExpenseSummary;
   onOpen: () => void;
 }) {
-  const badge = statusBadge(row.status);
+  const badge = ownerExpenseStatus(row.status);
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="w-full text-left p-4 hover:bg-black/[0.03] transition-colors flex flex-col md:flex-row md:items-center gap-3"
+      className="w-full text-left p-4 hover:bg-black/[0.03] transition-colors flex flex-col md:flex-row md:items-center gap-3 focus-visible:outline-none focus-visible:bg-black/[0.03] focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] focus-visible:ring-inset"
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <Badge variant={badge.variant}>{badge.label}</Badge>
+          <Badge tone={badge.tone}>{badge.label}</Badge>
           <span className="text-xs text-[var(--color-muted)]">
             {fmtDate(row.expenseDate)}
           </span>
-          <span className="text-xs text-[var(--color-muted)]">·</span>
+          <span className="text-xs text-[var(--color-muted)]" aria-hidden="true">
+            ·
+          </span>
           <span className="text-xs text-[var(--color-muted)]">{row.category}</span>
         </div>
         <div className="text-sm font-medium text-[var(--color-ink)] truncate">
           {row.description}
         </div>
-        <div className="text-xs text-[var(--color-muted)] mt-0.5">
-          Paid by <span className="font-medium">{row.ownerName}</span>
-          {row.reference ? ` · Ref ${row.reference}` : ""}
-          {row.receiptCount > 0
-            ? ` · 📎 ${row.receiptCount} receipt${row.receiptCount === 1 ? "" : "s"}`
-            : ""}
+        <div className="text-xs text-[var(--color-muted)] mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span>
+            Paid by <span className="font-medium">{row.ownerName}</span>
+          </span>
+          {row.reference ? <span>· Ref {row.reference}</span> : null}
+          {row.receiptCount > 0 ? (
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden="true">·</span>
+              <IconPaperclip className="w-3 h-3" />
+              {row.receiptCount} receipt{row.receiptCount === 1 ? "" : "s"}
+            </span>
+          ) : null}
         </div>
       </div>
-      <div className="text-right">
-        <div className="text-base font-semibold text-[var(--color-ink)]">
-          {fmt(row.total)}
+      <div className="text-right shrink-0 w-28 md:w-32">
+        <div className="text-base font-semibold text-[var(--color-ink)] tabular-nums">
+          <Money value={row.total} />
         </div>
         {row.status !== "VOID" && row.outstanding > 0 && (
-          <div className="text-xs text-[var(--color-muted)]">
-            {fmt(row.outstanding)} owed
+          <div className="text-xs text-[var(--color-muted)] tabular-nums">
+            <Money value={row.outstanding} /> owed
           </div>
         )}
       </div>
@@ -375,12 +378,14 @@ function ListRow({
 // ============================================================================
 
 function CreateExpenseDialog({
+  open,
   onClose,
   onCreated,
   defaultOwnerId,
   ownerOptions,
   canPickOwner,
 }: {
+  open: boolean;
   onClose: () => void;
   onCreated: () => void;
   defaultOwnerId: string;
@@ -398,8 +403,21 @@ function CreateExpenseDialog({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Reset when the dialog re-opens so each filing starts fresh.
+  useEffect(() => {
+    if (!open) return;
+    setOwnerUserId(defaultOwnerId);
+    setExpenseDate(todayLocalIso());
+    setCategory("SUPPLIES");
+    setDescription("");
+    setTotal("");
+    setReference("");
+    setNotes("");
+    setReceiptFiles([]);
+    setErr(null);
+  }, [open, defaultOwnerId]);
+
+  const submit = async () => {
     if (busy) return;
     if (!description.trim()) {
       setErr("Describe what you paid for so the audit log makes sense later.");
@@ -444,39 +462,39 @@ function CreateExpenseDialog({
   };
 
   return (
-    <DialogShell title="File owner-paid expense" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        {err && (
-          <Alert variant="error">{err}</Alert>
-        )}
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="lg"
+      dismissOnBackdrop={false}
+      ariaLabel="File owner-paid expense"
+    >
+      <DialogTitle>File owner-paid expense</DialogTitle>
+      <DialogBody className="space-y-3">
+        {err && <Alert variant="error">{err}</Alert>}
         {canPickOwner && ownerOptions.length > 0 && (
           <Field label="Paid by">
-            <select
-              className="field-input"
-              value={ownerUserId}
-              onChange={(e) => setOwnerUserId(e.target.value)}
-            >
+            <Select value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)}>
               {ownerOptions.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name} ({u.role})
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         )}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Expense date">
-            <input
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Expense date" required>
+            <Input
               type="date"
-              className="field-input"
               value={expenseDate}
               onChange={(e) => setExpenseDate(e.target.value)}
-              required
+              max={todayLocalIso()}
             />
           </Field>
-          <Field label="Category">
-            <select
-              className="field-input"
+          <Field label="Category" required>
+            <Select
               value={category}
               onChange={(e) => setCategory(e.target.value as PayableCategory)}
             >
@@ -485,33 +503,29 @@ function CreateExpenseDialog({
                   {c.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         </div>
-        <Field label="What did you pay for?">
-          <input
-            className="field-input"
+        <Field label="What did you pay for?" required>
+          <Input
+            autoFocus
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="e.g. Cleaning supplies at Carrefour"
-            required
             maxLength={300}
           />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Amount">
-            <input
-              className="field-input"
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Amount (PLN)" required>
+            <Input
               value={total}
               onChange={(e) => setTotal(e.target.value)}
               inputMode="decimal"
               placeholder="0.00"
-              required
             />
           </Field>
-          <Field label="Reference (optional)">
-            <input
-              className="field-input"
+          <Field label="Reference" optional hint="Receipt number or bank reference">
+            <Input
               value={reference}
               onChange={(e) => setReference(e.target.value)}
               placeholder="receipt #, bank ref"
@@ -519,16 +533,19 @@ function CreateExpenseDialog({
             />
           </Field>
         </div>
-        <Field label="Notes (optional)">
-          <textarea
-            className="field-input"
+        <Field label="Notes" optional>
+          <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             maxLength={1000}
           />
         </Field>
-        <Field label="Receipt photos / PDFs (optional but recommended)">
+        <Field
+          label="Receipt photos / PDFs"
+          optional
+          hint="JPG, PNG, WEBP or PDF — proof of the receipt for the books."
+        >
           <div className="space-y-2">
             <input
               type="file"
@@ -545,10 +562,13 @@ function CreateExpenseDialog({
               <ul className="text-xs text-[var(--color-muted)] space-y-1">
                 {receiptFiles.map((f, idx) => (
                   <li key={`${f.name}-${idx}`} className="flex items-center justify-between gap-2">
-                    <span className="truncate">📎 {f.name}</span>
+                    <span className="inline-flex items-center gap-1.5 truncate">
+                      <IconPaperclip className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{f.name}</span>
+                    </span>
                     <button
                       type="button"
-                      className="text-[var(--color-saffron)] hover:underline"
+                      className="text-[var(--color-saffron)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] rounded"
                       onClick={() =>
                         setReceiptFiles((prev) => prev.filter((_, i) => i !== idx))
                       }
@@ -559,21 +579,18 @@ function CreateExpenseDialog({
                 ))}
               </ul>
             )}
-            <p className="text-xs text-[var(--color-muted)]">
-              JPG, PNG, WEBP or PDF — proof of the receipt for the books.
-            </p>
           </div>
         </Field>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Filing…" : "File expense"}
-          </Button>
-        </div>
-      </form>
-    </DialogShell>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={busy}>
+          File expense
+        </Button>
+      </DialogFooter>
+    </DialogForm>
   );
 }
 
@@ -589,33 +606,50 @@ function DetailDrawer({
   onClose,
   onChanged,
 }: {
-  detail: OwnerExpenseDetail;
+  detail: OwnerExpenseDetail | null;
   ownerOptions: User[];
   canManage: boolean;
   canFile: boolean;
   onClose: () => void;
   onChanged: () => void | Promise<void>;
 }) {
+  const confirm = useConfirm();
   const [reimbOpen, setReimbOpen] = useState(false);
   const [editExpenseOpen, setEditExpenseOpen] = useState(false);
   const [editingReimb, setEditingReimb] = useState<OwnerExpenseReimbursementRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const badge = statusBadge(detail.status);
-  const ownerName =
-    detail.ownerName ||
-    ownerOptions.find((u) => u.id === detail.ownerUserId)?.name ||
-    "Unknown";
+
+  // Reset transient state when the dialog closes / changes record.
+  useEffect(() => {
+    if (!detail) {
+      setReimbOpen(false);
+      setEditExpenseOpen(false);
+      setEditingReimb(null);
+      setErr(null);
+      setBusy(false);
+    }
+  }, [detail]);
+
+  const open = detail !== null;
+  const badge = detail ? ownerExpenseStatus(detail.status) : null;
+  const ownerName = detail
+    ? detail.ownerName ||
+      ownerOptions.find((u) => u.id === detail.ownerUserId)?.name ||
+      "Unknown"
+    : "";
 
   const doVoid = async () => {
-    if (busy) return;
-    if (
-      !window.confirm(
-        "Cancel this expense? It will be removed from the P&L. This is only available before any reimbursement is recorded.",
-      )
-    ) {
-      return;
-    }
+    if (!detail || busy) return;
+    const ok = await confirm({
+      title: "Cancel this expense?",
+      description:
+        "It will be removed from the P&L. This is only available before any reimbursement is recorded.",
+      confirmLabel: "Cancel expense",
+      cancelLabel: "Keep it",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(true);
     setErr(null);
     try {
@@ -630,10 +664,14 @@ function DetailDrawer({
   };
 
   const reverseReimbursement = async (rid: string) => {
-    if (busy) return;
-    if (!window.confirm("Reverse this reimbursement? The amount will return to outstanding.")) {
-      return;
-    }
+    if (!detail || busy) return;
+    const ok = await confirm({
+      title: "Reverse this reimbursement?",
+      description: "The amount will return to outstanding.",
+      confirmLabel: "Reverse",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(true);
     setErr(null);
     try {
@@ -648,171 +686,206 @@ function DetailDrawer({
   };
 
   return (
-    <DialogShell title={detail.description} onClose={onClose} wide>
-      <div className="space-y-4">
-        {err && (
-          <Alert variant="error">{err}</Alert>
-        )}
+    <Dialog open={open} onClose={onClose} size="lg" ariaLabel={detail?.description}>
+      {detail && badge && (
+        <>
+          <DialogTitle
+            description={
+              <span className="inline-flex items-center gap-2">
+                <Badge tone={badge.tone}>{badge.label}</Badge>
+                <span className="text-[var(--color-muted)]">
+                  Filed by {ownerName} · {fmtDate(detail.expenseDate)} · {detail.category}
+                </span>
+              </span>
+            }
+          >
+            {detail.description}
+          </DialogTitle>
+          <DialogBody className="space-y-4">
+            {err && <Alert variant="error">{err}</Alert>}
 
-        {canManage && detail.status !== "VOID" && (
-          <div className="flex justify-end">
-            <Button variant="secondary" onClick={() => setEditExpenseOpen(true)}>
-              Edit details
-            </Button>
-          </div>
-        )}
+            <StatGroup cols={{ md: 3, lg: 3 }}>
+              <Stat
+                label="Total"
+                value={<Money value={detail.total} />}
+                emphasis="hero"
+              />
+              <Stat
+                label="Reimbursed"
+                value={<Money value={detail.amountReimbursed} />}
+                tone={detail.amountReimbursed > 0 ? "positive" : "neutral"}
+              />
+              <Stat
+                label="Outstanding"
+                value={<Money value={detail.outstanding} />}
+                tone={detail.outstanding > 0 ? "warning" : "neutral"}
+              />
+            </StatGroup>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatBox label="Status">
-            <Badge variant={badge.variant}>{badge.label}</Badge>
-          </StatBox>
-          <StatBox label="Total">{fmt(detail.total)}</StatBox>
-          <StatBox label="Reimbursed">{fmt(detail.amountReimbursed)}</StatBox>
-          <StatBox label="Outstanding">
-            <span
-              className={
-                detail.outstanding > 0
-                  ? "font-semibold text-[var(--color-ink)]"
-                  : "text-[var(--color-muted)]"
-              }
-            >
-              {fmt(detail.outstanding)}
-            </span>
-          </StatBox>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <Row label="Paid by">{ownerName}</Row>
-          <Row label="Expense date">{fmtDate(detail.expenseDate)}</Row>
-          <Row label="Category">{detail.category}</Row>
-          {detail.reference && <Row label="Reference">{detail.reference}</Row>}
-          {detail.notes && <Row label="Notes">{detail.notes}</Row>}
-        </div>
-
-        {/* Receipts */}
-        <ReceiptsSection
-          detail={detail}
-          canEdit={(canManage || canFile) && detail.status !== "VOID"}
-          busy={busy}
-          setBusy={setBusy}
-          setErr={setErr}
-          onChanged={onChanged}
-        />
-
-        {/* Reimbursements history */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-[var(--color-ink)]">Reimbursements</h3>
-            {canManage && detail.status !== "VOID" && detail.status !== "REIMBURSED" && (
-              <Button onClick={() => setReimbOpen(true)} variant="secondary">
-                + Record reimbursement
-              </Button>
+            {(detail.reference || detail.notes) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                {detail.reference && <Row label="Reference">{detail.reference}</Row>}
+                {detail.notes && <Row label="Notes">{detail.notes}</Row>}
+              </div>
             )}
-          </div>
-          {detail.reimbursements.length === 0 ? (
-            <div className="rounded-lg border border-black/[0.06] bg-black/[0.02] p-4 text-sm text-[var(--color-muted)]">
-              No reimbursements yet — the restaurant still owes the owner the full amount.
-            </div>
-          ) : (
-            <div className="rounded-lg border border-black/[0.06] divide-y divide-black/[0.06]">
-              {detail.reimbursements.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3"
-                >
-                  <div className="text-sm">
-                    <div className="font-medium text-[var(--color-ink)]">
-                      {fmt(r.amount)}{" "}
-                      <span className="text-xs text-[var(--color-muted)] font-normal">
-                        · {fmtDate(r.paidDate)} · {r.method}
-                      </span>
-                    </div>
-                    {(r.reference || r.notes) && (
-                      <div className="text-xs text-[var(--color-muted)] mt-0.5">
-                        {r.reference ? `Ref ${r.reference}` : ""}
-                        {r.reference && r.notes ? " · " : ""}
-                        {r.notes ?? ""}
-                      </div>
-                    )}
-                  </div>
-                  {canManage && (
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        variant="secondary"
-                        onClick={() => setEditingReimb(r)}
-                        disabled={busy}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => void reverseReimbursement(r.id)}
-                        disabled={busy}
-                      >
-                        Reverse
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Footer actions */}
-        {canManage &&
-          detail.status !== "VOID" &&
-          detail.amountReimbursed === 0 && (
-            <div className="flex justify-end pt-2">
-              <Button variant="secondary" onClick={() => void doVoid()} disabled={busy}>
-                Cancel expense
+            {/* Receipts */}
+            <ReceiptsSection
+              detail={detail}
+              canEdit={(canManage || canFile) && detail.status !== "VOID"}
+              busy={busy}
+              setBusy={setBusy}
+              setErr={setErr}
+              onChanged={onChanged}
+            />
+
+            {/* Reimbursements history */}
+            <section aria-labelledby="reimb-heading">
+              <div className="flex items-center justify-between mb-2">
+                <h3
+                  id="reimb-heading"
+                  className="text-sm font-semibold text-[var(--color-ink)]"
+                >
+                  Reimbursements
+                </h3>
+                {canManage &&
+                  detail.status !== "VOID" &&
+                  detail.status !== "REIMBURSED" && (
+                    <Button onClick={() => setReimbOpen(true)} variant="secondary" size="sm">
+                      + Record reimbursement
+                    </Button>
+                  )}
+              </div>
+              {detail.reimbursements.length === 0 ? (
+                <div className="rounded-lg border border-black/[0.06] bg-black/[0.02] p-4 text-sm text-[var(--color-muted)]">
+                  No reimbursements yet — the restaurant still owes the owner the full amount.
+                </div>
+              ) : (
+                <ul className="rounded-lg border border-black/[0.06] divide-y divide-black/[0.06]">
+                  {detail.reimbursements.map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3"
+                    >
+                      <div className="text-sm">
+                        <div className="font-medium text-[var(--color-ink)]">
+                          <Money value={r.amount} emphasis="strong" />{" "}
+                          <span className="text-xs text-[var(--color-muted)] font-normal">
+                            · {fmtDate(r.paidDate)} · {r.method}
+                          </span>
+                        </div>
+                        {(r.reference || r.notes) && (
+                          <div className="text-xs text-[var(--color-muted)] mt-0.5">
+                            {r.reference ? `Ref ${r.reference}` : ""}
+                            {r.reference && r.notes ? " · " : ""}
+                            {r.notes ?? ""}
+                          </div>
+                        )}
+                      </div>
+                      {canManage && (
+                        <div className="flex gap-2 shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingReimb(r)}
+                            disabled={busy}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void reverseReimbursement(r.id)}
+                            disabled={busy}
+                          >
+                            Reverse
+                          </Button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </DialogBody>
+          <DialogFooter justify="between">
+            <div>
+              {canManage &&
+                detail.status !== "VOID" &&
+                detail.amountReimbursed === 0 && (
+                  <Button
+                    variant="danger"
+                    onClick={() => void doVoid()}
+                    disabled={busy}
+                  >
+                    Cancel expense
+                  </Button>
+                )}
+            </div>
+            <div className="flex gap-2">
+              {canManage && detail.status !== "VOID" && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setEditExpenseOpen(true)}
+                >
+                  Edit details
+                </Button>
+              )}
+              <Button variant="ghost" onClick={onClose}>
+                Close
               </Button>
             </div>
+          </DialogFooter>
+        </>
+      )}
+
+      {/* Sub-dialogs are siblings of the parent Dialog so they receive
+          their own focus trap and ESC handling. */}
+      {detail && (
+        <>
+          <RecordReimbursementDialog
+            open={reimbOpen}
+            detail={detail}
+            onClose={() => setReimbOpen(false)}
+            onRecorded={async () => {
+              setReimbOpen(false);
+              await onChanged();
+            }}
+          />
+          <EditExpenseDialog
+            open={editExpenseOpen}
+            detail={detail}
+            onClose={() => setEditExpenseOpen(false)}
+            onSaved={async () => {
+              setEditExpenseOpen(false);
+              await onChanged();
+            }}
+          />
+          {editingReimb && (
+            <EditReimbursementDialog
+              open={editingReimb !== null}
+              detail={detail}
+              reimb={editingReimb}
+              onClose={() => setEditingReimb(null)}
+              onSaved={async () => {
+                setEditingReimb(null);
+                await onChanged();
+              }}
+            />
           )}
-      </div>
-
-      {reimbOpen && (
-        <RecordReimbursementDialog
-          detail={detail}
-          onClose={() => setReimbOpen(false)}
-          onRecorded={async () => {
-            setReimbOpen(false);
-            await onChanged();
-          }}
-        />
+        </>
       )}
-
-      {editExpenseOpen && (
-        <EditExpenseDialog
-          detail={detail}
-          onClose={() => setEditExpenseOpen(false)}
-          onSaved={async () => {
-            setEditExpenseOpen(false);
-            await onChanged();
-          }}
-        />
-      )}
-
-      {editingReimb && (
-        <EditReimbursementDialog
-          detail={detail}
-          reimb={editingReimb}
-          onClose={() => setEditingReimb(null)}
-          onSaved={async () => {
-            setEditingReimb(null);
-            await onChanged();
-          }}
-        />
-      )}
-    </DialogShell>
+    </Dialog>
   );
 }
 
 function RecordReimbursementDialog({
+  open,
   detail,
   onClose,
   onRecorded,
 }: {
+  open: boolean;
   detail: OwnerExpenseDetail;
   onClose: () => void;
   onRecorded: () => void | Promise<void>;
@@ -825,8 +898,18 @@ function RecordReimbursementDialog({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Reset to fresh defaults whenever the dialog re-opens.
+  useEffect(() => {
+    if (!open) return;
+    setPaidDate(todayLocalIso());
+    setAmount(detail.outstanding.toFixed(2));
+    setMethod("CASH");
+    setReference("");
+    setNotes("");
+    setErr(null);
+  }, [open, detail.outstanding]);
+
+  const submit = async () => {
     if (busy) return;
     const a = num(amount);
     if (a <= 0) {
@@ -854,30 +937,45 @@ function RecordReimbursementDialog({
   };
 
   return (
-    <DialogShell title="Record reimbursement" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        {err && (
-          <Alert variant="error">{err}</Alert>
-        )}
-        <div className="text-sm text-[var(--color-muted)]">
-          Reimbursing <span className="font-medium text-[var(--color-ink)]">{detail.ownerName}</span>{" "}
-          for <span className="font-medium text-[var(--color-ink)]">{detail.description}</span>.
-          Outstanding:{" "}
-          <span className="font-semibold text-[var(--color-ink)]">{fmt(detail.outstanding)}</span>.
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Date paid">
-            <input
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="md"
+      dismissOnBackdrop={false}
+      ariaLabel="Record reimbursement"
+    >
+      <DialogTitle
+        description={
+          <>
+            Reimbursing{" "}
+            <span className="font-medium text-[var(--color-ink)]">
+              {detail.ownerName}
+            </span>{" "}
+            for{" "}
+            <span className="font-medium text-[var(--color-ink)]">
+              {detail.description}
+            </span>
+            . Outstanding{" "}
+            <Money value={detail.outstanding} emphasis="strong" />.
+          </>
+        }
+      >
+        Record reimbursement
+      </DialogTitle>
+      <DialogBody className="space-y-3">
+        {err && <Alert variant="error">{err}</Alert>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Date paid" required>
+            <Input
               type="date"
-              className="field-input"
               value={paidDate}
               onChange={(e) => setPaidDate(e.target.value)}
-              required
+              max={todayLocalIso()}
             />
           </Field>
-          <Field label="Method">
-            <select
-              className="field-input"
+          <Field label="Method" required>
+            <Select
               value={method}
               onChange={(e) => setMethod(e.target.value as PaymentMethod)}
             >
@@ -886,46 +984,43 @@ function RecordReimbursementDialog({
                   {m.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         </div>
-        <Field label="Amount">
-          <input
-            className="field-input"
+        <Field label="Amount (PLN)" required>
+          <Input
+            autoFocus
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             inputMode="decimal"
-            required
           />
         </Field>
-        <Field label="Reference (optional)">
-          <input
-            className="field-input"
+        <Field label="Reference" optional>
+          <Input
             value={reference}
             onChange={(e) => setReference(e.target.value)}
             placeholder="bank ref, cheque no"
             maxLength={120}
           />
         </Field>
-        <Field label="Notes (optional)">
-          <textarea
-            className="field-input"
+        <Field label="Notes" optional>
+          <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             maxLength={1000}
           />
         </Field>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Record reimbursement"}
-          </Button>
-        </div>
-      </form>
-    </DialogShell>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={busy}>
+          Record reimbursement
+        </Button>
+      </DialogFooter>
+    </DialogForm>
   );
 }
 
@@ -934,10 +1029,12 @@ function RecordReimbursementDialog({
 // ============================================================================
 
 function EditExpenseDialog({
+  open,
   detail,
   onClose,
   onSaved,
 }: {
+  open: boolean;
   detail: OwnerExpenseDetail;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
@@ -955,8 +1052,19 @@ function EditExpenseDialog({
   // reverse reimbursements first if you need to change the principal.
   const totalLocked = detail.amountReimbursed > 0;
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Reset draft whenever the dialog opens for a (potentially new) record.
+  useEffect(() => {
+    if (!open) return;
+    setExpenseDate(detail.expenseDate);
+    setCategory(detail.category);
+    setDescription(detail.description);
+    setTotal(detail.total.toFixed(2));
+    setReference(detail.reference ?? "");
+    setNotes(detail.notes ?? "");
+    setErr(null);
+  }, [open, detail]);
+
+  const submit = async () => {
     if (busy) return;
     if (!description.trim()) {
       setErr("Description is required.");
@@ -988,22 +1096,27 @@ function EditExpenseDialog({
   };
 
   return (
-    <DialogShell title="Edit owner expense" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="md"
+      dismissOnBackdrop={false}
+      ariaLabel="Edit owner expense"
+    >
+      <DialogTitle>Edit owner expense</DialogTitle>
+      <DialogBody className="space-y-3">
         {err && <Alert variant="error">{err}</Alert>}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Expense date">
-            <input
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Expense date" required>
+            <Input
               type="date"
-              className="field-input"
               value={expenseDate}
               onChange={(e) => setExpenseDate(e.target.value)}
-              required
             />
           </Field>
-          <Field label="Category">
-            <select
-              className="field-input"
+          <Field label="Category" required>
+            <Select
               value={category}
               onChange={(e) => setCategory(e.target.value as PayableCategory)}
             >
@@ -1012,55 +1125,57 @@ function EditExpenseDialog({
                   {c.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         </div>
-        <Field label="Description">
-          <input
-            className="field-input"
+        <Field label="Description" required>
+          <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={300}
-            required
           />
         </Field>
-        <Field label={totalLocked ? "Amount (locked — reverse reimbursements to edit)" : "Amount"}>
-          <input
-            className="field-input"
+        <Field
+          label="Amount (PLN)"
+          required
+          hint={
+            totalLocked
+              ? "Locked — reverse all reimbursements first to change the principal."
+              : undefined
+          }
+        >
+          <Input
             value={total}
             onChange={(e) => setTotal(e.target.value)}
             inputMode="decimal"
             disabled={totalLocked}
-            required
           />
         </Field>
-        <Field label="Reference (optional)">
-          <input
-            className="field-input"
+        <Field label="Reference" optional>
+          <Input
             value={reference}
             onChange={(e) => setReference(e.target.value)}
             maxLength={120}
           />
         </Field>
-        <Field label="Notes (optional)">
-          <textarea
-            className="field-input"
+        <Field label="Notes" optional>
+          <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             maxLength={1000}
           />
         </Field>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Save changes"}
-          </Button>
-        </div>
-      </form>
-    </DialogShell>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={busy}>
+          Save changes
+        </Button>
+      </DialogFooter>
+    </DialogForm>
   );
 }
 
@@ -1069,11 +1184,13 @@ function EditExpenseDialog({
 // ============================================================================
 
 function EditReimbursementDialog({
+  open,
   detail,
   reimb,
   onClose,
   onSaved,
 }: {
+  open: boolean;
   detail: OwnerExpenseDetail;
   reimb: OwnerExpenseReimbursementRow;
   onClose: () => void;
@@ -1091,8 +1208,17 @@ function EditReimbursementDialog({
   // current contribution (since we're swapping it out).
   const maxAmount = detail.outstanding + reimb.amount;
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!open) return;
+    setPaidDate(reimb.paidDate);
+    setAmount(reimb.amount.toFixed(2));
+    setMethod(reimb.method);
+    setReference(reimb.reference ?? "");
+    setNotes(reimb.notes ?? "");
+    setErr(null);
+  }, [open, reimb]);
+
+  const submit = async () => {
     if (busy) return;
     const a = num(amount);
     if (a <= 0) {
@@ -1125,29 +1251,43 @@ function EditReimbursementDialog({
   };
 
   return (
-    <DialogShell title="Edit reimbursement" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="md"
+      dismissOnBackdrop={false}
+      ariaLabel="Edit reimbursement"
+    >
+      <DialogTitle
+        description={
+          <>
+            Reimbursing{" "}
+            <span className="font-medium text-[var(--color-ink)]">
+              {detail.ownerName}
+            </span>{" "}
+            for{" "}
+            <span className="font-medium text-[var(--color-ink)]">
+              {detail.description}
+            </span>
+            . Max allowed <Money value={maxAmount} emphasis="strong" />.
+          </>
+        }
+      >
+        Edit reimbursement
+      </DialogTitle>
+      <DialogBody className="space-y-3">
         {err && <Alert variant="error">{err}</Alert>}
-        <div className="text-sm text-[var(--color-muted)]">
-          Reimbursing{" "}
-          <span className="font-medium text-[var(--color-ink)]">{detail.ownerName}</span>{" "}
-          for <span className="font-medium text-[var(--color-ink)]">{detail.description}</span>.
-          Max amount allowed:{" "}
-          <span className="font-semibold text-[var(--color-ink)]">{fmt(maxAmount)}</span>.
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Date paid">
-            <input
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Date paid" required>
+            <Input
               type="date"
-              className="field-input"
               value={paidDate}
               onChange={(e) => setPaidDate(e.target.value)}
-              required
             />
           </Field>
-          <Field label="Method">
-            <select
-              className="field-input"
+          <Field label="Method" required>
+            <Select
               value={method}
               onChange={(e) => setMethod(e.target.value as PaymentMethod)}
             >
@@ -1156,45 +1296,42 @@ function EditReimbursementDialog({
                   {m.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         </div>
-        <Field label="Amount">
-          <input
-            className="field-input"
+        <Field label="Amount (PLN)" required>
+          <Input
+            autoFocus
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             inputMode="decimal"
-            required
           />
         </Field>
-        <Field label="Reference (optional)">
-          <input
-            className="field-input"
+        <Field label="Reference" optional>
+          <Input
             value={reference}
             onChange={(e) => setReference(e.target.value)}
             maxLength={120}
           />
         </Field>
-        <Field label="Notes (optional)">
-          <textarea
-            className="field-input"
+        <Field label="Notes" optional>
+          <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             maxLength={1000}
           />
         </Field>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Save changes"}
-          </Button>
-        </div>
-      </form>
-    </DialogShell>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={busy}>
+          Save changes
+        </Button>
+      </DialogFooter>
+    </DialogForm>
   );
 }
 
@@ -1217,6 +1354,8 @@ function ReceiptsSection({
   setErr: (v: string | null) => void;
   onChanged: () => void | Promise<void>;
 }) {
+  const confirm = useConfirm();
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (busy) return;
     const list = e.target.files ? Array.from(e.target.files) : [];
@@ -1241,7 +1380,13 @@ function ReceiptsSection({
 
   const handleDelete = async (fileId: string) => {
     if (busy) return;
-    if (!window.confirm("Remove this receipt? The file will be deleted.")) return;
+    const ok = await confirm({
+      title: "Remove this receipt?",
+      description: "The file will be deleted from storage.",
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!ok) return;
     setBusy(true);
     setErr(null);
     try {
@@ -1256,17 +1401,22 @@ function ReceiptsSection({
   };
 
   return (
-    <div>
+    <section aria-labelledby="receipts-heading">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-[var(--color-ink)]">Receipts</h3>
+        <h3
+          id="receipts-heading"
+          className="text-sm font-semibold text-[var(--color-ink)]"
+        >
+          Receipts
+        </h3>
         {canEdit && (
-          <label className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-black/10 hover:bg-black/[0.04] text-[var(--color-ink)]">
+          <label className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-black/10 hover:bg-black/[0.04] text-[var(--color-ink)] focus-within:ring-2 focus-within:ring-[var(--color-saffron)] focus-within:outline-none">
             + Add receipt
             <input
               type="file"
               accept="image/*,application/pdf"
               multiple
-              className="hidden"
+              className="sr-only"
               onChange={(e) => void handleUpload(e)}
               disabled={busy}
             />
@@ -1288,16 +1438,17 @@ function ReceiptsSection({
                 href={ownerExpenseReceiptUrl(r.id)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 min-w-0 text-sm text-[var(--color-ink)] hover:text-[var(--color-saffron)] truncate"
+                className="flex-1 min-w-0 text-sm text-[var(--color-ink)] hover:text-[var(--color-saffron)] truncate inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] rounded"
                 title={r.filename}
               >
-                📎 {r.filename}
+                <IconPaperclip className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{r.filename}</span>
               </a>
               {canEdit && (
                 <button
                   type="button"
                   onClick={() => void handleDelete(r.id)}
-                  className="text-xs text-[var(--color-muted)] hover:text-[var(--color-danger)]"
+                  className="text-xs text-[var(--color-muted)] hover:text-[var(--color-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] rounded"
                   disabled={busy}
                 >
                   Remove
@@ -1307,7 +1458,7 @@ function ReceiptsSection({
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -1315,84 +1466,11 @@ function ReceiptsSection({
 // Tiny helpers
 // ============================================================================
 
-function StatBox({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-lg border border-black/[0.06] bg-black/[0.02] p-3">
-      <div className="text-xs text-[var(--color-muted)] mb-1">{label}</div>
-      <div className="text-sm font-semibold text-[var(--color-ink)]">{children}</div>
-    </div>
-  );
-}
-
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 border-b border-black/[0.04] py-1.5">
       <span className="text-[var(--color-muted)]">{label}</span>
       <span className="text-[var(--color-ink)] text-right">{children}</span>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="block text-xs font-medium text-[var(--color-muted)] mb-1">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function DialogShell({
-  title,
-  onClose,
-  children,
-  wide,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  wide?: boolean;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 px-2 py-4 md:p-6">
-      <div
-        className={`relative w-full ${wide ? "max-w-3xl" : "max-w-md"} max-h-full overflow-y-auto rounded-2xl bg-[var(--color-cream)] shadow-2xl`}
-      >
-        <div className="sticky top-0 flex items-center justify-between gap-2 px-5 py-4 bg-[var(--color-cream)] border-b border-black/[0.06]">
-          <h2 className="text-lg font-semibold text-[var(--color-ink)] truncate">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="p-1 -m-1 rounded-md hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--color-ink)]"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="px-5 py-4">{children}</div>
-      </div>
     </div>
   );
 }
