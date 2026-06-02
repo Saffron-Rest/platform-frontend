@@ -12,7 +12,8 @@ import { QuickActionGrid } from "../components/hub/QuickActionGrid";
 import { HubSection } from "../components/hub/HubSection";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
-import { Badge, entryStatusBadge } from "../components/ui/Badge";
+import { Badge } from "../components/ui/Badge";
+import { entryStatus } from "../lib/statusBadges";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Skeleton, SkeletonText } from "../components/ui/Skeleton";
 import { Alert } from "../components/ui/Alert";
@@ -260,7 +261,7 @@ export function Dashboard() {
               >
                 <span className="font-semibold">{canOperate(user?.role) ? e.cashier : "Open report"}</span>
                 <span className="flex items-center gap-2 shrink-0">
-                  <Badge variant={entryStatusBadge(e.status)}>{e.status}</Badge>
+                  <Badge tone={entryStatus(e.status).tone}>{entryStatus(e.status).label}</Badge>
                   <span
                     className={`text-sm font-bold tabular-nums ${
                       e.difference < -0.01 ? "text-[var(--color-danger)]" : ""

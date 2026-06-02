@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams, useBlocker } from "react-router-dom";
 import { api } from "../api/client";
 import { syncExpenses, uploadPendingInvoices, loadExpenses } from "../api/expenses";
 import { uploadEntryFile } from "../api/entryFiles";
@@ -22,6 +22,7 @@ import {
   type WorkSchedule,
 } from "../types";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm, usePrompt } from "../context/ConfirmContext";
 import { canOperate, isAdmin } from "../lib/roles";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Alert } from "../components/ui/Alert";
@@ -53,6 +54,8 @@ const todayIso = todayLocalIso;
 export function EntryPage() {
   const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
+  const confirmDialog = useConfirm();
+  const promptDialog = usePrompt();
   const canManageReports = canOperate(user?.role);
   // Admins always pass; managers/cashiers need REPORTS_EDIT_OTHERS,
   // matching the backend's AuthHelper.requireAdminOr() guard.
@@ -90,6 +93,11 @@ export function EntryPage() {
   /** True while the user has unsaved edits; pauses focus/visibility auto-refresh
    *  so opening the file picker or switching tabs never wipes work in progress. */
   const dirtyRef = useRef(false);
+  /** Synchronous guard against double-submit on slow connections. */
+  const savingRef = useRef(false);
+  /** Tracks whether the user has attempted to submit at least once.
+   *  Validation errors are hidden until the first attempt to reduce noise. */
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const markPristine = useCallback(() => {
     dirtyRef.current = false;
   }, []);
@@ -114,8 +122,8 @@ export function EntryPage() {
   const locked = entryStatus === "LOCKED";
   /**
    * Detect "this person is closing out someone else's day" from a few
-   * angles so a cashier who wasn't formally scheduled — but who clearly
-   * needs to do the closing — still lands on the simple closing form.
+   * angles so a cashier who wasn't formally scheduled -- but who clearly
+   * needs to do the closing -- still lands on the simple closing form.
    *
    * <p>Signals (any one is enough):
    * <ul>
@@ -158,6 +166,15 @@ export function EntryPage() {
     () => cashiers.find((c) => c.id === selectedCashierId),
     [cashiers, selectedCashierId]
   );
+
+  // Block navigation when there are unsaved changes so cashiers don't
+  // accidentally lose work by tapping the wrong nav item.
+  useBlocker(({ currentLocation, nextLocation }) => {
+    return (
+      dirtyRef.current &&
+      currentLocation.pathname !== nextLocation.pathname
+    );
+  });
 
   const shiftLabel = scheduledOff
     ? "Not scheduled"
@@ -296,7 +313,7 @@ export function EntryPage() {
    * <p>Used when something we touched indirectly (expense edit, manual
    * delivery, salary payment, treasury %, an edit by another device) didn't
    * propagate into the totals here. If the form has unsaved typing we
-   * warn the user first — sync overwrites local form state with whatever
+   * warn the user first -- sync overwrites local form state with whatever
    * the server has on record.</p>
    */
   const handleSync = useCallback(async () => {
@@ -305,9 +322,12 @@ export function EntryPage() {
       return;
     }
     if (dirtyRef.current) {
-      const proceed = window.confirm(
-        "You have unsaved changes. Sync will replace what's on screen with the latest values from the server. Continue?",
-      );
+      const proceed = await confirmDialog({
+        title: "Refresh totals?",
+        description: "You have unsaved changes. Refreshing will replace what's on screen with the latest saved values from the server.",
+        confirmLabel: "Refresh",
+        tone: "danger",
+      });
       if (!proceed) return;
     }
     setSyncing(true);
@@ -357,7 +377,7 @@ export function EntryPage() {
     api<{ platforms: Platforms }>("/settings").then((s) => setPlatforms(s.platforms));
     // Restaurant weekly hours feed the WorkingHoursCard so we can estimate
     // the close time for "until close" shifts. Endpoint is the same one
-    // AttendanceCalendar uses. Failures are non-fatal — the card degrades
+    // AttendanceCalendar uses. Failures are non-fatal -- the card degrades
     // to "Until restaurant close (close time not configured)".
     api<{ weeklyHours?: WeeklyHours }>("/settings/payroll")
       .then((data) => {
@@ -422,8 +442,8 @@ export function EntryPage() {
   /**
    * Poll {@code /shifts/today} every 30 seconds while the editor is visible
    * so calendar changes made on another tab / device propagate to the
-   * working-hours card without a manual refresh. Only the schedule call —
-   * never the whole entry — so this is cheap and won't blow away unsaved
+   * working-hours card without a manual refresh. Only the schedule call --
+   * never the whole entry -- so this is cheap and won't blow away unsaved
    * typing in the form. Suspends while the tab is hidden and fires once
    * immediately when the tab becomes visible again.
    */
@@ -475,6 +495,8 @@ export function EntryPage() {
   };
 
   const save = async (): Promise<DailyEntry | null> => {
+    if (savingRef.current) return null;
+    savingRef.current = true;
     setSaving(true);
     setMessage("");
     setMessageError(false);
@@ -544,6 +566,7 @@ export function EntryPage() {
       return null;
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
 
@@ -568,10 +591,13 @@ export function EntryPage() {
     if (!entry?.id) return;
     const who = selectedCashier?.name ?? "this cashier";
     const fromLabel = reportDateRelativeLabel(entryDate);
-    const promptMsg =
-      `Move ${who}'s report from ${entryDate} (${fromLabel}) to another date.\n` +
-      `Enter the new date in YYYY-MM-DD format:`;
-    const newDate = prompt(promptMsg, entryDate);
+    const newDate = await promptDialog({
+      title: `Move ${who}'s report`,
+      description: `Currently on ${entryDate} (${fromLabel}). Pick the new date.`,
+      inputType: "date",
+      defaultValue: entryDate,
+      confirmLabel: "Move",
+    });
     if (!newDate) return;
     const cleaned = newDate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
@@ -582,10 +608,13 @@ export function EntryPage() {
     if (cleaned === entryDate) {
       return;
     }
-    const reason = prompt(
-      "Optional reason for the move (shown in the report's history):",
-      "",
-    );
+    const reason = await promptDialog({
+      title: "Reason for move (optional)",
+      description: "This note will appear in the report's history.",
+      placeholder: "e.g. Wrong date selected",
+      minLength: 0,
+      confirmLabel: "Continue",
+    });
     setSaving(true);
     setMessage("");
     setMessageError(false);
@@ -613,13 +642,12 @@ export function EntryPage() {
     if (!entry?.id) return;
     const who = selectedCashier?.name ?? "this cashier";
     const when = reportDateRelativeLabel(entryDate);
-    if (
-      !confirm(
-        `Unlock the report for ${who} (${when})?\n\nThey can edit and resubmit in the app. The report stays a draft until submitted again.`
-      )
-    ) {
-      return;
-    }
+    const ok = await confirmDialog({
+      title: `Unlock report for ${who}?`,
+      description: `${when} -- they can edit and resubmit in the app. The report stays a draft until submitted again.`,
+      confirmLabel: "Unlock",
+    });
+    if (!ok) return;
     setSaving(true);
     setMessage("");
     setMessageError(false);
@@ -628,7 +656,7 @@ export function EntryPage() {
       await applyEntry({ ...updated, status: "DRAFT" });
       await loadEntry({ silent: true });
       setMessage(
-        `Unlocked for ${who} — report is draft again; edit below or have them refresh the cashier app · ${when}`
+        `Unlocked for ${who} -- report is draft again; edit below or have them refresh the cashier app · ${when}`
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unlock failed");
@@ -639,8 +667,9 @@ export function EntryPage() {
   };
 
   const submit = async () => {
+    setHasAttemptedSubmit(true);
     if (!canSubmit) {
-      setMessage("Fix the items listed under “Complete before submitting” first.");
+      setMessage("Fix the items listed under 'Complete before submitting' first.");
       setMessageError(true);
       return;
     }
@@ -648,14 +677,16 @@ export function EntryPage() {
     const when = reportDateRelativeLabel(entryDate);
     const diffNote =
       Math.abs(summary.difference) > 0.01
-        ? `\n\nCash difference: ${fmt(summary.difference)}`
-        : "\n\nCash is balanced.";
-    const submitPrompt = locked && canManageReports
-      ? `Save changes and keep this report submitted for ${who} (${when})?${diffNote}`
-      : `Submit and lock the report for ${who} (${when})? After submit, the cashier cannot edit it.${diffNote}`;
-    if (!confirm(submitPrompt)) {
-      return;
-    }
+        ? `Cash difference: ${fmt(summary.difference)}`
+        : "Cash is balanced.";
+    const ok = await confirmDialog({
+      title: locked && canManageReports
+        ? `Save changes for ${who}?`
+        : `Submit report for ${who}?`,
+      description: `${when} · ${diffNote}${!locked ? " · After submit the cashier cannot edit." : ""}`,
+      confirmLabel: locked && canManageReports ? "Save" : "Submit & lock",
+    });
+    if (!ok) return;
     setSaving(true);
     setMessage("");
     setMessageError(false);
@@ -665,7 +696,7 @@ export function EntryPage() {
       const updated = await api<DailyEntry>(`/entries/${current.id}/submit`, { method: "POST" });
       await applyEntry(updated);
       setMessage(
-        `Submitted and locked — ${selectedCashier?.name ?? "Cashier"} · ${reportDateRelativeLabel(entryDate)}`
+        `Submitted and locked -- ${selectedCashier?.name ?? "Cashier"} · ${reportDateRelativeLabel(entryDate)}`
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Submit failed");
@@ -676,7 +707,7 @@ export function EntryPage() {
   };
 
   // Note: we no longer block the whole page with a centered spinner for
-  // cashiers — that hid the page header and context banner. Instead the
+  // cashiers -- that hid the page header and context banner. Instead the
   // banner/skeleton inside the editor area renders below while loading.
 
 
@@ -779,66 +810,77 @@ export function EntryPage() {
         />
       )}
 
-      {canManageReports && isNew && selectedCashierId && !loading && (
-        <Alert variant="info" className="mb-4">
-          <strong>No report yet</strong> for {selectedCashier?.name} on{" "}
-          {reportDateRelativeLabel(entryDate).toLowerCase()}. Fill in the form below, save a draft,
-          then submit when the drawer balances.
-        </Alert>
-      )}
-
-      {locked && !canManageReports && (
-        <Alert variant="warning" className="mb-4">
-          This report is locked. Contact your manager to unlock it, then refresh this page (or switch
-          away and back) to edit and submit again.
-        </Alert>
-      )}
-
-      {scheduleClosingOnly && canManageReports && !closingOnly && (
-        <Alert variant="info" className="mb-4">
-          <strong>Closing shift on schedule</strong> — you still have the full report editor (sales,
-          expenses, payouts). Cashiers only see opening + cash count for this shift type.
-        </Alert>
-      )}
-
-      {locked && canManageReports && (
-        <Alert variant="info" className="mb-4">
-          <strong>Submitted and locked.</strong> Edit any section below and save, or submit again to
-          re-lock. Use <em>Unlock for cashier</em> only if {selectedCashier?.name ?? "they"} need the
-          cashier app.
-          {entry?.submittedAt && (
-            <span className="block mt-1 text-sm font-normal opacity-90">
-              Submitted {new Date(entry.submittedAt).toLocaleString()}
-            </span>
-          )}
-        </Alert>
-      )}
-
-      {scheduledOff && !locked && (
-        <Alert variant="warning" className="mb-4">
-          {canManageReports
-            ? "Not on the schedule for this date — you can still create a report."
-            : handoverDetected
-              ? "You are not on today's schedule, but a colleague started the drawer. Record opening cash and your final count below to close out the day."
-              : "You are not scheduled today, but you can still file a report if you are working."}
-        </Alert>
-      )}
-
-      {!locked && !canManageReports && handoverDetected && isNew && (
-        <Alert variant="info" className="mb-4">
-          <strong>
-            Closing handover
-            {openingHint?.handoverCashierName
-              ? ` from ${openingHint.handoverCashierName}`
-              : ""}
-            .
-          </strong>{" "}
-          Confirm the opening cash{openingHint?.handoverEndTime
-            ? ` (left at ${openingHint.handoverEndTime})`
-            : ""}{" "}
-          and enter your final count.
-        </Alert>
-      )}
+      {/* Show at most one contextual status alert (highest priority first)
+          to avoid overwhelming cashiers with stacked banners. */}
+      {(() => {
+        if (locked && !canManageReports) {
+          return (
+            <Alert variant="warning" className="mb-4">
+              This report has been submitted. Contact your manager to unlock it,
+              then refresh this page to edit and resubmit.
+            </Alert>
+          );
+        }
+        if (locked && canManageReports) {
+          return (
+            <Alert variant="info" className="mb-4">
+              <strong>Submitted and locked.</strong> Edit any section below and save, or
+              submit again to re-lock. Use <em>Unlock for cashier</em> only if{" "}
+              {selectedCashier?.name ?? "they"} need the cashier app.
+              {entry?.submittedAt && (
+                <span className="block mt-1 text-sm font-normal opacity-90">
+                  Submitted {new Date(entry.submittedAt).toLocaleString()}
+                </span>
+              )}
+            </Alert>
+          );
+        }
+        if (!locked && !canManageReports && handoverDetected && isNew) {
+          return (
+            <Alert variant="info" className="mb-4">
+              <strong>
+                Closing handover
+                {openingHint?.handoverCashierName
+                  ? ` from ${openingHint.handoverCashierName}`
+                  : ""}
+                .
+              </strong>{" "}
+              Confirm the opening cash
+              {openingHint?.handoverEndTime
+                ? ` (left at ${openingHint.handoverEndTime})`
+                : ""}{" "}
+              and enter your final count.
+            </Alert>
+          );
+        }
+        if (scheduledOff && !locked) {
+          return (
+            <Alert variant="warning" className="mb-4">
+              {canManageReports
+                ? "Not on the schedule for this date -- you can still create a report."
+                : "You are not scheduled today, but you can still file a report if you are working."}
+            </Alert>
+          );
+        }
+        if (scheduleClosingOnly && canManageReports && !closingOnly) {
+          return (
+            <Alert variant="info" className="mb-4">
+              <strong>Closing shift on schedule</strong> -- you still have the full report
+              editor (sales, expenses, payouts). Cashiers only see opening + cash count.
+            </Alert>
+          );
+        }
+        if (canManageReports && isNew && selectedCashierId && !loading) {
+          return (
+            <Alert variant="info" className="mb-4">
+              <strong>No report yet</strong> for {selectedCashier?.name} on{" "}
+              {reportDateRelativeLabel(entryDate).toLowerCase()}. Fill in the form below,
+              save a draft, then submit when the drawer balances.
+            </Alert>
+          );
+        }
+        return null;
+      })()}
 
       {message && (
         <Alert variant={messageError ? "error" : "success"} className="mb-4 text-center">
@@ -852,7 +894,7 @@ export function EntryPage() {
           <p className="text-sm mt-1">Pick who this report is for, then fill in or create it.</p>
         </Card>
       ) : loading ? (
-        /* Inline skeleton — preserves the page header & context banner
+        /* Inline skeleton -- preserves the page header & context banner
            above, so the cashier still sees the date / shift / status
            while the form loads. */
         <div className="space-y-4" role="status" aria-live="polite">
@@ -888,7 +930,7 @@ export function EntryPage() {
               already shows explicit "Step 1 / Step 2" badges). */}
           {!readOnly && !closingOnly && <ReportStepper steps={steps} />}
 
-          {!readOnly && (
+          {!readOnly && hasAttemptedSubmit && (
             <ReportValidationPanel issues={validationIssues} ready={canSubmit} />
           )}
 

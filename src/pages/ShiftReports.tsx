@@ -11,7 +11,9 @@ import type { DailyEntry, User } from "../types";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Badge, entryStatusBadge } from "../components/ui/Badge";
+import { Badge } from "../components/ui/Badge";
+import { usePrompt } from "../context/ConfirmContext";
+import { entryStatus } from "../lib/statusBadges";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SkeletonRows } from "../components/ui/Skeleton";
 import { Alert } from "../components/ui/Alert";
@@ -112,8 +114,8 @@ function ReportListCard({
               {report.cashier?.name ?? "Cashier"}
             </p>
             <div className="mt-2">
-              <Badge variant={entryStatusBadge(report.status)}>
-                {submitted ? "Submitted" : "Draft"}
+              <Badge tone={entryStatus(report.status).tone}>
+                {entryStatus(report.status).label}
               </Badge>
             </div>
             <p className="text-xs text-[var(--color-muted)] mt-2">
@@ -190,6 +192,7 @@ export function ShiftReports() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canRemove = canOperate(user?.role);
+  const promptDialog = usePrompt();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab: Tab = searchParams.get("view") === "summary" ? "summary" : "list";
 
@@ -320,19 +323,16 @@ export function ShiftReports() {
         setError("Submitted reports must be unlocked before removal.");
         return;
       }
-      // Backend requires a reason ≥ 3 chars; a native prompt keeps this
-      // pleasant for the rare admin-only flow without dragging in a modal.
       const who = report.cashier?.name ?? "this cashier";
-      const reason = window.prompt(
-        `Remove the draft report for ${who} on ${report.date}?\n\nThis cannot be undone. Enter a short reason for the audit log (min 3 chars):`,
-        ""
-      );
+      const reason = await promptDialog({
+        title: `Remove report for ${who}?`,
+        description: `Date: ${report.date} · This cannot be undone.`,
+        placeholder: "Reason for removal…",
+        confirmLabel: "Delete",
+        minLength: 3,
+      });
       if (reason == null) return;
       const trimmed = reason.trim();
-      if (trimmed.length < 3) {
-        setError("Delete reason must be at least 3 characters.");
-        return;
-      }
       setError("");
       setMessage("");
       try {

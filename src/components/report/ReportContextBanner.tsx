@@ -1,7 +1,8 @@
 import type { User } from "../../types";
 import { formatReportDateLong, reportDateRelativeLabel } from "../../lib/reportDates";
 import { shiftIsoDate } from "../../lib/shiftDate";
-import { Badge, entryStatusBadge } from "../ui/Badge";
+import { Badge } from "../ui/Badge";
+import { entryStatus } from "../../lib/statusBadges";
 
 type Props = {
   date: string;
@@ -57,7 +58,7 @@ export function ReportContextBanner({
               <span className="text-sm font-medium text-[var(--color-ink)]">{cashierName}</span>
             )}
             {showStatus && (
-              <Badge variant={entryStatusBadge(status!)}>{statusUpper}</Badge>
+              <Badge tone={entryStatus(statusUpper!).tone}>{entryStatus(statusUpper!).label}</Badge>
             )}
             {!showStatus && statusUpper === "NEW" && (
               <Badge variant="draft">New report</Badge>

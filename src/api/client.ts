@@ -76,6 +76,10 @@ export async function api<T>(
 
   if (!res.ok) {
     const message = parseApiError(json ?? {}, res.statusText || "Request failed");
+    if (res.status === 401) {
+      localStorage.removeItem("token");
+      window.dispatchEvent(new Event("saffron:auth-expired"));
+    }
     throw new ApiError(message, res.status, json);
   }
 
@@ -88,6 +92,7 @@ export async function api<T>(
 
 export function downloadUrl(path: string) {
   const token = getToken();
+  if (!token) return "";
   return `${API}${path}${path.includes("?") ? "&" : "?"}token=${token}`;
 }
 

@@ -8,7 +8,8 @@ import type { User } from "../types";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Badge, entryStatusBadge } from "../components/ui/Badge";
+import { Badge } from "../components/ui/Badge";
+import { entryStatus } from "../lib/statusBadges";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
 import { Alert } from "../components/ui/Alert";
@@ -380,7 +381,7 @@ export function AdminHistory({ embedded }: Props = {}) {
                               <div>
                                 <p className="font-medium">{r.cashier?.name ?? "Cashier"}</p>
                                 <div className="flex gap-1.5 mt-1">
-                                  <Badge variant={entryStatusBadge(r.status)}>{r.status}</Badge>
+                                  <Badge tone={entryStatus(r.status).tone}>{entryStatus(r.status).label}</Badge>
                                 </div>
                               </div>
                               <p

@@ -6,7 +6,8 @@ import type { DailyEntry } from "../types";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { Badge, entryStatusBadge } from "../components/ui/Badge";
+import { Badge } from "../components/ui/Badge";
+import { entryStatus } from "../lib/statusBadges";
 import { EmptyState } from "../components/ui/EmptyState";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -61,7 +62,7 @@ export function CashierHistory() {
                       day: "numeric",
                     })}
                   </p>
-                  <Badge variant={entryStatusBadge(e.status)}>{e.status}</Badge>
+                  <Badge tone={entryStatus(e.status).tone}>{entryStatus(e.status).label}</Badge>
                 </div>
                 <p className="mt-2 text-sm">
                   Difference <strong className="tabular-nums">{fmt(e.difference)}</strong>

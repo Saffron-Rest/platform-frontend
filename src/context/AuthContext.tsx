@@ -46,6 +46,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const handleExpired = () => {
+      setUser(null);
+    };
+    window.addEventListener("saffron:auth-expired", handleExpired);
+    return () => window.removeEventListener("saffron:auth-expired", handleExpired);
+  }, []);
+
   const login = async (username: string, password: string, totpCode?: string) => {
     // We bypass the generic api() helper here because we need access to
     // both the body and status code so we can distinguish the 2FA-required

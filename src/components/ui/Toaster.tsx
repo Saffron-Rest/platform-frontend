@@ -34,7 +34,7 @@ export function Toaster() {
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] flex flex-col items-stretch md:items-end gap-2 p-4 md:p-6"
+      className="pointer-events-none fixed inset-x-0 z-[80] flex flex-col items-stretch md:items-end gap-2 p-4 md:p-6 bottom-[calc(var(--nav-height)+env(safe-area-inset-bottom,0px))] md:bottom-0"
     >
       <div className="flex flex-col gap-2 w-full md:w-auto md:max-w-sm md:ml-auto">
         {toasts.map((t) => (

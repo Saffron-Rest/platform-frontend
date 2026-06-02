@@ -23,7 +23,7 @@ export type StatusBadge = {
 export function entryStatus(status: string): StatusBadge {
   switch (status) {
     case "LOCKED":
-      return { tone: "success", label: "Locked" };
+      return { tone: "success", label: "Submitted" };
     case "DRAFT":
       return { tone: "warning", label: "Draft" };
     default:
