@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from "../lib/expenseCategories";
 import { PAYMENT_SOURCES } from "../lib/paymentSource";
 import { ExpenseInvoiceUploader } from "./expense/ExpenseInvoiceUploader";
@@ -5,6 +6,39 @@ import type { ExpenseLine, PaymentSource } from "../types";
 import { expenseTotalBySource, fmt, totalExpenseLines } from "../lib/calc";
 import { AmountField } from "./ui/AmountField";
 import { Button } from "./ui/Button";
+
+const SUGGESTIONS_KEY = "saffron:expense_suggestions";
+const MAX_SUGGESTIONS = 60;
+
+type Suggestion = { description: string; category: ExpenseCategory };
+
+function loadSuggestions(): Suggestion[] {
+  try {
+    return JSON.parse(localStorage.getItem(SUGGESTIONS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveSuggestion(description: string, category: ExpenseCategory) {
+  const trimmed = description.trim();
+  if (!trimmed || trimmed.length < 3) return;
+  const existing = loadSuggestions().filter((s) => s.description !== trimmed);
+  const next: Suggestion[] = [{ description: trimmed, category }, ...existing].slice(0, MAX_SUGGESTIONS);
+  try {
+    localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage full — skip
+  }
+}
+
+function matchSuggestions(query: string): Suggestion[] {
+  if (query.trim().length < 2) return [];
+  const q = query.toLowerCase();
+  return loadSuggestions()
+    .filter((s) => s.description.toLowerCase().includes(q))
+    .slice(0, 5);
+}
 
 type Props = {
   expenses: ExpenseLine[];

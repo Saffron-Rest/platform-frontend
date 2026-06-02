@@ -160,6 +160,11 @@ function ChecklistCard({
   );
   const pct = template.items.length === 0 ? 0 : Math.round((completed / template.items.length) * 100);
 
+  // Auto-collapse when all items are ticked.
+  useEffect(() => {
+    if (pct === 100 && template.items.length > 0) setOpen(false);
+  }, [pct, template.items.length]);
+
   const toggle = (itemId: string, patch: Partial<ChecklistResponse>) => {
     setResponses((prev) => ({
       ...prev,
@@ -254,14 +259,28 @@ function ChecklistCard({
                   {(resp.checked || resp.notes || resp.photoPath) && (
                     <div className="mt-2 pl-7 space-y-1.5">
                       {it.requiresTemperature && (
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="Temperature / reading"
-                          value={resp.notes ?? ""}
-                          onChange={(e) => toggle(it.id, { notes: e.target.value })}
-                          className="field-input py-1 text-sm"
-                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            step="0.1"
+                            min="-50"
+                            max="150"
+                            placeholder="°C"
+                            value={resp.notes ?? ""}
+                            onChange={(e) => toggle(it.id, { notes: e.target.value })}
+                            className="field-input py-1 text-sm w-28"
+                          />
+                          {resp.notes !== undefined && resp.notes !== "" && (() => {
+                            const v = parseFloat(resp.notes ?? "");
+                            if (isNaN(v)) return null;
+                            if (v < 0 || v > 8)
+                              return <span className="text-xs font-medium text-red-600">⚠ Out of range</span>;
+                            if (v > 5)
+                              return <span className="text-xs font-medium text-amber-600">Borderline</span>;
+                            return <span className="text-xs font-medium text-emerald-600">✓ OK</span>;
+                          })()}
+                        </div>
                       )}
                       {!it.requiresTemperature && (
                         <input
