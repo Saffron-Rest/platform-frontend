@@ -54,7 +54,7 @@ const emptyNew = {
 type Filter = "all" | "active" | "inactive";
 type TeamSection = "cashiers" | "managers";
 
-export function AdminTeam() {
+export function AdminTeam({ asTab }: { asTab?: boolean } = {}) {
   const [users, setUsers] = useState<User[]>([]);
   const [section, setSection] = useState<TeamSection>("cashiers");
   const [filter, setFilter] = useState<Filter>("active");
@@ -457,32 +457,60 @@ export function AdminTeam() {
 
   return (
     <div data-tour="tour-admin-team">
-      <PageHeader
-        kicker="People"
-        title="Team"
-        subtitle="Create managers and cashiers, set pay rates, and toggle access."
-        action={
+      {!asTab && (
+        <PageHeader
+          kicker="People"
+          title="Team"
+          subtitle="Create managers and cashiers, set pay rates, and toggle access."
+          action={
+            <Button onClick={() => setShowCreate((v) => !v)}>
+              {showCreate ? "Cancel" : section === "cashiers" ? "+ Add cashier" : "+ Add manager"}
+            </Button>
+          }
+          tabs={[
+            {
+              id: "cashiers",
+              label: "Cashiers",
+              active: section === "cashiers",
+              onClick: () => { setSection("cashiers"); setShowCreate(false); },
+              badge: sectionCounts.cashiers,
+            },
+            {
+              id: "managers",
+              label: "Managers",
+              active: section === "managers",
+              onClick: () => { setSection("managers"); setShowCreate(false); },
+              badge: sectionCounts.managers,
+            },
+          ]}
+        />
+      )}
+
+      {asTab && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex gap-1 p-1 rounded-full bg-white border border-black/[0.06]">
+            {(["cashiers", "managers"] as TeamSection[]).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => { setSection(s); setShowCreate(false); }}
+                className={`px-3 py-1 rounded-full text-xs font-medium capitalize transition ${
+                  section === s
+                    ? "bg-[var(--color-ink)] text-white"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+                }`}
+              >
+                {s === "cashiers"
+                  ? `Cashiers${sectionCounts.cashiers > 0 ? ` · ${sectionCounts.cashiers}` : ""}`
+                  : `Managers${sectionCounts.managers > 0 ? ` · ${sectionCounts.managers}` : ""}`}
+              </button>
+            ))}
+          </div>
           <Button onClick={() => setShowCreate((v) => !v)}>
             {showCreate ? "Cancel" : section === "cashiers" ? "+ Add cashier" : "+ Add manager"}
           </Button>
-        }
-        tabs={[
-          {
-            id: "cashiers",
-            label: "Cashiers",
-            active: section === "cashiers",
-            onClick: () => { setSection("cashiers"); setShowCreate(false); },
-            badge: sectionCounts.cashiers,
-          },
-          {
-            id: "managers",
-            label: "Managers",
-            active: section === "managers",
-            onClick: () => { setSection("managers"); setShowCreate(false); },
-            badge: sectionCounts.managers,
-          },
-        ]}
-      />
+        </div>
+      )}
 
       <div className="page-toolbar">
         <div className="flex items-center gap-1 p-1 rounded-full bg-white border border-black/[0.06]">
@@ -705,7 +733,10 @@ export function AdminTeam() {
           Attendance
         </Link>
         . View payroll in{" "}
-        <Link to="/admin/salaries" className="text-[var(--color-saffron)] font-medium">
+        <Link
+          to={asTab ? "/admin/people?tab=payroll" : "/admin/salaries"}
+          className="text-[var(--color-saffron)] font-medium"
+        >
           Salaries
         </Link>
         .

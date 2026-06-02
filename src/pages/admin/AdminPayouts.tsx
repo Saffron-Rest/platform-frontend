@@ -43,7 +43,7 @@ function todayIso() {
 
 type MatchMode = "paidDate" | "payroll";
 
-export function AdminPayouts() {
+export function AdminPayouts({ asTab }: { asTab?: boolean } = {}) {
   const [tab, setTab] = useState<Tab>("payouts");
   const [from, setFrom] = useState(monthStartIso());
   const [to, setTo] = useState(todayIso());
@@ -134,15 +134,17 @@ export function AdminPayouts() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Payroll"
-        subtitle="Pay rate changes and salary payouts — all in one place"
-        action={
-          <Link to="/admin/salaries" className="text-sm font-medium text-[var(--color-saffron)]">
-            View calculation →
-          </Link>
-        }
-      />
+      {!asTab && (
+        <PageHeader
+          title="Payroll"
+          subtitle="Pay rate changes and salary payouts — all in one place"
+          action={
+            <Link to="/admin/salaries" className="text-sm font-medium text-[var(--color-saffron)]">
+              View calculation →
+            </Link>
+          }
+        />
+      )}
 
       <div className="flex gap-2 p-1 rounded-xl bg-[var(--color-cream)] w-fit">
         {(

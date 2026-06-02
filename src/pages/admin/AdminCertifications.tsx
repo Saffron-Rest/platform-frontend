@@ -68,7 +68,7 @@ const blankDraft = (defaultUserId = ""): Draft => ({
   filePath: "",
 });
 
-export function AdminCertifications() {
+export function AdminCertifications({ asTab }: { asTab?: boolean } = {}) {
   const [certs, setCerts] = useState<EmployeeCert[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [types, setTypes] = useState<string[]>([]);
@@ -132,11 +132,13 @@ export function AdminCertifications() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Certifications & training"
-        subtitle="Books, licences, BHP, sanepid — alerts 30, 14, 1 days before expiry."
-        action={<Button onClick={() => setEditor(blankDraft(userFilter))}>+ Add certificate</Button>}
-      />
+      {!asTab && (
+        <PageHeader
+          title="Certifications & training"
+          subtitle="Books, licences, BHP, sanepid — alerts 30, 14, 1 days before expiry."
+          action={<Button onClick={() => setEditor(blankDraft(userFilter))}>+ Add certificate</Button>}
+        />
+      )}
 
       {error && (
         <Alert variant="error">

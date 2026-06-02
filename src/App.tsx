@@ -31,10 +31,8 @@ const MenuAnalytics = lazy(() => import("./pages/MenuAnalytics").then((m) => ({ 
 const MenuEngineering = lazy(() => import("./pages/MenuEngineering").then((m) => ({ default: m.MenuEngineering })));
 
 /* ── Admin pages — heaviest in the codebase, always lazy. ── */
-const AdminTeam = lazy(() => import("./pages/admin/AdminTeam").then((m) => ({ default: m.AdminTeam })));
+const AdminPeople = lazy(() => import("./pages/admin/AdminPeople").then((m) => ({ default: m.AdminPeople })));
 const AdminAttendance = lazy(() => import("./pages/admin/AdminAttendance").then((m) => ({ default: m.AdminAttendance })));
-const AdminSalaries = lazy(() => import("./pages/admin/AdminSalaries").then((m) => ({ default: m.AdminSalaries })));
-const AdminPayouts = lazy(() => import("./pages/admin/AdminPayouts").then((m) => ({ default: m.AdminPayouts })));
 const AdminRestaurantHours = lazy(() => import("./pages/admin/AdminRestaurantHours").then((m) => ({ default: m.AdminRestaurantHours })));
 const AdminSettings = lazy(() => import("./pages/admin/AdminSettings").then((m) => ({ default: m.AdminSettings })));
 const AdminAudit = lazy(() => import("./pages/admin/AdminAudit").then((m) => ({ default: m.AdminAudit })));
@@ -48,7 +46,6 @@ const AdminPayables = lazy(() => import("./pages/admin/AdminPayables").then((m) 
 const AdminOwnerExpenses = lazy(() => import("./pages/admin/AdminOwnerExpenses").then((m) => ({ default: m.AdminOwnerExpenses })));
 const AdminStock = lazy(() => import("./pages/admin/AdminStock").then((m) => ({ default: m.AdminStock })));
 const AdminIncidents = lazy(() => import("./pages/admin/AdminIncidents").then((m) => ({ default: m.AdminIncidents })));
-const AdminCertifications = lazy(() => import("./pages/admin/AdminCertifications").then((m) => ({ default: m.AdminCertifications })));
 const AdminChecklists = lazy(() => import("./pages/admin/AdminChecklists").then((m) => ({ default: m.AdminChecklists })));
 const AdminSecurity = lazy(() => import("./pages/admin/AdminSecurity").then((m) => ({ default: m.AdminSecurity })));
 
@@ -124,16 +121,24 @@ export default function App() {
                       Strictly-admin routes stay under <AdminGuard>.
                   */}
                   <Route path="/admin" element={<AdminLayout />}>
-                    <Route index element={<Navigate to="team" replace />} />
+                    <Route index element={<Navigate to="people" replace />} />
+                    {/* Unified people & payroll page */}
+                    <Route element={<RequirePermission anyOf={["TEAM_VIEW", "TEAM_MANAGE", "SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE", "CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"]} />}>
+                      <Route path="people" element={<LazyRoute><AdminPeople /></LazyRoute>} />
+                    </Route>
+                    {/* Legacy redirects — preserve old bookmarks/links */}
                     <Route element={<RequirePermission anyOf={["TEAM_VIEW", "TEAM_MANAGE"]} />}>
-                      <Route path="team" element={<LazyRoute><AdminTeam /></LazyRoute>} />
+                      <Route path="team" element={<Navigate to="/admin/people" replace />} />
+                    </Route>
+                    <Route element={<RequirePermission anyOf={["SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE"]} />}>
+                      <Route path="salaries" element={<Navigate to="/admin/people?tab=payroll" replace />} />
+                      <Route path="payouts" element={<Navigate to="/admin/people?tab=payouts" replace />} />
+                    </Route>
+                    <Route element={<RequirePermission anyOf={["CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"]} />}>
+                      <Route path="certifications" element={<Navigate to="/admin/people?tab=certifications" replace />} />
                     </Route>
                     <Route element={<RequirePermission anyOf={["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"]} />}>
                       <Route path="attendance" element={<LazyRoute><AdminAttendance /></LazyRoute>} />
-                    </Route>
-                    <Route element={<RequirePermission anyOf={["SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE"]} />}>
-                      <Route path="salaries" element={<LazyRoute><AdminSalaries /></LazyRoute>} />
-                      <Route path="payouts" element={<LazyRoute><AdminPayouts /></LazyRoute>} />
                     </Route>
                     <Route element={<RequirePermission anyOf={["SETTINGS_VIEW", "SETTINGS_MANAGE"]} />}>
                       <Route path="hours" element={<LazyRoute><AdminRestaurantHours /></LazyRoute>} />
@@ -158,9 +163,6 @@ export default function App() {
                     </Route>
                     <Route element={<RequirePermission anyOf={["INCIDENTS_VIEW", "INCIDENTS_FILE", "INCIDENTS_RESOLVE"]} />}>
                       <Route path="incidents" element={<LazyRoute><AdminIncidents /></LazyRoute>} />
-                    </Route>
-                    <Route element={<RequirePermission anyOf={["CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"]} />}>
-                      <Route path="certifications" element={<LazyRoute><AdminCertifications /></LazyRoute>} />
                     </Route>
                     <Route element={<RequirePermission anyOf={["CHECKLISTS_RUN", "CHECKLISTS_CONFIGURE"]} />}>
                       <Route path="checklists" element={<LazyRoute><AdminChecklists /></LazyRoute>} />

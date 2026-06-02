@@ -134,10 +134,10 @@ function fullOperationsGroups(): NavGroup[] {
       id: "people",
       label: "People",
       items: [
-        { kind: "link", to: "/admin/team", label: "Team", description: "People & roles", icon: IconUsers, requires: ["TEAM_VIEW", "TEAM_MANAGE"] },
-        { kind: "link", to: "/admin/salaries", label: "Payroll", description: "Calculate pay", icon: IconCash, requires: ["SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE"] },
-        { kind: "link", to: "/admin/payouts", label: "Payouts", description: "Approvals & history", icon: IconCash, requires: ["SALARIES_VIEW", "SALARIES_MANAGE"] },
-        { kind: "link", to: "/admin/certifications", label: "Certifications", description: "Sanepid, expiry alerts", icon: IconBadge, requires: ["CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"] },
+        { kind: "link", to: "/admin/people", label: "Team", description: "People & roles", icon: IconUsers, requires: ["TEAM_VIEW", "TEAM_MANAGE"] },
+        { kind: "link", to: "/admin/people?tab=payroll", label: "Payroll", description: "Calculate pay", icon: IconCash, requires: ["SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE"] },
+        { kind: "link", to: "/admin/people?tab=payouts", label: "Payouts", description: "Approvals & history", icon: IconCash, requires: ["SALARIES_VIEW", "SALARIES_MANAGE"] },
+        { kind: "link", to: "/admin/people?tab=certifications", label: "Certifications", description: "Sanepid, expiry alerts", icon: IconBadge, requires: ["CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"] },
       ],
     },
     {
