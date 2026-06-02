@@ -110,6 +110,13 @@ export function EntryPage() {
     dirtyRef.current = true;
     setExpenses(next);
   }, []);
+  const handleExpensesSkip = useCallback(() => {
+    dirtyRef.current = true;
+    setExpensesSkipped(true);
+  }, []);
+  const handleExpensesUnskip = useCallback(() => {
+    setExpensesSkipped(false);
+  }, []);
   const handlePosReportChange = useCallback(
     (patch: { files?: EntryFile[]; pendingFiles?: File[] }) => {
       dirtyRef.current = true;
@@ -972,7 +979,7 @@ export function EntryPage() {
               <EntryForm
                 data={form}
                 expenses={
-                  expenses.length ? expenses : readOnly ? expenses : [emptyExpenseLine()]
+                  expenses.length ? expenses : readOnly ? expenses : expensesSkipped ? [] : [emptyExpenseLine()]
                 }
                 onChange={handleFormChange}
                 onExpensesChange={handleExpensesChange}
@@ -986,6 +993,9 @@ export function EntryPage() {
                 pendingPosReports={pendingPosReports}
                 entryId={entry?.id}
                 onPosReportChange={handlePosReportChange}
+                onExpensesSkip={handleExpensesSkip}
+                expensesSkipped={expensesSkipped}
+                onExpensesUnskip={handleExpensesUnskip}
               />
             )}
           </div>

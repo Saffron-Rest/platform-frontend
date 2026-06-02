@@ -45,6 +45,10 @@ type Props = {
   onPosReportChange?: (patch: { files?: EntryFile[]; pendingFiles?: File[] }) => void;
   /** Called when the user confirms there are no expenses for this shift */
   onExpensesSkip?: () => void;
+  /** When true, the expenses section shows a "No expenses confirmed" badge */
+  expensesSkipped?: boolean;
+  /** Called when the user wants to undo the expenses skip */
+  onExpensesUnskip?: () => void;
 };
 
 export function EntryForm({
@@ -63,6 +67,8 @@ export function EntryForm({
   entryId,
   onPosReportChange,
   onExpensesSkip,
+  expensesSkipped,
+  onExpensesUnskip,
 }: Props) {
   const set = (key: keyof EntryFormData, value: number | string) =>
     onChange({ ...data, [key]: value });
@@ -217,6 +223,8 @@ export function EntryForm({
         disabled={disabled}
         invoicesEditable={invoicesEditable}
         onSkip={onExpensesSkip}
+        skipped={expensesSkipped}
+        onUnskip={onExpensesUnskip}
       />
 
       <section

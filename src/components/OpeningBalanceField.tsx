@@ -45,6 +45,15 @@ export function OpeningBalanceField({
       {openingHint && (
         <div className="mt-2 p-3 rounded-xl bg-[var(--color-cream)] border border-black/5">
           <OpeningHintText hint={openingHint} />
+          {!readOnly && openingHint.amount > 0 && (value === 0 || !value) && (
+            <button
+              type="button"
+              onClick={() => onChange(openingHint.amount)}
+              className="mt-1.5 text-xs font-semibold text-[var(--color-saffron-dark)] hover:underline"
+            >
+              Use {fmt(openingHint.amount)}
+            </button>
+          )}
           {editable && !openingHint.handoverPending && (
             <p className="text-xs text-[var(--color-muted)] mt-1">
               Override only if the drawer did not match that count.

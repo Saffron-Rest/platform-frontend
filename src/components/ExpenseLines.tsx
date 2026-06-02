@@ -86,11 +86,13 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable, o
           )}
         </div>
       </div>
-      <p className="text-sm text-[var(--color-muted)] mb-1">
-        Cash: <strong>{fmt(fromCash)}</strong>
-        <span className="mx-2">·</span>
-        Card: <strong>{fmt(fromCard)}</strong>
-      </p>
+      {!(skipped && expenses.length === 0) && (
+        <p className="text-sm text-[var(--color-muted)] mb-1">
+          Cash: <strong>{fmt(fromCash)}</strong>
+          <span className="mx-2">·</span>
+          Card: <strong>{fmt(fromCard)}</strong>
+        </p>
+      )}
 
       <div className="space-y-3">
         {expenses.map((line, i) => (
@@ -186,7 +188,7 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable, o
         ))}
       </div>
 
-      {canEditFields && (
+      {canEditFields && !(skipped && expenses.length === 0) && (
         <button
           type="button"
           onClick={() => onChange([...expenses, emptyLine()])}
@@ -196,7 +198,7 @@ export function ExpenseLines({ expenses, onChange, disabled, invoicesEditable, o
         </button>
       )}
 
-      {canEditFields && expenses.length === 0 && (
+      {canEditFields && expenses.length === 0 && !skipped && (
         <button
           type="button"
           onClick={() => onSkip?.()}
