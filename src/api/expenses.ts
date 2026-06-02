@@ -9,6 +9,9 @@ function mapInvoice(raw: Record<string, unknown>): ExpenseInvoice {
 }
 
 function mapExpense(raw: Record<string, unknown>): ExpenseLine {
+  if (import.meta.env.DEV && raw.amount == null) {
+    console.warn("[expenses] API returned null amount for expense", raw.id);
+  }
   const list = raw.invoices as Record<string, unknown>[] | undefined;
   const invoices = list?.length
     ? list.map(mapInvoice)

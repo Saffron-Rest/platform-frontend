@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { syncExpenses, uploadPendingInvoices, loadExpenses } from "../api/expenses";
 import { uploadEntryFile } from "../api/entryFiles";
 import { EntryForm } from "../components/EntryForm";
@@ -23,6 +23,7 @@ import {
 } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm, usePrompt } from "../context/ConfirmContext";
+import { useToast } from "../context/ToastContext";
 import { canOperate, isAdmin } from "../lib/roles";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Alert } from "../components/ui/Alert";
@@ -56,6 +57,7 @@ export function EntryPage() {
   const navigate = useNavigate();
   const confirmDialog = useConfirm();
   const promptDialog = usePrompt();
+  const toast = useToast();
   const canManageReports = canOperate(user?.role);
   // Admins always pass; managers/cashiers need REPORTS_EDIT_OTHERS,
   // matching the backend's AuthHelper.requireAdminOr() guard.
@@ -347,7 +349,6 @@ export function EntryPage() {
       const prevOpening = entry.openingBalance ?? 0;
       const fresh = await syncEntry(entry.id);
       const nextOpening = fresh.openingBalance ?? 0;
-      await loadEntry({ silent: true });
       if (Math.abs(nextOpening - prevOpening) > 0.005) {
         setMessage(
           `Opening cash updated from ${fmt(prevOpening)} to ${fmt(nextOpening)} based on the latest prior shift. Totals recomputed.`,
@@ -356,6 +357,8 @@ export function EntryPage() {
         setMessage("Totals recomputed from the latest data.");
       }
       setMessageError(false);
+      // Reload is best-effort — a failure here doesn't undo the sync.
+      loadEntry({ silent: true }).catch(() => {});
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Sync failed");
       setMessageError(true);
@@ -384,7 +387,9 @@ export function EntryPage() {
   }, [entryDate, selectedCashierId, canManageReports, setSearchParams]);
 
   useEffect(() => {
-    api<{ platforms: Platforms }>("/settings").then((s) => setPlatforms(s.platforms));
+    api<{ platforms: Platforms }>("/settings")
+      .then((s) => setPlatforms(s.platforms))
+      .catch(() => {});
     // Restaurant weekly hours feed the WorkingHoursCard so we can estimate
     // the close time for "until close" shifts. Endpoint is the same one
     // AttendanceCalendar uses. Failures are non-fatal -- the card degrades
@@ -398,7 +403,12 @@ export function EntryPage() {
       "/treasury/settlement-defaults"
     )
       .then(setTreasurySettings)
-      .catch(() => setTreasurySettings(null));
+      .catch(() => {
+        setTreasurySettings(null);
+        toast.warning("Treasury settings unavailable", {
+          description: "Settlement rates could not be loaded. POS card validation may be skipped.",
+        });
+      });
     if (canManageReports) {
       api<User[]>("/users")
         .then((list) => {
@@ -562,7 +572,7 @@ export function EntryPage() {
       await flushPendingPosReports(saved.id);
       const refreshed = await api<DailyEntry>(`/entries/${saved.id}`);
       await applyEntry(refreshed);
-      const who = selectedCashier?.name ?? "Cashier";
+      const who = selectedCashier?.name ?? entry?.cashier?.name ?? "Cashier";
       const when = reportDateRelativeLabel(entryDate);
       setMessage(
         entry
@@ -571,8 +581,17 @@ export function EntryPage() {
       );
       return refreshed;
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Save failed");
+      const msg =
+        err instanceof ApiError && err.status === 409
+          ? "This report was updated by someone else. Reloading…"
+          : err instanceof Error
+          ? err.message
+          : "Save failed";
+      setMessage(msg);
       setMessageError(true);
+      if (err instanceof ApiError && err.status === 409) {
+        loadEntry({ silent: true });
+      }
       return null;
     } finally {
       setSaving(false);
@@ -588,7 +607,7 @@ export function EntryPage() {
     try {
       const synced = await persistExpenses(entry.id, expenses);
       setExpenses(synced.length ? synced : expenses);
-      setMessage(`Receipt photos saved for ${selectedCashier?.name ?? "cashier"}`);
+      setMessage(`Receipt photos saved for ${selectedCashier?.name ?? entry?.cashier?.name ?? "cashier"}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Could not save receipts");
       setMessageError(true);
@@ -599,7 +618,7 @@ export function EntryPage() {
 
   const moveToAnotherDate = async () => {
     if (!entry?.id) return;
-    const who = selectedCashier?.name ?? "this cashier";
+    const who = selectedCashier?.name ?? entry?.cashier?.name ?? "this cashier";
     const fromLabel = reportDateRelativeLabel(entryDate);
     const newDate = await promptDialog({
       title: `Move ${who}'s report`,
@@ -612,6 +631,12 @@ export function EntryPage() {
     const cleaned = newDate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
       setMessage("Date must be in YYYY-MM-DD format.");
+      setMessageError(true);
+      return;
+    }
+    const parsed = new Date(cleaned);
+    if (isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== cleaned) {
+      setMessage("That date doesn't exist. Please enter a valid date.");
       setMessageError(true);
       return;
     }
@@ -650,7 +675,7 @@ export function EntryPage() {
 
   const unlockForCashier = async () => {
     if (!entry?.id) return;
-    const who = selectedCashier?.name ?? "this cashier";
+    const who = selectedCashier?.name ?? entry?.cashier?.name ?? "this cashier";
     const when = reportDateRelativeLabel(entryDate);
     const ok = await confirmDialog({
       title: `Unlock report for ${who}?`,

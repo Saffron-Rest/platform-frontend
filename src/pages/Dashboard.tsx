@@ -71,7 +71,7 @@ export function Dashboard() {
     if (canOperate(user?.role)) {
       const to = new Date().toISOString().slice(0, 10);
       api<{ totals: MonthTotals }>(`/analytics/cashflow?from=${monthStartIso()}&to=${to}`)
-        .then((r) => setMonthTotals(r.totals))
+        .then((r) => setMonthTotals(r?.totals ?? null))
         .catch(() => setMonthTotals(null));
     }
   }, [user?.role]);

@@ -40,10 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
+    let cancelled = false;
     api<{ user: User }>("/auth/me")
-      .then((r) => setUser(r.user))
+      .then((r) => { if (!cancelled) setUser(r.user); })
       .catch(() => localStorage.removeItem("token"))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
