@@ -67,7 +67,7 @@ export function TopAppBar() {
   const modKey = isMac ? "⌘" : "Ctrl";
 
   return (
-    <header className="hidden md:flex sticky top-0 z-30 bg-white border-b border-slate-200 h-12 items-center gap-4 px-8">
+    <header className="hidden md:flex sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-black/[0.06] h-14 items-center gap-4 px-10">
       {/* Breadcrumb */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm min-w-0 flex-1">
         {active ? (
@@ -89,7 +89,7 @@ export function TopAppBar() {
       <button
         type="button"
         onClick={openCommandPalette}
-        className="hidden lg:flex items-center gap-2 w-64 xl:w-80 px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 transition text-sm text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+        className="hidden lg:flex items-center gap-2 w-72 xl:w-96 px-3 py-1.5 rounded-lg border border-black/[0.08] bg-white hover:bg-[var(--color-cream)] transition text-sm text-[var(--color-muted)] hover:text-[var(--color-ink)]"
         aria-label="Search"
       >
         <IconSearch className="w-4 h-4 shrink-0" />
@@ -129,7 +129,7 @@ export function TopAppBar() {
               aria-label="Account menu"
               aria-expanded={menuOpen}
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-saffron)] text-white text-[11px] font-bold">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-saffron)] text-white text-xs font-bold">
                 {user.name.charAt(0).toUpperCase()}
               </span>
               <span className="hidden xl:inline text-sm font-medium text-[var(--color-ink)] max-w-[8rem] truncate">

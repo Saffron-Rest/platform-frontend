@@ -1,43 +1,24 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: "Inter", system-ui, sans-serif;
-
-  /* Primary accent — indigo */
-  --color-saffron:       #4f46e5;
-  --color-saffron-dark:  #4338ca;
-  --color-saffron-light: #eef2ff;
-
-  /* Surfaces */
-  --color-cream:   #f1f5f9;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --color-saffron: #c45c26;
+  --color-saffron-dark: #9a4520;
+  --color-saffron-light: #f5ebe3;
+  --color-cream: #f7f4ef;
   --color-surface: #ffffff;
-  --color-card:    #ffffff;
-  --color-stone:   #e2e8f0;
-
-  /* Text */
-  --color-ink:   #0f172a;
-  --color-muted: #64748b;
-
-  /* Status */
-  --color-success: #16a34a;
-  --color-warning: #d97706;
-  --color-danger:  #dc2626;
-  --color-info:    #2563eb;
-
-  /* Shell */
-  --sidebar-width: 14rem;
-  --nav-height: 4rem;
-
-  /* Radius */
-  --radius-lg: 0.375rem;
-  --radius-xl: 0.5rem;
-
-  /* Shadows */
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.03);
-  --shadow-card: 0 0 0 1px rgb(0 0 0 / 0.07), 0 2px 6px rgb(0 0 0 / 0.05);
-
-  /* Z-index layers */
+  --color-ink: #1a1614;
+  --color-muted: #6b635c;
+  --color-success: #2d6a4f;
+  --color-danger: #9b2226;
+  --color-card: #ffffff;
+  --sidebar-width: 15rem;
+  --nav-height: 4.25rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --shadow-soft: 0 1px 1px rgb(26 22 20 / 0.03), 0 1px 2px rgb(26 22 20 / 0.04);
+  --shadow-card: 0 2px 4px rgb(26 22 20 / 0.04), 0 8px 24px rgb(26 22 20 / 0.06);
   --z-popover: 30;
   --z-overlay: 40;
   --z-modal: 50;
@@ -59,9 +40,9 @@ input[type="number"] {
 
 @layer components {
   .field-input {
-    @apply w-full mt-1.5 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm;
-    @apply focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]/25 focus:border-[var(--color-saffron)];
-    @apply disabled:opacity-60 disabled:bg-slate-50;
+    @apply w-full mt-1.5 px-3.5 py-3 rounded-xl border border-black/[0.08] bg-white text-base;
+    @apply focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]/35 focus:border-[var(--color-saffron)];
+    @apply disabled:opacity-60 disabled:bg-stone-50;
     min-height: 2.75rem;
   }
 
@@ -84,8 +65,8 @@ input[type="number"] {
   }
 
   .surface-card {
-    @apply bg-white rounded-md border border-slate-200/80;
-    box-shadow: var(--shadow-card);
+    @apply bg-white rounded-xl border border-black/[0.05];
+    box-shadow: var(--shadow-soft);
   }
 
   /* Stripe-like section header — uppercase label + thin divider — for
@@ -116,30 +97,38 @@ input[type="number"] {
   }
 
   .nav-item {
-    @apply relative flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors;
+    @apply relative flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors;
   }
 
   .nav-item-active {
-    @apply bg-[var(--color-saffron)] text-white;
+    @apply bg-white/[0.08] text-white;
+  }
+
+  .nav-item-active::before {
+    content: "";
+    position: absolute;
+    left: -12px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: var(--color-saffron);
+    border-radius: 1px;
   }
 
   .nav-item-idle {
-    @apply text-slate-400 hover:bg-white/[0.06] hover:text-white;
+    @apply text-white/65 hover:bg-white/[0.05] hover:text-white;
   }
 
   .hub-tile {
-    @apply flex flex-col gap-2 p-4 rounded-md border border-slate-200/80 bg-white text-left transition;
-    box-shadow: var(--shadow-card);
-  }
-
-  .hub-tile:hover {
-    @apply border-[var(--color-saffron)]/40;
+    @apply flex flex-col gap-2 p-4 rounded-2xl border border-black/[0.06] bg-white text-left transition;
+    @apply hover:border-[var(--color-saffron)]/30 hover:shadow-md active:scale-[0.99];
+    box-shadow: var(--shadow-soft);
   }
 
   .hub-tile-accent {
     @apply border-transparent text-white;
-    background: linear-gradient(135deg, var(--color-saffron) 0%, var(--color-saffron-dark) 100%);
-    box-shadow: 0 4px 16px rgb(79 70 229 / 0.35);
+    background: linear-gradient(145deg, var(--color-saffron) 0%, var(--color-saffron-dark) 100%);
+    box-shadow: 0 8px 24px rgb(196 92 38 / 0.28);
   }
 
   .tab-pill {
