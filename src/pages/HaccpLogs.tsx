@@ -53,7 +53,7 @@ export function HaccpLogs() {
   const [from, setFrom] = useState(daysAgoIso(7));
   const [to, setTo] = useState(todayIso());
   const [kindFilter, setKindFilter] = useState<HaccpKind | "">("");
-  const [creating, setCreating] = useState(false);
+  const [creatingKind, setCreatingKind] = useState<HaccpKind | null>(null);
 
   const load = async () => {
     setLoading(true);

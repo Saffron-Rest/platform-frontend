@@ -717,6 +717,7 @@ export function SalariesPanel() {
                       />
                     </div>
                   )}
+                  </div>
                 </li>
               );
             })}
