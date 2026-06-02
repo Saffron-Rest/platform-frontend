@@ -235,13 +235,17 @@ export function primaryNavLinks(groups: NavGroup[]): NavLinkItem[] {
 
 export function isNavActive(pathname: string, to: string): boolean {
   if (to === "/") return pathname === "/";
-  if (to === "/reports") {
+  // Strip query string from `to` so links like "/reports?tab=expenses" match
+  // on the pathname alone. All report-tab links point to the same /reports
+  // base, so they're all considered active when the user is on that page.
+  const toPath = to.split("?")[0];
+  if (toPath === "/reports") {
     // Shift reports list is the "back" for individual entry pages, so
     // highlight the parent when the user is mid-entry.
     return pathname === "/reports" || pathname.startsWith("/entry");
   }
   // Generic prefix match — covers nested routes like /admin/team/123.
-  return pathname === to || pathname.startsWith(to + "/");
+  return pathname === toPath || pathname.startsWith(toPath + "/");
 }
 
 /**
@@ -263,7 +267,7 @@ export function findActive(
   for (const g of groups) {
     for (const it of g.items) {
       if (isNavActive(pathname, it.to)) {
-        const specificity = it.to.length;
+        const specificity = it.to.split("?")[0].length;
         if (!best || specificity > best.specificity) {
           best = { group: g, item: it, specificity };
         }
