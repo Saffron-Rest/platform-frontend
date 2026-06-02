@@ -5,12 +5,12 @@ type Size = "sm" | "md" | "lg";
 
 const styles: Record<Variant, string> = {
   primary:
-    "bg-[var(--color-saffron)] text-white hover:bg-[var(--color-saffron-dark)] shadow-sm shadow-[var(--color-saffron)]/20",
+    "bg-[var(--color-lime)] text-[var(--color-forest)] hover:bg-[var(--color-lime-soft)] shadow-sm shadow-[var(--color-lime)]/30",
   secondary:
-    "border border-slate-300 text-[var(--color-ink)] bg-white hover:bg-slate-50",
-  ghost: "text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)]",
-  danger: "bg-red-50 text-[var(--color-danger)] border border-red-200 hover:bg-red-100",
-  dark: "bg-[var(--color-ink)] text-white hover:bg-slate-800",
+    "border text-[var(--color-ink)] bg-white hover:bg-[var(--color-cream)]",
+  ghost: "text-[var(--color-muted)] hover:bg-[var(--color-stone)] hover:text-[var(--color-ink)]",
+  danger: "text-[var(--color-danger)] border border-[var(--color-danger)]/20 bg-[var(--color-danger)]/5 hover:bg-[var(--color-danger)]/10",
+  dark: "bg-[var(--color-forest)] text-[var(--color-lime)] hover:bg-[var(--color-forest-deep)]",
 };
 
 const sizes: Record<Size, string> = {
