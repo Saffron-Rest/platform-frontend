@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { Link, useNavigate, useSearchParams, useBlocker } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { syncExpenses, uploadPendingInvoices, loadExpenses } from "../api/expenses";
 import { uploadEntryFile } from "../api/entryFiles";
@@ -167,14 +167,15 @@ export function EntryPage() {
     [cashiers, selectedCashierId]
   );
 
-  // Block navigation when there are unsaved changes so cashiers don't
-  // accidentally lose work by tapping the wrong nav item.
-  useBlocker(({ currentLocation, nextLocation }) => {
-    return (
-      dirtyRef.current &&
-      currentLocation.pathname !== nextLocation.pathname
-    );
-  });
+  // Warn before browser close / refresh when there are unsaved changes.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return;
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   const shiftLabel = scheduledOff
     ? "Not scheduled"
