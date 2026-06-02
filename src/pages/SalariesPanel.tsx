@@ -182,6 +182,9 @@ export function SalariesPanel() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [removingPaymentId, setRemovingPaymentId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkSource, setBulkSource] = useState<PaymentSource>("CASH");
+  const [bulkPaying, setBulkPaying] = useState(false);
 
   const removePayment = async (id: string, label: string) => {
     if (!confirm(`Remove this payment (${label})? Treasury balances will recalculate.`)) return;
@@ -214,6 +217,71 @@ export function SalariesPanel() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const payableEmployees = useMemo(
+    () => (visibleEmployees ?? []).filter((e) => {
+      const remaining = e.remainingPay ?? Math.max(0, e.totalPay - (e.paidAmount ?? 0));
+      return !e.fullyPaid && remaining > 0.005;
+    }),
+    [visibleEmployees]
+  );
+
+  const toggleSelect = (userId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(userId) ? next.delete(userId) : next.add(userId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const allIds = new Set(payableEmployees.map((e) => e.userId));
+    setSelectedIds((prev) =>
+      prev.size === allIds.size ? new Set() : allIds
+    );
+  };
+
+  const bulkPay = async () => {
+    const targets = payableEmployees.filter((e) => selectedIds.has(e.userId));
+    if (targets.length === 0) return;
+    const totalAmount = targets.reduce((sum, e) => {
+      const remaining = e.remainingPay ?? Math.max(0, e.totalPay - (e.paidAmount ?? 0));
+      const owedNow = e.owedNow ?? remaining;
+      return sum + (owedNow > 0.005 ? owedNow : remaining);
+    }, 0);
+    const names = targets.map((e) => e.name).join(", ");
+    if (!confirm(`Pay ${targets.length} employee${targets.length === 1 ? "" : "s"} (${fmt(totalAmount)} from ${bulkSource.toLowerCase()}) today?\n\n${names}`)) return;
+    setBulkPaying(true);
+    setError("");
+    try {
+      await Promise.all(
+        targets.map((e) => {
+          const remaining = e.remainingPay ?? Math.max(0, e.totalPay - (e.paidAmount ?? 0));
+          const owedNow = e.owedNow ?? remaining;
+          const amount = owedNow > 0.005 ? owedNow : remaining;
+          return api("/treasury/salary-payments", {
+            method: "POST",
+            body: JSON.stringify({
+              userId: e.userId,
+              amount,
+              paidDate: todayIso(),
+              source: bulkSource,
+              periodFrom: from,
+              periodTo: to,
+              notes: null,
+              excludeFromTreasury: false,
+            }),
+          });
+        })
+      );
+      setSelectedIds(new Set());
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bulk payment failed");
+    } finally {
+      setBulkPaying(false);
+    }
+  };
 
   const goMonth = (delta: number) => {
     const d = new Date(viewYear, viewMonth + delta, 1);
@@ -337,6 +405,47 @@ export function SalariesPanel() {
             </label>
           )}
 
+          {payableEmployees.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-[var(--color-cream)] border border-black/5">
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === payableEmployees.length && payableEmployees.length > 0}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 accent-[var(--color-saffron)]"
+                />
+                <span className="text-[var(--color-muted)]">
+                  {selectedIds.size === 0
+                    ? `Select all (${payableEmployees.length})`
+                    : `${selectedIds.size} selected`}
+                </span>
+              </label>
+              {selectedIds.size > 0 && (
+                <>
+                  <div className="flex gap-1 ml-auto">
+                    {(["CASH", "CARD"] as PaymentSource[]).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setBulkSource(s)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                          bulkSource === s
+                            ? "bg-[var(--color-saffron)] text-white border-[var(--color-saffron)]"
+                            : "bg-white border-black/10"
+                        }`}
+                      >
+                        {s === "CASH" ? "Cash" : "Card"}
+                      </button>
+                    ))}
+                  </div>
+                  <Button onClick={bulkPay} disabled={bulkPaying} className="!py-1.5 !text-sm">
+                    {bulkPaying ? "Paying…" : `Pay ${selectedIds.size} now`}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
           <ul className="space-y-3">
             {visibleEmployees.map((e) => {
               const paid = e.paidAmount ?? 0;
@@ -367,12 +476,29 @@ export function SalariesPanel() {
                   ? `${daysWorked} · ${(inFlight ? (e.hoursToDate ?? e.totalHours) : e.totalHours).toFixed(1)} h${inFlight ? " so far" : " scheduled"}${inFlight ? ` of ${e.totalHours.toFixed(1)} h` : ""}`
                   : `${daysWorked} · ${e.totalHours.toFixed(1)} h scheduled`;
 
+              const isPayable = !e.fullyPaid && (e.remainingPay ?? Math.max(0, e.totalPay - (e.paidAmount ?? 0))) > 0.005;
               return (
                 <li key={e.userId} className="bg-white rounded-2xl border border-black/5 overflow-hidden">
+                  <div className="flex items-stretch">
+                    {payableEmployees.length > 1 && (
+                      <div className="flex items-center px-3 border-r border-black/5">
+                        {isPayable ? (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(e.userId)}
+                            onChange={() => toggleSelect(e.userId)}
+                            onClick={(ev) => ev.stopPropagation()}
+                            className="w-4 h-4 accent-[var(--color-saffron)] cursor-pointer"
+                          />
+                        ) : (
+                          <span className="w-4 h-4" />
+                        )}
+                      </div>
+                    )}
                   <button
                     type="button"
                     onClick={() => setExpanded(expanded === e.userId ? null : e.userId)}
-                    className="w-full p-4 text-left flex flex-wrap items-center justify-between gap-3 hover:bg-[var(--color-cream)]/50"
+                    className="flex-1 p-4 text-left flex flex-wrap items-center justify-between gap-3 hover:bg-[var(--color-cream)]/50"
                   >
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
