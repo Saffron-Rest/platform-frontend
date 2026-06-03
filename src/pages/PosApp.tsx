@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addLine,
   applyDiscount,
@@ -468,10 +468,6 @@ export function PosApp() {
   useEffect(() => {
     getExchangeRates().then(setRates).catch(() => {});
   }, []);
-
-  const displayTotal = selectedCurrency === "PLN" || !rates
-    ? paymentTotal
-    : paymentTotal / (rates.rates[selectedCurrency] ?? 1);
 
   // ── Cart actions ──────────────────────────────────────────────────────────
 
