@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
   allNavLinks,
+  isNavActive,
   navGroupsForUser,
   primaryNavLinks,
 } from "../../lib/navigation";
@@ -52,7 +53,7 @@ function AppShellInner({
   const moreActive =
     moreOpen ||
     allNavLinks(groups).some(
-      (i) => !primaryPaths.has(i.to) && (loc.pathname === i.to || loc.pathname.startsWith(i.to + "/"))
+      (i) => !primaryPaths.has(i.to) && isNavActive(loc.pathname, i.to, loc.search)
     );
 
   if (loading) {
@@ -97,7 +98,7 @@ function AppShellInner({
           </button>
         </div>
 
-        <SidebarNav groups={groups} pathname={loc.pathname} />
+        <SidebarNav groups={groups} pathname={loc.pathname} search={loc.search} />
       </aside>
 
       <div className="flex-1 md:ml-[var(--sidebar-width)] flex flex-col min-h-screen">
@@ -150,6 +151,7 @@ function AppShellInner({
         <BottomNav
           primary={mobilePrimary}
           pathname={loc.pathname}
+          search={loc.search}
           onMore={() => setMoreOpen(true)}
           moreActive={moreActive}
           showMore={showMoreButton}
@@ -160,6 +162,7 @@ function AppShellInner({
             onClose={() => setMoreOpen(false)}
             groups={groups}
             pathname={loc.pathname}
+            search={loc.search}
             primaryPaths={primaryPaths}
           />
         )}

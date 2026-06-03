@@ -57,7 +57,7 @@ export function TopAppBar() {
   }, [menuOpen]);
 
   const groups = navGroupsForUser(user);
-  const active = findActive(groups, loc.pathname);
+  const active = findActive(groups, loc.pathname, loc.search);
 
   // Show OS-correct modifier hint in the search button. Falls back to
   // "Ctrl" outside the browser (jsdom in tests).

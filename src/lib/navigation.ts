@@ -98,7 +98,6 @@ function fullOperationsGroups(): NavGroup[] {
         { kind: "link", to: "/", label: "Home", description: "Restaurant overview", icon: IconHome, primary: true },
         { kind: "link", to: "/entry", label: "Shift report", description: "Open or continue today", icon: IconClipboard, primary: true },
         { kind: "link", to: "/checklists", label: "Checklists", description: "Opening / closing tasks", icon: IconCheckSquare },
-        { kind: "link", to: "/haccp", label: "HACCP", description: "Food-safety logs", icon: IconThermometer },
       ],
     },
     {
@@ -146,8 +145,7 @@ function fullOperationsGroups(): NavGroup[] {
         { kind: "link", to: "/admin/settings", label: "Treasury", description: "Balances & %", icon: IconWallet, requires: ["SETTINGS_VIEW", "SETTINGS_MANAGE", "TREASURY_VIEW", "TREASURY_MANAGE"] },
         { kind: "link", to: "/admin/settings?tab=hours", label: "Hours", description: "Opening times", icon: IconClock, requires: ["SETTINGS_VIEW", "SETTINGS_MANAGE"] },
         { kind: "link", to: "/admin/settings?tab=tags", label: "Tags", description: "Custom labels", icon: IconTag, requires: ["TAGS_MANAGE"] },
-        { kind: "link", to: "/admin/settings?tab=pos", label: "POS", description: "Webhook integrations", icon: IconShield, requires: ["POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"] },
-        { kind: "link", to: "/admin/settings?tab=pos", label: "POS simulator", description: "Test stock decrement end-to-end", icon: IconBolt, requires: ["POS_INTEGRATION_MANAGE"] },
+        { kind: "link", to: "/admin/settings?tab=pos", label: "POS & Simulator", description: "Webhook integrations & stock test", icon: IconShield, requires: ["POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"] },
         { kind: "link", to: "/admin/settings?tab=audit", label: "Audit log", description: "Who changed what", icon: IconShield, requires: ["AUDIT_VIEW"] },
         // Truly admin-only — no permission can substitute, so the
         // sidebar only ever surfaces this for ADMIN users (the empty
@@ -233,17 +231,35 @@ export function primaryNavLinks(groups: NavGroup[]): NavLinkItem[] {
   return allNavLinks(groups).filter((i) => i.primary);
 }
 
-export function isNavActive(pathname: string, to: string): boolean {
+// Routes that use ?tab= to switch sub-pages. Value = the tab name that
+// the bare path (no ?tab=) defaults to, so the right item highlights.
+const TAB_HUB_DEFAULTS: Record<string, string> = {
+  "/reports":         "shift-reports",
+  "/admin/settings":  "treasury",
+  "/admin/people":    "team",
+};
+
+export function isNavActive(pathname: string, to: string, search?: string): boolean {
   if (to === "/") return pathname === "/";
-  // Strip query string from `to` so links like "/reports?tab=expenses" match
-  // on the pathname alone. All report-tab links point to the same /reports
-  // base, so they're all considered active when the user is on that page.
-  const toPath = to.split("?")[0];
-  if (toPath === "/reports") {
-    // Shift reports list is the "back" for individual entry pages, so
-    // highlight the parent when the user is mid-entry.
-    return pathname === "/reports" || pathname.startsWith("/entry");
+  const qIdx = to.indexOf("?");
+  const toPath  = qIdx >= 0 ? to.slice(0, qIdx) : to;
+  const toQuery = qIdx >= 0 ? to.slice(qIdx + 1) : "";
+
+  // /reports links also light up while the user is editing an entry.
+  if (toPath === "/reports" && pathname.startsWith("/entry")) {
+    const toTab = toQuery ? (new URLSearchParams(toQuery).get("tab") ?? "shift-reports") : "shift-reports";
+    return toTab === "shift-reports";
   }
+
+  // Tab hub routes: compare both pathname AND the ?tab= param.
+  if (toPath in TAB_HUB_DEFAULTS) {
+    if (pathname !== toPath) return false;
+    const defaultTab   = TAB_HUB_DEFAULTS[toPath];
+    const toTab        = toQuery ? (new URLSearchParams(toQuery).get("tab") ?? defaultTab) : defaultTab;
+    const currentTab   = search  ? (new URLSearchParams(search ).get("tab") ?? defaultTab) : defaultTab;
+    return toTab === currentTab;
+  }
+
   // Generic prefix match — covers nested routes like /admin/team/123.
   return pathname === toPath || pathname.startsWith(toPath + "/");
 }
@@ -257,7 +273,8 @@ export function isNavActive(pathname: string, to: string): boolean {
  */
 export function findActive(
   groups: NavGroup[],
-  pathname: string
+  pathname: string,
+  search?: string
 ): { group: NavGroup; item: NavLinkItem } | null {
   // Sort candidates by `to.length` desc so a nested route like
   // `/admin/team/123` matches the more-specific `/admin/team` over
@@ -266,7 +283,7 @@ export function findActive(
   let best: Match | null = null;
   for (const g of groups) {
     for (const it of g.items) {
-      if (isNavActive(pathname, it.to)) {
+      if (isNavActive(pathname, it.to, search)) {
         const specificity = it.to.split("?")[0].length;
         if (!best || specificity > best.specificity) {
           best = { group: g, item: it, specificity };

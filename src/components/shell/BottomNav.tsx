@@ -16,12 +16,13 @@ function IconMore({ className = "w-5 h-5" }: { className?: string }) {
 type Props = {
   primary: NavLinkItem[];
   pathname: string;
+  search?: string;
   onMore?: () => void;
   moreActive?: boolean;
   showMore?: boolean;
 };
 
-export function BottomNav({ primary, pathname, onMore, moreActive, showMore = true }: Props) {
+export function BottomNav({ primary, pathname, search, onMore, moreActive, showMore = true }: Props) {
   return (
     <nav
       className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-lg border-t border-black/[0.08]"
@@ -30,7 +31,7 @@ export function BottomNav({ primary, pathname, onMore, moreActive, showMore = tr
     >
       <div className="flex max-w-lg mx-auto">
         {primary.map((item) => {
-          const active = isNavActive(pathname, item.to);
+          const active = isNavActive(pathname, item.to, search);
           const Icon = item.icon;
           return (
             <Link

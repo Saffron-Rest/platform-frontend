@@ -8,10 +8,11 @@ type Props = {
   onClose: () => void;
   groups: NavGroup[];
   pathname: string;
+  search?: string;
   primaryPaths: Set<string>;
 };
 
-export function MoreMenu({ open, onClose, groups, pathname, primaryPaths }: Props) {
+export function MoreMenu({ open, onClose, groups, pathname, search, primaryPaths }: Props) {
   if (!open) return null;
 
   const secondaryGroups = groups
@@ -53,7 +54,7 @@ export function MoreMenu({ open, onClose, groups, pathname, primaryPaths }: Prop
               <p className="section-title mb-2">{group.label}</p>
               <ul className="space-y-1">
                 {group.items.map((item) => (
-                  <MoreRow key={item.to} item={item} active={isNavActive(pathname, item.to)} onClose={onClose} />
+                  <MoreRow key={item.label} item={item} active={isNavActive(pathname, item.to, search)} onClose={onClose} />
                 ))}
               </ul>
             </div>

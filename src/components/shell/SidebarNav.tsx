@@ -6,9 +6,10 @@ import { tourTargetFromPath } from "../../lib/tourTargets";
 type Props = {
   groups: NavGroup[];
   pathname: string;
+  search?: string;
 };
 
-export function SidebarNav({ groups, pathname }: Props) {
+export function SidebarNav({ groups, pathname, search }: Props) {
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5" aria-label="Main">
       {groups.map((group) => (
@@ -18,10 +19,10 @@ export function SidebarNav({ groups, pathname }: Props) {
           </p>
           <ul className="space-y-px">
             {group.items.map((item) => {
-              const active = isNavActive(pathname, item.to);
+              const active = isNavActive(pathname, item.to, search);
               const Icon = item.icon;
               return (
-                <li key={item.to}>
+                <li key={item.label}>
                   <Link
                     to={item.to}
                     data-tour={tourTargetFromPath(item.to)}
