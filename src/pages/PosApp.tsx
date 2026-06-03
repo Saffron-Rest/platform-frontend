@@ -126,19 +126,6 @@ function CloseModal({ session, onClosed, onCancel }: { session: PosSession; onCl
 
 // ─── Primitive helpers ────────────────────────────────────────────────────────
 
-function Overlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-[var(--color-ink)]/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#231f1c] rounded-2xl p-6 w-full max-w-md border border-white/[0.08] shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Since Overlay wraps everything including the title row we need a proper Modal component:
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 bg-[var(--color-ink)]/80 backdrop-blur-sm flex items-center justify-center p-4">
