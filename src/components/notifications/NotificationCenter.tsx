@@ -208,35 +208,90 @@ export function NotificationCenter() {
               </p>
             ) : (
               <ul>
-                {inbox.items.map((n) => (
-                  <li key={n.id}>
-                    <button
-                      type="button"
-                      onClick={() => void onPick(n)}
-                      className={`w-full text-left px-4 py-3 hover:bg-[var(--color-cream)]/40 flex items-start gap-3 ${
-                        n.readAt ? "" : "bg-[var(--color-cream)]/30"
-                      }`}
-                    >
-                      {!n.readAt && (
-                        <span
-                          className="w-2 h-2 rounded-full bg-[var(--color-saffron)] mt-1.5 shrink-0"
-                          aria-hidden
-                        />
-                      )}
-                      <div className={`flex-1 min-w-0 ${n.readAt ? "pl-[14px]" : ""}`}>
-                        <p className="text-sm font-medium truncate">{n.title}</p>
-                        {n.body && (
-                          <p className="text-xs text-[var(--color-muted)] mt-0.5 line-clamp-2 break-words">
-                            {n.body}
-                          </p>
+                {grouped.map(({ kind, items }) => {
+                  const hasUnread = items.some((n) => !n.readAt);
+                  if (items.length === 1) {
+                    const n = items[0];
+                    return (
+                      <li key={n.id}>
+                        <button
+                          type="button"
+                          onClick={() => void onPick(n)}
+                          className={`w-full text-left px-4 py-3 hover:bg-[var(--color-cream)]/40 flex items-start gap-3 ${
+                            n.readAt ? "" : "bg-[var(--color-cream)]/30"
+                          }`}
+                        >
+                          {!n.readAt && (
+                            <span className="w-2 h-2 rounded-full bg-[var(--color-saffron)] mt-1.5 shrink-0" aria-hidden />
+                          )}
+                          <div className={`flex-1 min-w-0 ${n.readAt ? "pl-[14px]" : ""}`}>
+                            <p className="text-sm font-medium truncate">{n.title}</p>
+                            {n.body && (
+                              <p className="text-xs text-[var(--color-muted)] mt-0.5 line-clamp-2 break-words">{n.body}</p>
+                            )}
+                            <p className="text-[10px] text-[var(--color-muted)] mt-1">{formatRelative(n.createdAt)}</p>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  }
+                  // Grouped row for 2+ same-kind notifications.
+                  const expanded = expandedKinds.has(kind);
+                  return (
+                    <li key={kind} className={hasUnread ? "bg-[var(--color-cream)]/30" : ""}>
+                      <button
+                        type="button"
+                        onClick={() => toggleKind(kind)}
+                        className="w-full text-left px-4 py-3 hover:bg-[var(--color-cream)]/40 flex items-start gap-3"
+                      >
+                        {hasUnread && (
+                          <span className="w-2 h-2 rounded-full bg-[var(--color-saffron)] mt-1.5 shrink-0" aria-hidden />
                         )}
-                        <p className="text-[10px] text-[var(--color-muted)] mt-1">
-                          {formatRelative(n.createdAt)}
-                        </p>
-                      </div>
-                    </button>
-                  </li>
-                ))}
+                        <div className={`flex-1 min-w-0 ${hasUnread ? "" : "pl-[14px]"}`}>
+                          <p className="text-sm font-medium">
+                            {kindLabel(kind)}{" "}
+                            <span className="text-xs font-normal text-[var(--color-muted)]">
+                              · {items.length} alerts
+                            </span>
+                          </p>
+                          <p className="text-xs text-[var(--color-muted)] mt-0.5">
+                            {items[0].title}
+                            {items.length > 1 && ` and ${items.length - 1} more`}
+                          </p>
+                        </div>
+                        <span className="text-xs text-[var(--color-muted)] shrink-0 mt-1">
+                          {expanded ? "▲" : "▼"}
+                        </span>
+                      </button>
+                      {expanded && (
+                        <ul className="border-t border-black/5">
+                          {items.map((n) => (
+                            <li key={n.id}>
+                              <button
+                                type="button"
+                                onClick={() => void onPick(n)}
+                                className={`w-full text-left pl-8 pr-4 py-2.5 hover:bg-[var(--color-cream)]/40 flex items-start gap-3 ${
+                                  n.readAt ? "" : "bg-[var(--color-cream)]/20"
+                                }`}
+                              >
+                                {!n.readAt && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-saffron)] mt-1.5 shrink-0" aria-hidden />
+                                )}
+                                <div className={`flex-1 min-w-0 ${n.readAt ? "pl-[10px]" : ""}`}>
+                                  <p className="text-xs font-medium truncate">{n.title}</p>
+                                  {n.body && (
+                                    <p className="text-[11px] text-[var(--color-muted)] mt-0.5 line-clamp-1">{n.body}</p>
+                                  )}
+                                  <p className="text-[10px] text-[var(--color-muted)] mt-0.5">{formatRelative(n.createdAt)}</p>
+                                </div>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
