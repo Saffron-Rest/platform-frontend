@@ -29,7 +29,6 @@ import {
 } from "../api/pos";
 import { fmt } from "../lib/calc";
 import { Spinner } from "../components/ui/Spinner";
-import { Alert } from "../components/ui/Alert";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -485,6 +484,16 @@ export function PosApp() {
                 {t === "DINE_IN" ? "Dine-in" : t === "TAKEAWAY" ? "Takeaway" : "Delivery"}
               </button>
             ))}
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <label className="block text-sm text-[#94A3B8]">Covers (guests)
+              <input type="number" min={1} value={covers} onChange={e => setCovers(e.target.value)} placeholder="2"
+                className="mt-1.5 w-full bg-[#0F172A] border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#6366F1]" />
+            </label>
+            <label className="block text-sm text-[#94A3B8]">Order note
+              <input type="text" value={orderNote} onChange={e => setOrderNote(e.target.value)} placeholder="Allergy note…"
+                className="mt-1.5 w-full bg-[#0F172A] border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#6366F1]" />
+            </label>
           </div>
           {[["Customer name", customerName, setCustomerName, "Jan Kowalski"], ["Phone", customerPhone, setCustomerPhone, "+48 500 123 456"]].map(([label, value, setter, placeholder]) => (
             <label key={label as string} className="block mb-3 text-sm text-[#94A3B8]">{label as string}
