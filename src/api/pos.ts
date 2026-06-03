@@ -1,8 +1,24 @@
 import { api } from "./client";
 
+export type PosSession = {
+  id: string;
+  cashierId: string;
+  businessDay: string;
+  status: "OPEN" | "CLOSED";
+  openingFloat: number;
+  closingFloat?: number;
+  cashSalesTotal?: number;
+  cardSalesTotal?: number;
+  orderCount?: number;
+  openedAt: string;
+  closedAt?: string;
+};
+
 export type PosMenuItem = {
   id: string;
   categoryId: string;
+  categoryName: string;
+  categorySortOrder: number;
   name: string;
   sku?: string;
   sellPrice: number;
@@ -113,4 +129,24 @@ export async function payOrder(
 
 export async function voidOrder(orderId: string): Promise<PosOrder> {
   return api<PosOrder>(`/pos/orders/${orderId}/void`, { method: "POST" });
+}
+
+// ─── Session ─────────────────────────────────────────────────────────────────
+
+export async function getCurrentSession(): Promise<PosSession | null> {
+  return api<PosSession | null>("/pos/session/current").catch(() => null);
+}
+
+export async function openSession(openingFloat: number): Promise<PosSession> {
+  return api<PosSession>("/pos/session/open", {
+    method: "POST",
+    body: JSON.stringify({ openingFloat }),
+  });
+}
+
+export async function closeSession(sessionId: string, closingFloat: number): Promise<PosSession> {
+  return api<PosSession>("/pos/session/close", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, closingFloat }),
+  });
 }
