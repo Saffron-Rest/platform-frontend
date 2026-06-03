@@ -85,11 +85,34 @@ export type CashDrawerTransaction = {
   createdAt: string;
 };
 
+export type PosQrTransaction = {
+  id: string;
+  orderId: string;
+  amount: number;
+  status: "PENDING" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
+  qrPayload: string;
+  providerReference?: string;
+  createdAt: string;
+  expiresAt: string;
+  confirmedAt?: string;
+};
+
+export type ExchangeRates = {
+  base: string;
+  updatedAt: string;
+  rates: Record<string, number>;
+};
+
 export type PosOrder = {
   id: string;
   tableId?: string;
   cashierId: string;
   status: "OPEN" | "PARKED" | "PAYING" | "PAID" | "VOIDED";
+  orderType: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
+  customerName?: string;
+  customerPhone?: string;
+  deliveryAddress?: string;
+  specialRequests?: string;
   covers?: number;
   orderNote?: string;
   totalGross: number;
@@ -126,6 +149,11 @@ export async function getOrder(id: string): Promise<PosOrder> {
 
 export async function createOrder(payload: {
   tableId?: string;
+  orderType?: string;
+  customerName?: string;
+  customerPhone?: string;
+  deliveryAddress?: string;
+  specialRequests?: string;
   covers?: number;
   orderNote?: string;
   lines?: Array<{
@@ -268,6 +296,29 @@ export async function saveTimePrice(payload: Partial<PosTimeBasedPrice>): Promis
 
 export async function deleteTimePrice(id: string): Promise<void> {
   await api(`/pos/time-prices/${id}`, { method: "DELETE" });
+}
+
+// ─── QR / BLIK payment ────────────────────────────────────────────────────────
+
+export async function initiateQrPayment(orderId: string, currency = "PLN"): Promise<PosQrTransaction> {
+  return api<PosQrTransaction>(`/pos/orders/${orderId}/qr-payment`, {
+    method: "POST",
+    body: JSON.stringify({ currency }),
+  });
+}
+
+export async function getQrStatus(transactionId: string): Promise<PosQrTransaction> {
+  return api<PosQrTransaction>(`/pos/qr/${transactionId}/status`);
+}
+
+export async function cancelQrPayment(transactionId: string): Promise<PosQrTransaction> {
+  return api<PosQrTransaction>(`/pos/qr/${transactionId}/cancel`, { method: "POST" });
+}
+
+// ─── Exchange rates ───────────────────────────────────────────────────────────
+
+export async function getExchangeRates(): Promise<ExchangeRates> {
+  return api<ExchangeRates>("/pos/currency/rates");
 }
 
 export async function recordCashMovement(payload: {

@@ -2,13 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addLine,
   applyDiscount,
+  cancelQrPayment,
   clearDiscount,
   closeSession,
   createOrder,
   getCurrentSession,
+  getExchangeRates,
   getOpenOrders,
   getPosMenu,
   getPosTables,
+  getQrStatus,
+  initiateQrPayment,
   openSession,
   parkOrder,
   payOrder,
@@ -16,8 +20,10 @@ import {
   recordCashMovement,
   resumeOrder,
   searchByBarcode,
+  type ExchangeRates,
   type PosOrder,
   type PosMenuItem,
+  type PosQrTransaction,
   type PosSession,
   type PosTable,
 } from "../api/pos";
@@ -191,6 +197,21 @@ export function PosApp() {
   const [discountIsPct, setDiscountIsPct] = useState(true);
   const [discountLineId, setDiscountLineId] = useState<string | null>(null);
   const [discountBusy, setDiscountBusy] = useState(false);
+  // Order form (delivery)
+  const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEAWAY" | "DELIVERY">("DINE_IN");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [specialRequests, setSpecialRequests] = useState("");
+  const [showOrderForm, setShowOrderForm] = useState(false);
+  // QR / BLIK
+  const [qrTx, setQrTx] = useState<PosQrTransaction | null>(null);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrBusy, setQrBusy] = useState(false);
+  // Multi-currency
+  const [rates, setRates] = useState<ExchangeRates | null>(null);
+  const [selectedCurrency, setSelectedCurrency] = useState("PLN");
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   // Combined payment
   const [showPayModal, setShowPayModal] = useState(false);
   const [payLegs, setPayLegs] = useState<Array<{ method: string; amount: string }>>([{ method: "CASH", amount: "" }]);
@@ -378,6 +399,11 @@ export function PosApp() {
       if (!order) {
         order = await createOrder({
           tableId: selectedTable?.id,
+          orderType,
+          customerName: customerName.trim() || undefined,
+          customerPhone: customerPhone.trim() || undefined,
+          deliveryAddress: deliveryAddress.trim() || undefined,
+          specialRequests: specialRequests.trim() || undefined,
           covers: covers ? Number(covers) : undefined,
           orderNote: orderNote.trim() || undefined,
           lines: cart.map((l) => ({ menuItemId: l.menuItemId, quantity: l.quantity })),
@@ -404,6 +430,48 @@ export function PosApp() {
       setPayBusy(false);
     }
   };
+
+  // ── QR / BLIK ────────────────────────────────────────────────────────────
+  const handleInitiateQr = async () => {
+    if (!activeOrder) return;
+    setQrBusy(true);
+    try {
+      const tx = await initiateQrPayment(activeOrder.id, selectedCurrency);
+      setQrTx(tx);
+      setShowQrModal(true);
+      // Start polling
+      const poll = setInterval(async () => {
+        try {
+          const updated = await getQrStatus(tx.id);
+          setQrTx(updated);
+          if (updated.status === "CONFIRMED") {
+            clearInterval(poll);
+            setShowQrModal(false);
+            setCart([]);
+            setTip(0);
+            setView("tables");
+            const tbl = await getPosTables();
+            setTables(tbl);
+          } else if (updated.status === "EXPIRED" || updated.status === "CANCELLED") {
+            clearInterval(poll);
+          }
+        } catch { clearInterval(poll); }
+      }, 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "QR payment failed");
+    } finally {
+      setQrBusy(false);
+    }
+  };
+
+  // ── Exchange rates ────────────────────────────────────────────────────────
+  useEffect(() => {
+    getExchangeRates().then(setRates).catch(() => {});
+  }, []);
+
+  const displayTotal = selectedCurrency === "PLN" || !rates
+    ? paymentTotal
+    : paymentTotal / (rates.rates[selectedCurrency] ?? 1);
 
   // ── Cart actions ──────────────────────────────────────────────────────────
 
@@ -736,6 +804,92 @@ export function PosApp() {
         </div>
       )}
 
+      {/* Order form modal (delivery) */}
+      {showOrderForm && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[var(--color-ink)] border border-white/10 rounded-2xl p-6 space-y-4 text-white">
+            <h2 className="text-lg font-bold">Order details</h2>
+            <div className="grid grid-cols-3 gap-2">
+              {(["DINE_IN", "TAKEAWAY", "DELIVERY"] as const).map((t) => (
+                <button key={t} type="button" onClick={() => setOrderType(t)}
+                  className={`py-2 rounded-xl text-xs font-semibold border-2 ${orderType === t ? "bg-[var(--color-saffron)] border-[var(--color-saffron)]" : "bg-white/5 border-white/20 text-white/60"}`}>
+                  {t === "DINE_IN" ? "Dine-in" : t === "TAKEAWAY" ? "Takeaway" : "Delivery"}
+                </button>
+              ))}
+            </div>
+            <label className="block text-sm text-white/50">Customer name{orderType === "DELIVERY" && " *"}
+              <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Jan Kowalski"
+                className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none" />
+            </label>
+            <label className="block text-sm text-white/50">Phone
+              <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+48 500 123 456"
+                className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none" />
+            </label>
+            {orderType === "DELIVERY" && (
+              <label className="block text-sm text-white/50">Delivery address *
+                <input type="text" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="ul. Marszałkowska 1, Warszawa"
+                  className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none" />
+              </label>
+            )}
+            <label className="block text-sm text-white/50">Special requests
+              <textarea value={specialRequests} onChange={(e) => setSpecialRequests(e.target.value)} placeholder="Allergens, no onion, extra sauce…" rows={2}
+                className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm focus:outline-none resize-none" />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="ghost" onClick={() => setShowOrderForm(false)}>Cancel</Button>
+              <Button onClick={() => setShowOrderForm(false)}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR / BLIK modal */}
+      {showQrModal && qrTx && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-xs bg-[var(--color-ink)] border border-white/10 rounded-2xl p-6 space-y-4 text-white text-center">
+            <h2 className="text-lg font-bold">BLIK / QR Payment</h2>
+            <p className="text-white/50 text-sm">Scan with your banking app or enter the code</p>
+            {/* QR placeholder — in production replace with <QRCode value={qrTx.qrPayload} /> */}
+            <div className="bg-white rounded-xl p-4 mx-auto w-40 h-40 flex items-center justify-center">
+              <div className="text-[var(--color-ink)] text-xs text-center break-all">{qrTx.id.slice(0, 12)}…</div>
+            </div>
+            <p className="text-2xl font-bold text-[var(--color-saffron)]">{fmt(qrTx.amount)}</p>
+            <p className={`text-sm font-semibold ${qrTx.status === "CONFIRMED" ? "text-emerald-400" : qrTx.status === "EXPIRED" ? "text-red-400" : "text-amber-300"}`}>
+              {qrTx.status === "PENDING" ? "⏳ Waiting for payment…" : qrTx.status === "CONFIRMED" ? "✓ Confirmed!" : qrTx.status}
+            </p>
+            <button type="button" onClick={async () => {
+              if (qrTx) await cancelQrPayment(qrTx.id).catch(() => {});
+              setShowQrModal(false);
+              setQrTx(null);
+            }} className="text-xs text-red-400 hover:text-red-300">Cancel payment</button>
+          </div>
+        </div>
+      )}
+
+      {/* Currency picker */}
+      {showCurrencyPicker && rates && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-xs bg-[var(--color-ink)] border border-white/10 rounded-2xl p-5 space-y-3 text-white">
+            <h2 className="font-bold">Select currency</h2>
+            {["PLN", "EUR", "USD", "GBP"].map((c) => {
+              const rate = rates.rates[c] ?? 1;
+              const converted = c === "PLN" ? paymentTotal : paymentTotal / rate;
+              return (
+                <button key={c} type="button" onClick={() => { setSelectedCurrency(c); setShowCurrencyPicker(false); }}
+                  className={`w-full flex justify-between items-center px-4 py-3 rounded-xl border transition ${selectedCurrency === c ? "border-[var(--color-saffron)] bg-[var(--color-saffron)]/15" : "border-white/10 bg-white/5 hover:bg-white/10"}`}>
+                  <span className="font-semibold">{c}</span>
+                  <div className="text-right">
+                    <p className="font-bold">{fmt(converted)} {c}</p>
+                    {c !== "PLN" && <p className="text-xs text-white/40">1 {c} = {rate.toFixed(4)} PLN</p>}
+                  </div>
+                </button>
+              );
+            })}
+            <button type="button" onClick={() => setShowCurrencyPicker(false)} className="w-full text-white/40 text-xs py-1 hover:text-white/60">Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* ── Left panel ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -795,9 +949,22 @@ export function PosApp() {
             </button>
             <button
               type="button"
+              onClick={() => setShowOrderForm(true)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition ${orderType !== "DINE_IN" ? "text-blue-300 border-blue-400/40 bg-blue-400/10" : "text-white/40 border-white/20 hover:bg-white/5"}`}
+            >
+              {orderType === "DELIVERY" ? "🛵 Delivery" : orderType === "TAKEAWAY" ? "📦 Takeaway" : "📋 Order"}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.open("/pos/waiter", "_blank")}
+              className="text-xs text-white/40 hover:text-white/70 px-2 py-1.5 rounded-lg hover:bg-white/5 transition"
+            >
+              🧑‍💼 Waiter
+            </button>
+            <button
+              type="button"
               onClick={() => window.open("/pos/display", "_blank")}
               className="text-xs text-white/40 hover:text-white/70 px-2 py-1.5 rounded-lg hover:bg-white/5 transition"
-              title="Open customer display in a new window"
             >
               🖥 Display
             </button>
@@ -1120,9 +1287,26 @@ export function PosApp() {
                 <span>Tip</span><span>+{fmt(tip)}</span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-lg border-t border-white/10 pt-1.5">
-              <span>To pay</span>
-              <span className="text-[var(--color-saffron)]">{fmt(paymentTotal)}</span>
+            <div className="flex items-center justify-between border-t border-white/10 pt-1.5">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-lg">To pay</span>
+                {rates && (
+                  <button type="button" onClick={() => setShowCurrencyPicker(true)}
+                    className="text-xs px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20 text-white/60">
+                    {selectedCurrency} ▾
+                  </button>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="font-bold text-lg text-[var(--color-saffron)]">
+                  {selectedCurrency === "PLN" || !rates
+                    ? fmt(paymentTotal)
+                    : `${(paymentTotal / (rates.rates[selectedCurrency] ?? 1)).toFixed(2)} ${selectedCurrency}`}
+                </span>
+                {selectedCurrency !== "PLN" && rates && (
+                  <p className="text-[10px] text-white/40">{fmt(paymentTotal)} PLN</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1197,6 +1381,14 @@ export function PosApp() {
             className="w-full py-2 text-xs font-medium text-[var(--color-saffron-dark)] hover:underline disabled:opacity-30"
           >
             Split / combined payment →
+          </button>
+          <button
+            type="button"
+            onClick={handleInitiateQr}
+            disabled={cart.length === 0 || qrBusy || nipStatus === "invalid"}
+            className="w-full py-2 text-xs font-medium text-white/50 hover:text-white/80 disabled:opacity-30 border border-white/10 rounded-lg hover:bg-white/5 transition"
+          >
+            {qrBusy ? "Generating QR…" : "📱 BLIK / QR code payment"}
           </button>
 
           {cart.length > 0 && (

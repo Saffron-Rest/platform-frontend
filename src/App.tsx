@@ -15,6 +15,7 @@ import { NoAccess } from "./pages/NoAccess";
 import { Dashboard } from "./pages/Dashboard";
 import { PosApp } from "./pages/PosApp";
 import { PosDisplay } from "./pages/PosDisplay";
+import { PosWaiter } from "./pages/PosWaiter";
 import { EntryPage } from "./pages/EntryPage";
 import { EntryDetail } from "./pages/EntryDetail";
 import { Schedule } from "./pages/Schedule";
@@ -87,6 +88,8 @@ export default function App() {
                 <Route path="/pos" element={<RouteErrorBoundary><PosApp /></RouteErrorBoundary>} />
                 {/* Customer-facing display — second screen / monitor */}
                 <Route path="/pos/display" element={<RouteErrorBoundary><PosDisplay /></RouteErrorBoundary>} />
+                {/* Mobile Waiter — portrait-optimised tableside ordering */}
+                <Route path="/pos/waiter" element={<RouteErrorBoundary><PosWaiter /></RouteErrorBoundary>} />
                 <Route element={<Layout />}>
                   <Route path="/no-access" element={<NoAccess />} />
                   <Route path="/" element={<RouteErrorBoundary><Dashboard /></RouteErrorBoundary>} />
