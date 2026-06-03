@@ -38,24 +38,63 @@ function nipValid(nip: string) {
   return [6, 5, 7, 2, 3, 4, 5, 6, 7].reduce((s, v, i) => s + v * Number(d[i]), 0) % 11 === Number(d[9]);
 }
 
-// ─── Shared input style (dark context) ───────────────────────────────────────
+// ─── Shared styles (dark POS context) ────────────────────────────────────────
 
-const darkInput = "w-full bg-white/[0.06] border border-white/[0.10] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[var(--color-saffron)] focus:ring-1 focus:ring-[var(--color-saffron)]/25 transition";
+const darkInput =
+  "w-full bg-white/[0.06] border border-white/[0.12] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[var(--color-saffron)] focus:ring-2 focus:ring-[var(--color-saffron)]/20 transition";
+
+const panelBg = "rgba(22,19,17,0.92)";
 
 // ─── Primitive helpers ────────────────────────────────────────────────────────
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="fixed inset-0 z-50 bg-[var(--color-ink)]/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#231f1c] rounded-2xl p-6 w-full max-w-md border border-white/[0.08] shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ background: "rgba(10,8,7,0.72)", backdropFilter: "blur(8px)" }}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className={`bg-[#1e1b18] rounded-t-2xl sm:rounded-2xl p-6 w-full border border-white/[0.10] shadow-2xl max-h-[90vh] overflow-y-auto ${wide ? "max-w-lg" : "max-w-md"}`}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-bold text-white">{title}</h2>
-          <button type="button" onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-white/50 flex items-center justify-center text-lg leading-none transition">×</button>
+          <h2 className="text-lg font-bold text-white tracking-tight">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="w-9 h-9 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-white/60 hover:text-white flex items-center justify-center transition"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
         {children}
       </div>
     </div>
+  );
+}
+
+function IconBtn({ onClick, title, children, active, danger }: { onClick: () => void; title: string; children: React.ReactNode; active?: boolean; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`h-9 min-w-9 px-2.5 rounded-xl flex items-center justify-center gap-1.5 text-xs font-medium transition ${
+        danger
+          ? "bg-[var(--color-danger)]/12 hover:bg-[var(--color-danger)]/20 text-[var(--color-danger)]"
+          : active
+            ? "bg-[var(--color-saffron)]/15 text-[var(--color-saffron)] border border-[var(--color-saffron)]/25"
+            : "bg-white/[0.05] hover:bg-white/[0.10] text-white/55 hover:text-white border border-transparent"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -95,34 +134,62 @@ function SessionGate({ onOpen }: { onOpen: (s: PosSession) => void }) {
     catch (e) { setErr(e instanceof Error ? e.message : "Failed"); setBusy(false); }
   };
 
+  const presets = [0, 100, 200, 500];
+
   return (
     <div className="min-h-screen bg-[var(--color-ink)] flex items-center justify-center p-6">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
-            style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}>
-            <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <div className="w-full max-w-md">
+        <div className="text-center mb-10">
+          <div
+            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-5 shadow-lg"
+            style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}
+          >
+            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-white font-[family-name:var(--font-display)] tracking-tight">Saffron POS</h1>
-          <p className="text-white/45 text-sm mt-1">Open your shift to begin taking orders</p>
+          <h1 className="text-3xl font-bold text-white font-[family-name:var(--font-display)] tracking-tight">Saffron POS</h1>
+          <p className="text-white/50 text-sm mt-2 max-w-xs mx-auto">Count the cash in your drawer, then open your shift to start serving guests.</p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white/[0.04] rounded-2xl p-6 border border-white/[0.08]">
-          {err && <div className="mb-4 px-3 py-2.5 rounded-xl bg-[var(--color-danger)]/15 text-[var(--color-danger)] text-sm border border-[var(--color-danger)]/20">{err}</div>}
-          <label className="block mb-5">
-            <span className="text-xs font-bold uppercase tracking-wider text-white/45">Opening cash float (PLN)</span>
-            <input type="number" min={0} step={0.01} value={float_}
+        <div className="bg-white/[0.04] rounded-2xl p-6 sm:p-8 border border-white/[0.10] shadow-xl">
+          {err && <ErrBox>{err}</ErrBox>}
+          <label className="block mb-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-white/50">Opening cash float (PLN)</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={float_}
               onChange={e => setFloat(e.target.value)}
               onKeyDown={e => e.key === "Enter" && submit()}
-              className="mt-2 w-full bg-white/[0.06] border border-white/[0.10] rounded-xl px-4 py-3.5 text-white text-2xl text-center tabular-nums font-semibold focus:outline-none focus:border-[var(--color-saffron)] focus:ring-1 focus:ring-[var(--color-saffron)]/25" />
+              autoFocus
+              className="mt-2 w-full bg-white/[0.06] border border-white/[0.12] rounded-xl px-4 py-4 text-white text-3xl text-center tabular-nums font-bold focus:outline-none focus:border-[var(--color-saffron)] focus:ring-2 focus:ring-[var(--color-saffron)]/25"
+            />
           </label>
-          <button type="button" onClick={submit} disabled={busy}
-            className="w-full text-white font-semibold py-3.5 rounded-xl transition disabled:opacity-50 text-sm"
-            style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}>
+          <div className="grid grid-cols-4 gap-2 mb-6">
+            {presets.map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setFloat(String(p))}
+                className={`py-2.5 rounded-xl text-sm font-semibold border transition ${
+                  Number(float_) === p
+                    ? "bg-[var(--color-saffron)]/20 border-[var(--color-saffron)]/40 text-[var(--color-saffron)]"
+                    : "border-white/[0.10] text-white/45 hover:bg-white/[0.06] hover:text-white/70"
+                }`}
+              >
+                {p === 0 ? "0" : fmt(p)}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={busy}
+            className="w-full text-white font-bold py-4 rounded-xl transition disabled:opacity-50 text-base shadow-lg active:scale-[0.98]"
+            style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}
+          >
             {busy ? "Opening shift…" : "Open Shift"}
           </button>
         </div>
@@ -216,6 +283,7 @@ export function PosApp() {
   const [payBusy, setPayBusy] = useState(false);
   const [showOpenBills, setShowOpenBills] = useState(false);
   const [openOrders, setOpenOrders] = useState<PosOrder[]>([]);
+  const [menuSearch, setMenuSearch] = useState("");
 
   const loadData = useCallback(async () => {
     try { const [m, t] = await Promise.all([getPosMenu(), getPosTables()]); setMenu(m); setTables(t); }
@@ -250,7 +318,12 @@ export function PosApp() {
     return [...seen.entries()].sort((a, b) => a[1].sortOrder - b[1].sortOrder).map(([id, { name }]) => ({ id, name }));
   }, [menu]);
 
-  const filteredMenu = useMemo(() => activeCat ? menu.filter(i => i.categoryId === activeCat) : menu, [menu, activeCat]);
+  const filteredMenu = useMemo(() => {
+    let items = activeCat ? menu.filter(i => i.categoryId === activeCat) : menu;
+    const q = menuSearch.trim().toLowerCase();
+    if (q) items = items.filter(i => i.name.toLowerCase().includes(q) || (i.sku ?? "").toLowerCase().includes(q));
+    return items;
+  }, [menu, activeCat, menuSearch]);
   const areas = useMemo(() => { const s = new Set<string>(); tables.forEach(t => { if (t.area) s.add(t.area); }); return [...s].sort(); }, [tables]);
   const filteredTables = areaFilter ? tables.filter(t => t.area === areaFilter) : tables;
 
@@ -372,10 +445,10 @@ export function PosApp() {
 
   // ── Shared toggle button style ─────────────────────────────────────────────
   const segBtn = (active: boolean) =>
-    `flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${active ? "bg-white/[0.10] text-white shadow" : "text-white/40 hover:text-white/60"}`;
+    `flex-1 py-2 rounded-lg text-xs font-bold transition ${active ? "bg-white/[0.12] text-white shadow-sm" : "text-white/45 hover:text-white/70"}`;
 
   const catBtn = (active: boolean) =>
-    `w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-medium transition ${active ? "bg-white/[0.08] text-white" : "text-white/50 hover:bg-white/[0.04] hover:text-white/80"}`;
+    `w-full flex items-center gap-2.5 px-3 py-3 rounded-xl text-[13px] font-medium transition relative ${active ? "bg-[var(--color-saffron)]/12 text-white border border-[var(--color-saffron)]/20" : "text-white/50 hover:bg-white/[0.05] hover:text-white/85 border border-transparent"}`;
 
   return (
     <div className="flex flex-col h-screen bg-[var(--color-ink)] text-white overflow-hidden select-none">
@@ -579,114 +652,176 @@ export function PosApp() {
         </Modal>
       )}
 
-      {/* Open bills sidebar */}
+      {/* Open bills drawer */}
       {showOpenBills && (
-        <div className="fixed inset-y-0 left-0 z-50 w-80 bg-[#231f1c] border-r border-white/[0.08] flex flex-col shadow-2xl">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
-            <h3 className="font-bold text-white text-sm">Open Bills ({openOrders.length})</h3>
-            <button type="button" onClick={() => setShowOpenBills(false)}
-              className="w-8 h-8 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-white/50 flex items-center justify-center">×</button>
-          </div>
-          <div className="flex-1 overflow-auto">
-            {openOrders.length === 0
-              ? <p className="text-white/25 text-sm text-center py-10">No open bills</p>
-              : openOrders.map(o => {
-                const tbl = tables.find(t => t.id === o.tableId);
-                const age = Math.round((Date.now() - new Date(o.openedAt).getTime()) / 60000);
-                return (
-                  <button key={o.id} type="button"
-                    onClick={async () => { if (o.status === "PARKED") await resumeOrder(o.id).catch(() => {}); setSelectedTable(tbl ?? null); setMainView("menu"); setShowOpenBills(false); }}
-                    className="w-full text-left px-5 py-3.5 hover:bg-white/[0.04] border-b border-white/[0.05] transition">
-                    <div className="flex justify-between mb-1">
-                      <span className="font-semibold text-sm text-white">{tbl?.name ?? "Take-away"}</span>
-                      <span className="text-xs text-white/30">{age}m ago</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-xs text-white/40">{o.lines.length} items · <span className={o.status === "PARKED" ? "text-[var(--color-saffron)]" : "text-[var(--color-success)]"}>{o.status}</span></span>
-                      <span className="text-sm font-bold text-[var(--color-saffron)]">{fmt(o.totalGross)}</span>
-                    </div>
-                  </button>
-                );
-              })}
-          </div>
-          <div className="px-5 py-3 border-t border-white/[0.06]">
-            <button onClick={loadOpenOrders} className="w-full py-2 text-xs text-white/30 hover:text-white/50 rounded-lg hover:bg-white/[0.04] transition">Refresh</button>
-          </div>
-        </div>
+        <>
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setShowOpenBills(false)} aria-hidden />
+          <aside className="fixed inset-y-0 left-0 z-50 w-[min(22rem,90vw)] flex flex-col shadow-2xl border-r border-white/[0.10]" style={{ background: panelBg }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
+              <div>
+                <h3 className="font-bold text-white">Open bills</h3>
+                <p className="text-xs text-white/40 mt-0.5">{openOrders.length} active {openOrders.length === 1 ? "order" : "orders"}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOpenBills(false)}
+                aria-label="Close"
+                className="w-9 h-9 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-white/60 flex items-center justify-center"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-3 space-y-2">
+              {openOrders.length === 0 ? (
+                <div className="text-center py-16 px-4">
+                  <p className="text-white/40 text-sm font-medium">No open bills</p>
+                  <p className="text-white/25 text-xs mt-1">Parked and in-progress orders appear here</p>
+                </div>
+              ) : (
+                openOrders.map(o => {
+                  const tbl = tables.find(t => t.id === o.tableId);
+                  const age = Math.round((Date.now() - new Date(o.openedAt).getTime()) / 60000);
+                  const parked = o.status === "PARKED";
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={async () => {
+                        if (parked) await resumeOrder(o.id).catch(() => {});
+                        setSelectedTable(tbl ?? null);
+                        setMainView("menu");
+                        setShowOpenBills(false);
+                      }}
+                      className="w-full text-left p-4 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] transition active:scale-[0.99]"
+                    >
+                      <div className="flex justify-between items-start gap-2 mb-2">
+                        <span className="font-bold text-white">{tbl?.name ?? "Take-away"}</span>
+                        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full shrink-0 ${parked ? "bg-[var(--color-saffron)]/20 text-[var(--color-saffron)]" : "bg-[var(--color-success)]/15 text-emerald-400"}`}>
+                          {parked ? "Parked" : "Open"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-end">
+                        <span className="text-xs text-white/45">{o.lines.length} items · {age} min</span>
+                        <span className="text-base font-bold text-[var(--color-saffron)] tabular-nums">{fmt(o.totalGross)}</span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <div className="p-4 border-t border-white/[0.08]">
+              <GhostBtn onClick={loadOpenOrders} className="w-full">Refresh list</GhostBtn>
+            </div>
+          </aside>
+        </>
       )}
 
       {/* ── Top bar ── */}
-      <header className="flex items-center gap-3 px-4 h-14 border-b border-white/[0.08] shrink-0" style={{ background: "rgba(26,22,20,0.95)" }}>
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 mr-2">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-black shadow"
-            style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}>S</div>
-          <span className="font-bold text-sm text-white tracking-tight font-[family-name:var(--font-display)] hidden sm:block">Saffron POS</span>
+      <header className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 h-[3.25rem] border-b border-white/[0.08] shrink-0" style={{ background: panelBg }}>
+        <div className="flex items-center gap-2.5 mr-1 shrink-0">
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-black shadow"
+            style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}
+          >
+            S
+          </div>
+          <span className="font-bold text-sm text-white tracking-tight font-[family-name:var(--font-display)] hidden lg:block">POS</span>
         </div>
 
-        {/* Context badges */}
-        {selectedTable && (
-          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[var(--color-saffron)]/15 text-[var(--color-saffron)] border border-[var(--color-saffron)]/20">
-            {selectedTable.name}
-          </span>
-        )}
-        <button type="button" onClick={() => setShowOrderForm(true)}
-          className={`px-3 py-1 rounded-full text-xs font-semibold border transition ${orderType !== "DINE_IN" ? "bg-[var(--color-saffron)]/15 text-[var(--color-saffron)] border-[var(--color-saffron)]/20" : "bg-white/[0.05] text-white/40 border-white/[0.08] hover:bg-white/[0.08]"}`}>
-          {orderType === "DELIVERY" ? "Delivery" : orderType === "TAKEAWAY" ? "Takeaway" : "Dine-in"}
-        </button>
-
-        {/* Error */}
-        {error && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-[var(--color-danger)]/15 text-[var(--color-danger)] text-xs rounded-full border border-[var(--color-danger)]/20 max-w-xs">
-            <span className="truncate">{error}</span>
-            <button type="button" onClick={() => setError("")} className="shrink-0">×</button>
-          </div>
-        )}
-
-        <div className="ml-auto flex items-center gap-1.5">
-          <span className="text-xs text-white/25 tabular-nums mr-2 hidden md:block">{timeStr}</span>
-
-          <button type="button" onClick={() => setShowOpenBills(true)}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-white/[0.05] hover:bg-white/[0.08] text-white/50 hover:text-white text-xs transition">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-            Bills {openOrders.length > 0 && <span className="bg-[var(--color-saffron)] text-white text-[10px] font-bold px-1.5 rounded-full">{openOrders.length}</span>}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {selectedTable ? (
+            <button
+              type="button"
+              onClick={() => setMainView("tables")}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[var(--color-saffron)]/15 text-[var(--color-saffron)] border border-[var(--color-saffron)]/25 hover:bg-[var(--color-saffron)]/25 transition shrink-0"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 5.25v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6z" />
+              </svg>
+              {selectedTable.name}
+            </button>
+          ) : mainView === "menu" && (
+            <span className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white/[0.06] text-white/50 border border-white/[0.08] shrink-0">Take-away</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowOrderForm(true)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition shrink-0 ${
+              orderType !== "DINE_IN" || covers || orderNote
+                ? "bg-[var(--color-saffron)]/15 text-[var(--color-saffron)] border-[var(--color-saffron)]/25"
+                : "bg-white/[0.05] text-white/45 border-white/[0.08] hover:bg-white/[0.08] hover:text-white/70"
+            }`}
+          >
+            {orderType === "DELIVERY" ? "Delivery" : orderType === "TAKEAWAY" ? "Takeaway" : "Order info"}
           </button>
+          {error && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-danger)]/15 text-[var(--color-danger)] text-xs rounded-xl border border-[var(--color-danger)]/25 min-w-0 flex-1 max-w-md">
+              <span className="truncate">{error}</span>
+              <button type="button" onClick={() => setError("")} className="shrink-0 font-bold" aria-label="Dismiss">×</button>
+            </div>
+          )}
+        </div>
+
+        <div className="ml-auto flex items-center gap-1 shrink-0">
+          <span className="text-xs text-white/30 tabular-nums mr-1 hidden md:block">{timeStr}</span>
+
+          <IconBtn onClick={() => { setShowOpenBills(true); loadOpenOrders(); }} title="Open bills" active={showOpenBills}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <span className="hidden sm:inline">Bills</span>
+            {openOrders.length > 0 && (
+              <span className="bg-[var(--color-saffron)] text-white text-[10px] font-bold min-w-[1.125rem] h-[1.125rem] px-1 rounded-full flex items-center justify-center">
+                {openOrders.length}
+              </span>
+            )}
+          </IconBtn>
 
           {cart.length > 0 && activeOrder && (
-            <button type="button" onClick={() => setShowDiscountDrawer(true)}
-              className="h-8 px-3 rounded-lg bg-white/[0.05] hover:bg-white/[0.08] text-white/50 hover:text-white text-xs transition hidden sm:flex items-center">
-              % Disc
-            </button>
+            <IconBtn onClick={() => setShowDiscountDrawer(true)} title="Apply discount">
+              <span className="font-bold text-sm">%</span>
+            </IconBtn>
           )}
           {cart.length > 0 && activeOrder && (
-            <button type="button" onClick={() => setShowParkModal(true)}
-              className="h-8 px-3 rounded-lg bg-[var(--color-saffron)]/10 hover:bg-[var(--color-saffron)]/20 text-[var(--color-saffron)] text-xs font-medium transition">
+            <button
+              type="button"
+              onClick={() => setShowParkModal(true)}
+              className="h-9 px-3 rounded-xl bg-[var(--color-saffron)]/15 hover:bg-[var(--color-saffron)]/25 text-[var(--color-saffron)] text-xs font-bold border border-[var(--color-saffron)]/25 transition"
+            >
               Park
             </button>
           )}
-          <button type="button" onClick={() => setShowCashModal(true)}
-            className="h-8 px-3 rounded-lg bg-white/[0.05] hover:bg-white/[0.08] text-white/50 hover:text-white text-xs transition">
-            Cash
-          </button>
+          <IconBtn onClick={() => setShowCashModal(true)} title="Cash drawer">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.172-.879-1.172-2.303 0-3.182.879-.879 2.07-.879 3.242 0l.879.659" />
+            </svg>
+          </IconBtn>
 
-          <div className="w-px h-5 bg-white/[0.08] mx-1" />
+          <div className="w-px h-6 bg-white/[0.08] mx-0.5 hidden sm:block" />
 
-          {[
-            { href: "/pos/display", icon: "M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3", title: "Customer display" },
-            { href: "/pos/waiter", icon: "M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3", title: "Waiter app" },
-          ].map(({ href, icon, title }) => (
-            <button key={href} type="button" onClick={() => window.open(href, "_blank")} title={title}
-              className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.08] text-white/30 hover:text-white/60 flex items-center justify-center transition">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d={icon} /></svg>
-            </button>
-          ))}
-          <button type="button" onClick={() => { window.location.href = "/"; }}
-            className="w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.08] text-white/30 hover:text-white/60 flex items-center justify-center transition">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
-          </button>
-          <button type="button" onClick={() => setShowCloseModal(true)}
-            className="h-8 px-3 rounded-lg bg-[var(--color-danger)]/10 hover:bg-[var(--color-danger)]/20 text-[var(--color-danger)] text-xs font-medium transition ml-1">
-            Close
+          <IconBtn onClick={() => window.open("/pos/display", "_blank")} title="Customer display">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3" />
+            </svg>
+          </IconBtn>
+          <IconBtn onClick={() => window.open("/pos/waiter", "_blank")} title="Waiter app">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
+            </svg>
+          </IconBtn>
+          <IconBtn onClick={() => { window.location.href = "/"; }} title="Exit to platform">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
+          </IconBtn>
+          <button
+            type="button"
+            onClick={() => setShowCloseModal(true)}
+            className="h-9 px-3 rounded-xl bg-[var(--color-danger)]/12 hover:bg-[var(--color-danger)]/22 text-[var(--color-danger)] text-xs font-bold border border-[var(--color-danger)]/20 transition ml-0.5"
+          >
+            End shift
           </button>
         </div>
       </header>
@@ -695,31 +830,30 @@ export function PosApp() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── Category sidebar ── */}
-        <aside className="w-52 border-r border-white/[0.08] flex flex-col overflow-hidden shrink-0" style={{ background: "rgba(26,22,20,0.6)" }}>
-          {/* Tables / Menu toggle */}
+        <aside className="w-56 border-r border-white/[0.08] flex flex-col overflow-hidden shrink-0" style={{ background: panelBg }}>
           <div className="px-3 py-3 border-b border-white/[0.06]">
-            <div className="flex bg-white/[0.04] rounded-xl p-0.5 gap-0.5">
-              <button type="button" onClick={() => setMainView("tables")} className={segBtn(mainView === "tables")}>Tables</button>
-              <button type="button" onClick={() => setMainView("menu")} className={segBtn(mainView === "menu")}>Menu</button>
+            <div className="flex bg-white/[0.05] rounded-xl p-1 gap-1">
+              <button type="button" onClick={() => setMainView("tables")} className={segBtn(mainView === "tables")}>
+                Tables
+              </button>
+              <button type="button" onClick={() => setMainView("menu")} className={segBtn(mainView === "menu")}>
+                Menu
+              </button>
             </div>
           </div>
 
-          {/* Category nav */}
           {mainView === "menu" && (
-            <nav className="flex-1 overflow-auto py-2 px-2 space-y-px">
+            <nav className="flex-1 overflow-auto py-2 px-2 space-y-1">
               <button type="button" onClick={() => setActiveCat(null)} className={catBtn(!activeCat)}>
-                {!activeCat && <span className="absolute left-0 top-2 bottom-2 w-0.5 bg-[var(--color-saffron)] rounded-r" style={{ position: "relative", width: 3, height: "100%", flexShrink: 0 }} />}
-                <span className="truncate flex-1">All items</span>
-                <span className="text-[11px] tabular-nums text-white/20 shrink-0">{menu.length}</span>
+                <span className="truncate flex-1 text-left">All items</span>
+                <span className="text-[11px] tabular-nums text-white/30 shrink-0 bg-white/[0.06] px-1.5 py-0.5 rounded-md">{menu.length}</span>
               </button>
               {categories.map(c => {
                 const count = menu.filter(i => i.categoryId === c.id).length;
-                const active = activeCat === c.id;
                 return (
-                  <button key={c.id} type="button" onClick={() => setActiveCat(c.id)} className={`${catBtn(active)} relative`}>
-                    {active && <span className="absolute left-0 inset-y-0 w-0.5 bg-[var(--color-saffron)] rounded-r" />}
-                    <span className="truncate flex-1 pl-1">{c.name}</span>
-                    <span className="text-[11px] tabular-nums text-white/20 shrink-0">{count}</span>
+                  <button key={c.id} type="button" onClick={() => setActiveCat(c.id)} className={catBtn(activeCat === c.id)}>
+                    <span className="truncate flex-1 text-left">{c.name}</span>
+                    <span className="text-[11px] tabular-nums text-white/30 shrink-0 bg-white/[0.06] px-1.5 py-0.5 rounded-md">{count}</span>
                   </button>
                 );
               })}
@@ -747,39 +881,72 @@ export function PosApp() {
 
           {/* Tables */}
           {mainView === "tables" && (
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-5">
+            <div className="p-5 max-w-5xl">
+              <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
                 <div>
-                  <h2 className="font-bold text-white text-sm">Floor Plan</h2>
-                  <p className="text-xs text-white/30 mt-0.5">
-                    {filteredTables.filter(t => !t.occupied).length} free · {filteredTables.filter(t => t.occupied).length} occupied
-                  </p>
+                  <h2 className="font-bold text-white text-lg tracking-tight">Floor plan</h2>
+                  <p className="text-sm text-white/40 mt-1">Tap a table to open or continue an order</p>
+                </div>
+                <div className="flex gap-4 text-xs font-medium">
+                  <span className="flex items-center gap-2 text-white/50">
+                    <span className="w-3 h-3 rounded-full bg-white/[0.08] border border-white/[0.12]" />
+                    {filteredTables.filter(t => !t.occupied).length} available
+                  </span>
+                  <span className="flex items-center gap-2 text-[var(--color-saffron)]">
+                    <span className="w-3 h-3 rounded-full bg-[var(--color-saffron)]/40" />
+                    {filteredTables.filter(t => t.occupied).length} in use
+                  </span>
                 </div>
               </div>
-              <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                 {filteredTables.map(t => (
-                  <button key={t.id} type="button"
+                  <button
+                    key={t.id}
+                    type="button"
                     onClick={async () => {
                       setSelectedTable(t);
                       if (t.occupied && t.openOrderId) {
-                        try { const r = await resumeOrder(t.openOrderId); setActiveOrder(r); setCart(r.lines.map(l => ({ menuItemId: l.menuItemId ?? l.id, itemName: l.itemName, unitPrice: l.unitPrice, vatRatePct: l.vatRatePct, quantity: l.quantity }))); } catch {}
+                        try {
+                          const r = await resumeOrder(t.openOrderId);
+                          setActiveOrder(r);
+                          setCart(
+                            r.lines.map(l => ({
+                              menuItemId: l.menuItemId ?? l.id,
+                              itemName: l.itemName,
+                              unitPrice: l.unitPrice,
+                              vatRatePct: l.vatRatePct,
+                              quantity: l.quantity,
+                            })),
+                          );
+                        } catch {}
                       }
                       setMainView("menu");
                     }}
-                    className={`aspect-square rounded-2xl flex flex-col items-center justify-center gap-1.5 text-sm font-semibold border transition active:scale-95 ${
+                    className={`min-h-[5.5rem] rounded-2xl flex flex-col items-center justify-center gap-1 px-2 py-4 text-sm font-bold border-2 transition active:scale-[0.98] ${
                       t.occupied
-                        ? "bg-[var(--color-saffron)]/8 border-[var(--color-saffron)]/20 text-[var(--color-saffron)] hover:bg-[var(--color-saffron)]/15"
-                        : "bg-white/[0.03] border-white/[0.06] text-white/50 hover:bg-white/[0.06] hover:text-white/80 hover:border-white/[0.10]"
-                    } ${selectedTable?.id === t.id ? "ring-2 ring-[var(--color-saffron)] ring-offset-2 ring-offset-[var(--color-ink)]" : ""}`}>
-                    <span>{t.name}</span>
-                    <span className="text-[10px] font-normal opacity-40">{t.seats} seats</span>
-                    {t.occupied && <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-saffron)]" />}
+                        ? "bg-[var(--color-saffron)]/10 border-[var(--color-saffron)]/35 text-[var(--color-saffron)] hover:bg-[var(--color-saffron)]/18 shadow-[0_0_0_1px_rgba(196,92,38,0.15)]"
+                        : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white hover:border-white/[0.14]"
+                    } ${selectedTable?.id === t.id ? "ring-2 ring-[var(--color-saffron)] ring-offset-2 ring-offset-[var(--color-ink)]" : ""}`}
+                  >
+                    <span className="text-base">{t.name}</span>
+                    <span className="text-[11px] font-normal opacity-50">{t.seats} seats</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider mt-1 px-2 py-0.5 rounded-full ${t.occupied ? "bg-[var(--color-saffron)]/25" : "bg-white/[0.06] text-white/35"}`}>
+                      {t.occupied ? "Busy" : "Free"}
+                    </span>
                   </button>
                 ))}
-                <button type="button" onClick={() => { setSelectedTable(null); setMainView("menu"); }}
-                  className="aspect-square rounded-2xl flex flex-col items-center justify-center gap-1 bg-white/[0.03] border border-dashed border-white/[0.08] text-white/30 hover:text-white/50 hover:bg-white/[0.05] transition active:scale-95">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
-                  <span className="text-[10px] font-medium">Take-away</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTable(null);
+                    setMainView("menu");
+                  }}
+                  className="min-h-[5.5rem] rounded-2xl flex flex-col items-center justify-center gap-2 bg-white/[0.02] border-2 border-dashed border-white/[0.12] text-white/40 hover:text-white/65 hover:bg-white/[0.05] hover:border-white/[0.18] transition active:scale-[0.98]"
+                >
+                  <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                  <span className="text-xs font-semibold">Take-away</span>
                 </button>
               </div>
             </div>
@@ -787,20 +954,59 @@ export function PosApp() {
 
           {/* Menu */}
           {mainView === "menu" && (
-            <div className="p-4">
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            <div className="flex flex-col h-full">
+              <div className="sticky top-0 z-10 px-4 pt-4 pb-3 border-b border-white/[0.06] bg-[var(--color-ink)]/95 backdrop-blur-sm">
+                <div className="relative max-w-xl">
+                  <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                  </svg>
+                  <input
+                    type="search"
+                    value={menuSearch}
+                    onChange={e => setMenuSearch(e.target.value)}
+                    placeholder="Search menu or scan barcode…"
+                    className="w-full pl-10 pr-10 py-3 rounded-xl bg-white/[0.06] border border-white/[0.10] text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[var(--color-saffron)] focus:ring-2 focus:ring-[var(--color-saffron)]/20"
+                  />
+                  {menuSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMenuSearch("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white text-sm"
+                      aria-label="Clear search"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-white/25 mt-2 hidden sm:block">Barcode scanner works while this view is active</p>
+              </div>
+              <div className="p-4 flex-1 overflow-auto">
+              {filteredMenu.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <p className="text-white/40 font-medium">No items found</p>
+                  <p className="text-white/25 text-sm mt-1">Try another category or clear the search</p>
+                  {menuSearch && (
+                    <button type="button" onClick={() => setMenuSearch("")} className="mt-4 text-sm text-[var(--color-saffron)] hover:underline">
+                      Clear search
+                    </button>
+                  )}
+                </div>
+              ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {filteredMenu.map(item => {
                   const inCart = cart.find(l => l.menuItemId === item.id);
                   return (
                     <button key={item.id} type="button" onClick={() => addToCart(item)}
-                      className={`relative flex flex-col rounded-2xl overflow-hidden border text-left transition active:scale-[0.97] group ${
+                      className={`relative flex flex-col rounded-2xl overflow-hidden border-2 text-left transition active:scale-[0.97] ${
                         inCart
-                          ? "border-[var(--color-saffron)]/30 bg-[var(--color-saffron)]/6 ring-1 ring-[var(--color-saffron)]/15"
-                          : "border-white/[0.06] bg-white/[0.03] hover:border-white/[0.10] hover:bg-white/[0.05]"
+                          ? "border-[var(--color-saffron)]/50 bg-[var(--color-saffron)]/8 shadow-lg shadow-[var(--color-saffron)]/10"
+                          : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.14] hover:bg-white/[0.06]"
                       }`}>
                       {inCart && (
-                        <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center shadow-md"
-                          style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}>
+                        <div
+                          className="absolute top-2.5 right-2.5 z-10 min-w-[1.75rem] h-7 px-1.5 rounded-full text-white text-xs font-bold flex items-center justify-center shadow-lg"
+                          style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}
+                        >
                           {inCart.quantity}
                         </div>
                       )}
@@ -812,8 +1018,8 @@ export function PosApp() {
                           </div>
                         )
                       }
-                      <div className="p-3">
-                        <p className="text-xs font-semibold text-white/90 line-clamp-2 leading-tight mb-1">{item.name}</p>
+                      <div className="p-3.5">
+                        <p className="text-sm font-semibold text-white line-clamp-2 leading-snug mb-1.5">{item.name}</p>
                         {item.isHappyHour && (
                           <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[var(--color-saffron)] bg-[var(--color-saffron)]/10 px-1.5 py-0.5 rounded-full mb-1">
                             ⚡ {item.happyHourName ?? "Happy Hour"}
@@ -831,174 +1037,271 @@ export function PosApp() {
                   );
                 })}
               </div>
+              )}
+              </div>
             </div>
           )}
         </main>
 
         {/* ── Order panel ── */}
-        <aside className="w-80 xl:w-96 border-l border-white/[0.08] flex flex-col shrink-0" style={{ background: "rgba(26,22,20,0.6)" }}>
+        <aside className="w-[min(24rem,38vw)] min-w-[18rem] border-l border-white/[0.08] flex flex-col shrink-0" style={{ background: panelBg }}>
 
-          {/* Header */}
-          <div className="px-5 py-4 border-b border-white/[0.06]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-bold text-white text-sm">{selectedTable ? selectedTable.name : "Take-away"}</p>
-                <p className="text-white/30 text-xs mt-0.5">
+          <div className="px-5 py-4 border-b border-white/[0.08]">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-bold text-white text-base truncate">{selectedTable ? selectedTable.name : "Take-away"}</p>
+                <p className="text-white/40 text-xs mt-0.5 truncate">
                   {covers ? `${covers} covers · ` : ""}
-                  {orderType !== "DINE_IN" ? orderType.replace("_", " ") : "Current order"}
+                  {orderType === "DINE_IN" ? "Dine-in" : orderType === "TAKEAWAY" ? "Takeaway" : "Delivery"}
                 </p>
               </div>
               {cartCount > 0 && (
-                <span className="bg-[var(--color-saffron)]/15 text-[var(--color-saffron)] text-xs font-semibold px-2.5 py-1 rounded-full">
-                  {cartCount} items
+                <span className="bg-[var(--color-saffron)] text-white text-xs font-bold px-3 py-1.5 rounded-full shrink-0 tabular-nums">
+                  {cartCount}
                 </span>
               )}
             </div>
           </div>
 
-          {/* Lines */}
-          <div className="flex-1 overflow-auto px-4 py-3">
-            {cart.length === 0
-              ? (
-                <div className="flex flex-col items-center justify-center h-full pb-8">
-                  <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-3">
-                    <svg className="w-7 h-7 text-white/15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
-                  </div>
-                  <p className="text-white/25 text-sm font-medium">No items yet</p>
-                  <p className="text-white/15 text-xs mt-1">Tap any item from the menu</p>
+          <div className="flex-1 overflow-auto px-4 py-2">
+            {cart.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full min-h-[12rem] pb-8 px-4 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mb-4">
+                  <svg className="w-8 h-8 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+                  </svg>
                 </div>
-              )
-              : cart.map(line => (
-                <div key={line.menuItemId} className="flex items-center gap-3 py-2.5 border-b border-white/[0.05]">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-white/90 truncate">{line.itemName}</p>
-                    <p className="text-[11px] text-white/30">{fmt(line.unitPrice)}</p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button type="button" onClick={() => adjustQty(line.menuItemId, -1)}
-                      className="w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-white/50 hover:text-white flex items-center justify-center text-sm font-bold transition">−</button>
-                    <span className="w-6 text-center text-sm font-semibold text-white tabular-nums">{line.quantity}</span>
-                    <button type="button" onClick={() => adjustQty(line.menuItemId, 1)}
-                      className="w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-white/50 hover:text-white flex items-center justify-center text-sm font-bold transition">+</button>
-                  </div>
-                  <span className="text-[13px] font-bold text-white/80 tabular-nums w-14 text-right shrink-0">
-                    {fmt(line.unitPrice * line.quantity)}
-                  </span>
-                </div>
-              ))
-            }
+                <p className="text-white/45 text-sm font-semibold">Order is empty</p>
+                <p className="text-white/25 text-xs mt-1.5 leading-relaxed">Select a table, then tap menu items to add them here</p>
+                <button
+                  type="button"
+                  onClick={() => setMainView("menu")}
+                  className="mt-5 px-4 py-2 rounded-xl text-xs font-semibold text-[var(--color-saffron)] border border-[var(--color-saffron)]/30 hover:bg-[var(--color-saffron)]/10 transition"
+                >
+                  Browse menu
+                </button>
+              </div>
+            ) : (
+              <ul className="space-y-1">
+                {cart.map(line => (
+                  <li
+                    key={line.menuItemId}
+                    className="flex items-center gap-2 py-3 px-2 -mx-2 rounded-xl hover:bg-white/[0.03] border-b border-white/[0.05] last:border-0"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{line.itemName}</p>
+                      <p className="text-xs text-white/35 tabular-nums">{fmt(line.unitPrice)} each</p>
+                    </div>
+                    <div className="flex items-center gap-0.5 shrink-0 bg-white/[0.05] rounded-xl p-0.5 border border-white/[0.08]">
+                      <button
+                        type="button"
+                        onClick={() => adjustQty(line.menuItemId, -1)}
+                        aria-label="Decrease quantity"
+                        className="w-9 h-9 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] text-white/70 hover:text-white flex items-center justify-center text-lg font-bold transition"
+                      >
+                        −
+                      </button>
+                      <span className="w-8 text-center text-sm font-bold text-white tabular-nums">{line.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => adjustQty(line.menuItemId, 1)}
+                        aria-label="Increase quantity"
+                        className="w-9 h-9 rounded-lg bg-[var(--color-saffron)]/20 hover:bg-[var(--color-saffron)]/35 text-[var(--color-saffron)] flex items-center justify-center text-lg font-bold transition"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <span className="text-sm font-bold text-white tabular-nums w-[4.5rem] text-right shrink-0">
+                      {fmt(line.unitPrice * line.quantity)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
-          {/* Payment section */}
-          <div className="px-4 py-4 border-t border-white/[0.06] space-y-3">
-            {/* Tip */}
+          <div className="px-4 py-4 border-t border-white/[0.08] space-y-3.5 bg-[#181513]/80">
             {cartTotal > 0 && (
-              <div className="flex items-center gap-1">
-                <span className="text-[11px] text-white/30 mr-1 shrink-0">Tip</span>
-                {[0, 5, 10, 15].map(pct => {
-                  const v = pct === 0 ? 0 : Math.round(cartTotal * pct) / 100;
-                  return (
-                    <button key={pct} type="button" onClick={() => setTip(v)}
-                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold border transition ${tip === v ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white" : "border-white/[0.08] text-white/30 hover:border-white/[0.15] hover:text-white/50"}`}>
-                      {pct === 0 ? "No tip" : `+${pct}%`}
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-white/35">Tip</p>
+                <div className="flex items-center gap-1.5">
+                  {[0, 5, 10, 15].map(pct => {
+                    const v = pct === 0 ? 0 : Math.round(cartTotal * pct) / 100;
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setTip(v)}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold border transition ${
+                          tip === v
+                            ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                            : "border-white/[0.10] text-white/40 hover:border-white/[0.18] hover:text-white/60"
+                        }`}
+                      >
+                        {pct === 0 ? "None" : `${pct}%`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
 
-            {/* Totals */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-[13px] text-white/35">
-                <span>Net</span><span className="tabular-nums">{fmt(cartTotal - cartVat)}</span>
+            <div className="rounded-xl bg-white/[0.04] border border-white/[0.08] p-3.5 space-y-2">
+              <div className="flex justify-between text-xs text-white/40">
+                <span>Net</span>
+                <span className="tabular-nums">{fmt(cartTotal - cartVat)}</span>
               </div>
-              <div className="flex justify-between text-[13px] text-white/35">
-                <span>VAT</span><span className="tabular-nums">{fmt(cartVat)}</span>
+              <div className="flex justify-between text-xs text-white/40">
+                <span>VAT</span>
+                <span className="tabular-nums">{fmt(cartVat)}</span>
               </div>
-              {tip > 0 && <div className="flex justify-between text-[13px] text-white/35">
-                <span>Tip</span><span className="tabular-nums text-[var(--color-saffron)]">+{fmt(tip)}</span>
-              </div>}
-              <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
+              {tip > 0 && (
+                <div className="flex justify-between text-xs text-[var(--color-saffron)]">
+                  <span>Tip</span>
+                  <span className="tabular-nums">+{fmt(tip)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.08]">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-white text-base">Total</span>
+                  <span className="font-bold text-white">Total</span>
                   {rates && (
-                    <button type="button" onClick={() => setShowCurrencyPicker(true)}
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] hover:bg-white/[0.10] text-white/40 transition">
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrencyPicker(true)}
+                      className="text-[10px] px-2 py-0.5 rounded-lg bg-white/[0.08] hover:bg-white/[0.12] text-white/50 font-semibold transition"
+                    >
                       {selectedCurrency} ▾
                     </button>
                   )}
                 </div>
                 <div className="text-right">
-                  <span className="font-bold text-[var(--color-saffron)] text-xl tabular-nums">
+                  <span className="font-bold text-[var(--color-saffron)] text-2xl tabular-nums leading-none">
                     {selectedCurrency === "PLN" || !rates
                       ? fmt(paymentTotal)
                       : `${(paymentTotal / (rates.rates[selectedCurrency] ?? 1)).toFixed(2)} ${selectedCurrency}`}
                   </span>
                   {selectedCurrency !== "PLN" && rates && (
-                    <p className="text-[10px] text-white/20 tabular-nums">{fmt(paymentTotal)} PLN</p>
+                    <p className="text-[10px] text-white/30 tabular-nums mt-0.5">{fmt(paymentTotal)} PLN</p>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Cash tendered */}
             {cartTotal > 0 && (
-              <div className="flex gap-2">
-                <input type="number" min={0} step={0.01} value={tendered} onChange={e => setTendered(e.target.value)}
-                  placeholder="Cash tendered"
-                  className="flex-1 bg-white/[0.05] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/20 tabular-nums focus:outline-none focus:border-[var(--color-saffron)]" />
-                {change !== null && tendered !== "" && (
-                  <span className={`text-sm font-bold tabular-nums px-3 py-2 rounded-xl ${change >= 0 ? "bg-[var(--color-success)]/15 text-[var(--color-success)]" : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"}`}>
-                    {change >= 0 ? fmt(change) : `-${fmt(Math.abs(change))}`}
-                  </span>
-                )}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-white/35 mb-2">Cash received</p>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={tendered}
+                    onChange={e => setTendered(e.target.value)}
+                    placeholder="Amount customer paid"
+                    className={`flex-1 ${darkInput} py-2.5`}
+                  />
+                  {change !== null && tendered !== "" && (
+                    <div
+                      className={`flex flex-col justify-center px-3 py-2 rounded-xl min-w-[4.5rem] text-center ${
+                        change >= 0 ? "bg-[var(--color-success)]/15 text-emerald-400" : "bg-[var(--color-danger)]/15 text-[var(--color-danger)]"
+                      }`}
+                    >
+                      <span className="text-[9px] uppercase font-bold opacity-70">{change >= 0 ? "Change" : "Short"}</span>
+                      <span className="text-sm font-bold tabular-nums">{change >= 0 ? fmt(change) : fmt(Math.abs(change))}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[paymentTotal, 50, 100, 200].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setTendered(String(Math.round(amt * 100) / 100))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/[0.10] text-white/45 hover:bg-white/[0.06] hover:text-white transition"
+                    >
+                      {amt === paymentTotal ? "Exact" : fmt(amt)}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* NIP */}
             <div>
-              <input type="text" value={buyerNip} onChange={e => setBuyerNip(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                placeholder="NIP (B2B receipt)"
-                className={`w-full bg-white/[0.05] border rounded-xl px-3.5 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none transition ${nipStatus === "valid" ? "border-[var(--color-success)]/40 focus:border-[var(--color-success)]" : nipStatus === "invalid" ? "border-[var(--color-danger)]/40 focus:border-[var(--color-danger)]" : "border-white/[0.08] focus:border-[var(--color-saffron)]"}`} />
-              {nipStatus === "valid" && <p className="text-[10px] text-[var(--color-success)] mt-1 pl-1">✓ Valid NIP</p>}
-              {nipStatus === "invalid" && <p className="text-[10px] text-[var(--color-danger)] mt-1 pl-1">✗ Invalid checksum</p>}
+              <p className="text-[10px] font-bold uppercase tracking-wider text-white/35 mb-2">Invoice (optional)</p>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={buyerNip}
+                onChange={e => setBuyerNip(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                placeholder="Customer NIP for B2B receipt"
+                className={`w-full bg-white/[0.05] border rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 transition ${
+                  nipStatus === "valid"
+                    ? "border-emerald-500/50 focus:ring-emerald-500/20"
+                    : nipStatus === "invalid"
+                      ? "border-[var(--color-danger)]/50 focus:ring-[var(--color-danger)]/20"
+                      : "border-white/[0.10] focus:border-[var(--color-saffron)] focus:ring-[var(--color-saffron)]/20"
+                }`}
+              />
+              {nipStatus === "valid" && <p className="text-[11px] text-emerald-400 mt-1.5">Valid NIP — receipt will include tax ID</p>}
+              {nipStatus === "invalid" && <p className="text-[11px] text-[var(--color-danger)] mt-1.5">Invalid NIP checksum</p>}
             </div>
 
-            {/* Primary payment */}
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => handlePay("CASH")}
+            <p className="text-[10px] font-bold uppercase tracking-wider text-white/35">Pay</p>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => handlePay("CASH")}
                 disabled={cart.length === 0 || paying || nipStatus === "invalid"}
-                className="flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[var(--color-success)] hover:bg-[var(--color-success)]/90 text-white font-bold text-sm transition disabled:opacity-40 active:scale-95">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75" /></svg>
+                className="flex items-center justify-center gap-2 py-4 rounded-xl bg-[var(--color-success)] hover:brightness-110 text-white font-bold text-base transition disabled:opacity-40 active:scale-[0.98] shadow-lg shadow-emerald-900/20"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75" />
+                </svg>
                 {paying ? "…" : "Cash"}
               </button>
-              <button type="button" onClick={() => handlePay("CARD")}
+              <button
+                type="button"
+                onClick={() => handlePay("CARD")}
                 disabled={cart.length === 0 || paying || nipStatus === "invalid"}
-                className="flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-bold text-sm transition disabled:opacity-40 active:scale-95"
-                style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" /></svg>
+                className="flex items-center justify-center gap-2 py-4 rounded-xl text-white font-bold text-base transition disabled:opacity-40 active:scale-[0.98] shadow-lg shadow-[var(--color-saffron)]/25"
+                style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                </svg>
                 {paying ? "…" : "Card"}
               </button>
             </div>
 
-            {/* Secondary */}
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setPayLegs([{ method: "CASH", amount: "" }]); setShowPayModal(true); }}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPayLegs([{ method: "CASH", amount: "" }]);
+                  setShowPayModal(true);
+                }}
                 disabled={cart.length === 0 || nipStatus === "invalid"}
-                className="flex-1 py-2 rounded-xl border border-white/[0.08] text-white/40 hover:text-white/60 hover:border-white/[0.14] text-xs font-medium transition disabled:opacity-30">
+                className="py-2.5 rounded-xl border border-white/[0.10] text-white/50 hover:text-white hover:bg-white/[0.05] text-xs font-semibold transition disabled:opacity-30"
+              >
                 Split payment
               </button>
-              <button type="button" onClick={handleInitiateQr}
+              <button
+                type="button"
+                onClick={handleInitiateQr}
                 disabled={cart.length === 0 || qrBusy || nipStatus === "invalid"}
-                className="flex-1 py-2 rounded-xl border border-white/[0.08] text-white/40 hover:text-white/60 hover:border-white/[0.14] text-xs font-medium transition disabled:opacity-30">
+                className="py-2.5 rounded-xl border border-white/[0.10] text-white/50 hover:text-white hover:bg-white/[0.05] text-xs font-semibold transition disabled:opacity-30"
+              >
                 {qrBusy ? "…" : "BLIK / QR"}
               </button>
             </div>
 
             {cart.length > 0 && (
-              <button type="button" onClick={() => setCart([])}
-                className="w-full py-1 text-[11px] text-white/20 hover:text-white/35 transition">
-                Clear order
+              <button
+                type="button"
+                onClick={() => setCart([])}
+                className="w-full py-2 text-xs text-white/30 hover:text-[var(--color-danger)] transition font-medium"
+              >
+                Clear entire order
               </button>
             )}
           </div>
