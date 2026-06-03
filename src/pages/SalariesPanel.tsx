@@ -287,14 +287,6 @@ export function SalariesPanel() {
   // Hide deactivated cashiers UNLESS they have activity in this period (shifts
   // or payments). A cashier deactivated mid-month must still appear for that
   // month's payroll; once the period has nothing left for them, they drop off.
-  const payableEmployees = useMemo(
-    () => (visibleEmployees ?? []).filter((e) => {
-      const remaining = e.remainingPay ?? Math.max(0, e.totalPay - (e.paidAmount ?? 0));
-      return !e.fullyPaid && remaining > 0.005;
-    }),
-    [visibleEmployees]
-  );
-
   const visibleEmployees = useMemo(() => {
     if (!report) return [] as typeof report extends null ? never[] : never[];
     return report.employees.filter((e) => {
@@ -307,6 +299,14 @@ export function SalariesPanel() {
       return hasActivity;
     });
   }, [report, showInactive]);
+
+  const payableEmployees = useMemo(
+    () => (visibleEmployees ?? []).filter((e) => {
+      const remaining = e.remainingPay ?? Math.max(0, e.totalPay - (e.paidAmount ?? 0));
+      return !e.fullyPaid && remaining > 0.005;
+    }),
+    [visibleEmployees]
+  );
 
   const hiddenInactiveCount = useMemo(() => {
     if (!report) return 0;
