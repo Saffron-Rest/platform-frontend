@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addLine,
+  applyDiscount,
+  clearDiscount,
   closeSession,
   createOrder,
   getCurrentSession,
+  getOpenOrders,
   getPosMenu,
   getPosTables,
   openSession,
   parkOrder,
   payOrder,
+  payOrderMulti,
   recordCashMovement,
   resumeOrder,
   searchByBarcode,
-  type PosMenuItem,
   type PosOrder,
+  type PosMenuItem,
   type PosSession,
   type PosTable,
 } from "../api/pos";
@@ -181,6 +185,20 @@ export function PosApp() {
   const [cashBusy, setCashBusy] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const [barcodeBuffer, setBarcodeBuffer] = useState("");
+  // Discount
+  const [showDiscountDrawer, setShowDiscountDrawer] = useState(false);
+  const [discountType, setDiscountType] = useState<"ITEM" | "ORDER">("ORDER");
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountIsPct, setDiscountIsPct] = useState(true);
+  const [discountLineId, setDiscountLineId] = useState<string | null>(null);
+  const [discountBusy, setDiscountBusy] = useState(false);
+  // Combined payment
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [payLegs, setPayLegs] = useState<Array<{ method: string; amount: string }>>([{ method: "CASH", amount: "" }]);
+  const [payBusy, setPayBusy] = useState(false);
+  // Open bills sidebar
+  const [showOpenBills, setShowOpenBills] = useState(false);
+  const [openOrders, setOpenOrders] = useState<PosOrder[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -307,6 +325,84 @@ export function PosApp() {
       setError(e instanceof Error ? e.message : "Cash movement failed");
     } finally {
       setCashBusy(false);
+    }
+  };
+
+  // ── Open bills ────────────────────────────────────────────────────────────
+  const loadOpenOrders = useCallback(async () => {
+    try { setOpenOrders(await getOpenOrders()); } catch { /* non-fatal */ }
+  }, []);
+
+  useEffect(() => { if (showOpenBills) loadOpenOrders(); }, [showOpenBills, loadOpenOrders]);
+
+  // ── Discount ──────────────────────────────────────────────────────────────
+  const handleApplyDiscount = async () => {
+    if (!activeOrder || !discountValue) return;
+    setDiscountBusy(true);
+    try {
+      const updated = await applyDiscount(activeOrder.id, {
+        type: discountType,
+        lineId: discountType === "ITEM" ? (discountLineId ?? undefined) : undefined,
+        value: Number(discountValue),
+        isPercentage: discountIsPct,
+      });
+      setActiveOrder(updated);
+      setShowDiscountDrawer(false);
+      setDiscountValue("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Discount failed");
+    } finally {
+      setDiscountBusy(false);
+    }
+  };
+
+  const handleClearDiscount = async () => {
+    if (!activeOrder) return;
+    try {
+      const updated = await clearDiscount(activeOrder.id);
+      setActiveOrder(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clear discount");
+    }
+  };
+
+  // ── Combined payment ──────────────────────────────────────────────────────
+  const legTotal = payLegs.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  const legRemaining = paymentTotal - legTotal;
+
+  const handlePayMulti = async () => {
+    if (nipStatus === "invalid") { setError("NIP is invalid"); return; }
+    setPayBusy(true);
+    setError("");
+    try {
+      let order = activeOrder;
+      if (!order) {
+        order = await createOrder({
+          tableId: selectedTable?.id,
+          covers: covers ? Number(covers) : undefined,
+          orderNote: orderNote.trim() || undefined,
+          lines: cart.map((l) => ({ menuItemId: l.menuItemId, quantity: l.quantity })),
+        });
+      }
+      const paid = await payOrderMulti(order.id, {
+        payments: payLegs.map((l) => ({ method: l.method, amount: Number(l.amount) })),
+        tipAmount: tip > 0 ? tip : undefined,
+        buyerNip: buyerNip.trim() || undefined,
+      });
+      setActiveOrder(paid);
+      setCart([]);
+      setBuyerNip("");
+      setTendered("");
+      setTip(0);
+      setPayLegs([{ method: "CASH", amount: "" }]);
+      setShowPayModal(false);
+      setView("tables");
+      const updated = await getPosTables();
+      setTables(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Payment failed");
+    } finally {
+      setPayBusy(false);
     }
   };
 
@@ -496,6 +592,149 @@ export function PosApp() {
         </div>
       )}
 
+      {/* Discount drawer */}
+      {showDiscountDrawer && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[var(--color-ink)] border border-white/10 rounded-2xl p-6 space-y-4 text-white">
+            <h2 className="text-lg font-bold">Apply Discount</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {(["ORDER", "ITEM"] as const).map((t) => (
+                <button key={t} type="button" onClick={() => setDiscountType(t)}
+                  className={`py-2 rounded-xl font-semibold text-sm border-2 ${discountType === t ? "bg-[var(--color-saffron)] border-[var(--color-saffron)]" : "bg-white/5 border-white/20 text-white/60"}`}>
+                  {t === "ORDER" ? "Whole order" : "Single item"}
+                </button>
+              ))}
+            </div>
+            {discountType === "ITEM" && activeOrder && (
+              <div className="space-y-1">
+                <p className="text-xs text-white/50">Select item</p>
+                {activeOrder.lines.map((l) => (
+                  <button key={l.id} type="button" onClick={() => setDiscountLineId(l.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm border ${discountLineId === l.id ? "border-[var(--color-saffron)] bg-[var(--color-saffron)]/15" : "border-white/10 bg-white/5"}`}>
+                    {l.quantity}× {l.itemName} — {fmt(l.lineGross ?? l.unitPrice * l.quantity)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              {(["true", "false"] as const).map((p) => (
+                <button key={p} type="button" onClick={() => setDiscountIsPct(p === "true")}
+                  className={`py-2 rounded-xl font-semibold text-sm border-2 ${discountIsPct === (p === "true") ? "bg-white/20 border-white/40" : "bg-white/5 border-white/10 text-white/50"}`}>
+                  {p === "true" ? "Percentage %" : "Fixed PLN"}
+                </button>
+              ))}
+            </div>
+            <label className="block text-sm text-white/50">
+              {discountIsPct ? "Discount %" : "Discount amount (PLN)"}
+              <input type="number" min={0} max={discountIsPct ? 100 : undefined} step={discountIsPct ? 1 : 0.01}
+                value={discountValue} onChange={(e) => setDiscountValue(e.target.value)}
+                autoFocus
+                className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-saffron)]" />
+            </label>
+            {discountValue && (
+              <p className="text-sm text-[var(--color-saffron)]">
+                Saving: {fmt(discountIsPct ? cartTotal * Number(discountValue) / 100 : Number(discountValue))}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="ghost" onClick={() => setShowDiscountDrawer(false)}>Cancel</Button>
+              <Button onClick={handleApplyDiscount} disabled={!discountValue || discountBusy || (discountType === "ITEM" && !discountLineId)}>
+                {discountBusy ? "Applying…" : "Apply"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Combined payment modal */}
+      {showPayModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[var(--color-ink)] border border-white/10 rounded-2xl p-6 space-y-4 text-white">
+            <h2 className="text-lg font-bold">Payment methods</h2>
+            <div className="text-sm text-white/60 flex justify-between">
+              <span>Total to pay</span>
+              <span className="font-bold text-[var(--color-saffron)]">{fmt(paymentTotal)}</span>
+            </div>
+            {payLegs.map((leg, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <select value={leg.method} onChange={(e) => setPayLegs((prev) => prev.map((l, j) => j === i ? { ...l, method: e.target.value } : l))}
+                  className="bg-white/10 border border-white/20 rounded-lg px-2 py-2 text-sm text-white flex-shrink-0">
+                  {["CASH", "CARD", "VOUCHER", "BANK_TRANSFER", "OTHER"].map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <input type="number" min={0} step={0.01} placeholder="Amount"
+                  value={leg.amount}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPayLegs((prev) => prev.map((l, j) => j === i ? { ...l, amount: v } : l));
+                  }}
+                  className="flex-1 bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none" />
+                {payLegs.length > 1 && (
+                  <button type="button" onClick={() => setPayLegs((p) => p.filter((_, j) => j !== i))} className="text-red-400 px-1">×</button>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={() => setPayLegs((p) => [...p, { method: "CARD", amount: legRemaining > 0 ? String(Math.round(legRemaining * 100) / 100) : "" }])}
+              className="text-xs text-[var(--color-saffron-dark)] hover:underline">
+              + Add another method
+            </button>
+            <div className={`flex justify-between text-sm font-semibold rounded-lg px-3 py-2 ${legRemaining <= 0.005 ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
+              <span>{legRemaining <= 0.005 ? "✓ Fully covered" : "Remaining"}</span>
+              <span>{legRemaining > 0.005 ? fmt(legRemaining) : "0.00"}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="ghost" onClick={() => setShowPayModal(false)}>Cancel</Button>
+              <Button onClick={handlePayMulti} disabled={legRemaining > 0.005 || payBusy || cart.length === 0}>
+                {payBusy ? "Processing…" : "Confirm payment"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Open bills sidebar */}
+      {showOpenBills && (
+        <div className="fixed inset-y-0 left-0 z-50 w-72 bg-[var(--color-ink)] border-r border-white/10 flex flex-col text-white shadow-2xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <h3 className="font-bold">Open Bills ({openOrders.length})</h3>
+            <button type="button" onClick={() => setShowOpenBills(false)} className="text-white/50 hover:text-white text-xl">×</button>
+          </div>
+          <div className="flex-1 overflow-auto">
+            {openOrders.length === 0 ? (
+              <p className="text-white/30 text-center py-8 text-sm">No open bills</p>
+            ) : (
+              openOrders.map((o) => {
+                const tbl = tables.find((t) => t.id === o.tableId);
+                const age = Math.round((Date.now() - new Date(o.openedAt).getTime()) / 60000);
+                return (
+                  <button key={o.id} type="button"
+                    onClick={async () => {
+                      if (o.status === "PARKED") await resumeOrder(o.id).catch(() => {});
+                      setSelectedTable(tbl ?? null);
+                      setView("menu");
+                      setShowOpenBills(false);
+                    }}
+                    className="w-full text-left px-4 py-3 hover:bg-white/5 border-b border-white/5">
+                    <div className="flex justify-between items-start">
+                      <span className="font-medium text-sm">{tbl?.name ?? "Take-away"}</span>
+                      <span className="text-xs text-white/40">{age}m ago</span>
+                    </div>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-xs text-white/50">{o.lines.length} items · {o.status}</span>
+                      <span className="text-sm font-bold text-[var(--color-saffron)]">{fmt(o.totalGross)}</span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+          <div className="px-4 py-3 border-t border-white/10">
+            <Button onClick={loadOpenOrders} variant="ghost" fullWidth className="!text-xs">Refresh</Button>
+          </div>
+        </div>
+      )}
+
       {/* ── Left panel ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -521,13 +760,29 @@ export function PosApp() {
             </span>
           )}
           <div className="ml-auto flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setShowOpenBills(true)}
+              className="text-xs text-white/50 hover:text-white/80 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/5"
+            >
+              📋 Bills {openOrders.length > 0 && `(${openOrders.length})`}
+            </button>
+            {cart.length > 0 && activeOrder && (
+              <button
+                type="button"
+                onClick={() => setShowDiscountDrawer(true)}
+                className="text-xs text-purple-400 hover:text-purple-300 px-3 py-1.5 rounded-lg border border-purple-400/30 hover:bg-purple-400/10"
+              >
+                % Discount
+              </button>
+            )}
             {cart.length > 0 && activeOrder && (
               <button
                 type="button"
                 onClick={() => setShowParkModal(true)}
                 className="text-xs text-amber-400 hover:text-amber-300 px-3 py-1.5 rounded-lg border border-amber-400/30 hover:bg-amber-400/10"
               >
-                🅿 Park bill
+                🅿 Park
               </button>
             )}
             <button
@@ -536,6 +791,14 @@ export function PosApp() {
               className="text-xs text-white/50 hover:text-white/80 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/5"
             >
               💵 Cash drawer
+            </button>
+            <button
+              type="button"
+              onClick={() => window.open("/pos/display", "_blank")}
+              className="text-xs text-white/40 hover:text-white/70 px-2 py-1.5 rounded-lg hover:bg-white/5 transition"
+              title="Open customer display in a new window"
+            >
+              🖥 Display
             </button>
             <button
               type="button"
@@ -694,7 +957,17 @@ export function PosApp() {
                       />
                     )}
                     <span className="text-sm font-medium leading-tight line-clamp-2">{item.name}</span>
-                    <span className="text-[var(--color-saffron)] font-bold mt-1 text-sm">{fmt(item.sellPrice)}</span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[var(--color-saffron)] font-bold text-sm">{fmt(item.sellPrice)}</span>
+                      {item.isHappyHour && item.originalPrice && item.originalPrice !== item.sellPrice && (
+                        <span className="text-white/40 text-xs line-through">{fmt(item.originalPrice)}</span>
+                      )}
+                    </div>
+                    {item.isHappyHour && (
+                      <span className="text-[10px] bg-amber-500/30 text-amber-300 px-1.5 py-0.5 rounded-full mt-0.5 block">
+                        ⚡ {item.happyHourName ?? "Happy Hour"} until {item.happyHourEnds}
+                      </span>
+                    )}
                     {/* Allergen chips */}
                     {item.allergens && (
                       <div className="flex flex-wrap gap-0.5 mt-1">
@@ -913,6 +1186,17 @@ export function PosApp() {
               {paying ? "…" : "💳 Card"}
             </Button>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setPayLegs([{ method: "CASH", amount: "" }]);
+              setShowPayModal(true);
+            }}
+            disabled={cart.length === 0 || nipStatus === "invalid"}
+            className="w-full py-2 text-xs font-medium text-[var(--color-saffron-dark)] hover:underline disabled:opacity-30"
+          >
+            Split / combined payment →
+          </button>
 
           {cart.length > 0 && (
             <button

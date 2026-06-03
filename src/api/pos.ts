@@ -14,12 +14,34 @@ export type PosSession = {
   closedAt?: string;
 };
 
+export type PosTimeBasedPrice = {
+  id: string;
+  menuItemId: string;
+  name: string;
+  effectivePrice: number;
+  startTime: string;
+  endTime: string;
+  daysOfWeek?: string;
+  active: boolean;
+};
+
+export type PosPaymentLeg = {
+  method: string;
+  amount: number;
+  reference?: string;
+  processedAt: string;
+};
+
 export type PosMenuItem = {
   id: string;
   categoryId: string;
   categoryName: string;
   categorySortOrder: number;
   name: string;
+  isHappyHour?: boolean;
+  happyHourName?: string;
+  happyHourEnds?: string;
+  originalPrice?: number;
   sku?: string;
   sellPrice: number;
   vatRatePct: number;
@@ -83,6 +105,7 @@ export type PosOrder = {
   openedAt: string;
   paidAt?: string;
   lines: PosOrderLine[];
+  payments: PosPaymentLeg[];
 };
 
 export async function getPosMenu(): Promise<PosMenuItem[]> {
@@ -181,6 +204,70 @@ export async function closeSession(sessionId: string, closingFloat: number): Pro
     method: "POST",
     body: JSON.stringify({ sessionId, closingFloat }),
   });
+}
+
+// ─── Discounts ───────────────────────────────────────────────────────────────
+
+export async function applyDiscount(
+  orderId: string,
+  payload: { type: "ITEM" | "ORDER"; lineId?: string; value: number; isPercentage: boolean }
+): Promise<PosOrder> {
+  return api<PosOrder>(`/pos/orders/${orderId}/discount`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function clearDiscount(orderId: string): Promise<PosOrder> {
+  return api<PosOrder>(`/pos/orders/${orderId}/discount`, { method: "DELETE" });
+}
+
+// ─── Combined payment ─────────────────────────────────────────────────────────
+
+export async function payOrderMulti(
+  orderId: string,
+  payload: {
+    payments: Array<{ method: string; amount: number; reference?: string }>;
+    tipAmount?: number;
+    buyerNip?: string;
+    fiscalReceiptNumber?: string;
+    amountTendered?: number;
+  }
+): Promise<PosOrder> {
+  return api<PosOrder>(`/pos/orders/${orderId}/pay-multi`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Customer display ─────────────────────────────────────────────────────────
+
+export async function getDisplayOrder(): Promise<PosOrder | null> {
+  return api<PosOrder | null>("/pos/display/order").catch(() => null);
+}
+
+// ─── Happy Hours / time-based pricing ────────────────────────────────────────
+
+export async function listTimePrices(menuItemId?: string): Promise<PosTimeBasedPrice[]> {
+  const q = menuItemId ? `?menuItemId=${menuItemId}` : "";
+  return api<PosTimeBasedPrice[]>(`/pos/time-prices${q}`);
+}
+
+export async function saveTimePrice(payload: Partial<PosTimeBasedPrice>): Promise<PosTimeBasedPrice> {
+  if (payload.id) {
+    return api<PosTimeBasedPrice>(`/pos/time-prices/${payload.id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+  return api<PosTimeBasedPrice>("/pos/time-prices", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteTimePrice(id: string): Promise<void> {
+  await api(`/pos/time-prices/${id}`, { method: "DELETE" });
 }
 
 export async function recordCashMovement(payload: {

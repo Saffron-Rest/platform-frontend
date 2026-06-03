@@ -14,6 +14,7 @@ import { ChangePassword } from "./pages/ChangePassword";
 import { NoAccess } from "./pages/NoAccess";
 import { Dashboard } from "./pages/Dashboard";
 import { PosApp } from "./pages/PosApp";
+import { PosDisplay } from "./pages/PosDisplay";
 import { EntryPage } from "./pages/EntryPage";
 import { EntryDetail } from "./pages/EntryDetail";
 import { Schedule } from "./pages/Schedule";
@@ -84,6 +85,8 @@ export default function App() {
                 <Route path="/change-password" element={<ChangePassword />} />
                 {/* POS tablet app — full-screen kiosk mode, no shell nav */}
                 <Route path="/pos" element={<RouteErrorBoundary><PosApp /></RouteErrorBoundary>} />
+                {/* Customer-facing display — second screen / monitor */}
+                <Route path="/pos/display" element={<RouteErrorBoundary><PosDisplay /></RouteErrorBoundary>} />
                 <Route element={<Layout />}>
                   <Route path="/no-access" element={<NoAccess />} />
                   <Route path="/" element={<RouteErrorBoundary><Dashboard /></RouteErrorBoundary>} />
