@@ -96,7 +96,7 @@ const num = (s: string): number => {
   return parsed === null ? 0 : parsed;
 };
 
-export function AdminOwnerExpenses() {
+export function AdminOwnerExpenses({ asTab }: { asTab?: boolean } = {}) {
   const { user, hasPermission } = useAuth();
   const canManage = hasPermission("OWNER_EXPENSES_MANAGE");
   const canFile =
@@ -185,22 +185,48 @@ export function AdminOwnerExpenses() {
 
   return (
     <>
-      <PageHeader
-        kicker="Finance"
-        title="Owner reimbursements"
-        subtitle="Money the restaurant owes its owner(s) for out-of-pocket payments. Filing here recognises the expense on the P&L on its expense date; reimbursing posts the cash event later."
-        action={
-          canFile ? (
-            <Button onClick={() => setOpenCreate(true)}>+ I paid for something</Button>
-          ) : null
-        }
-        tabs={TAB_DEFS.map((t) => ({
-          id: t.id,
-          label: t.label,
-          active: tab === t.id,
-          onClick: () => setTab(t.id),
-        }))}
-      />
+      {!asTab ? (
+        <PageHeader
+          kicker="Finance"
+          title="Owner reimbursements"
+          subtitle="Money the restaurant owes its owner(s) for out-of-pocket payments. Filing here recognises the expense on the P&L on its expense date; reimbursing posts the cash event later."
+          action={
+            canFile ? (
+              <Button onClick={() => setOpenCreate(true)}>+ I paid for something</Button>
+            ) : null
+          }
+          tabs={TAB_DEFS.map((t) => ({
+            id: t.id,
+            label: t.label,
+            active: tab === t.id,
+            onClick: () => setTab(t.id),
+          }))}
+        />
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex gap-1">
+            {TAB_DEFS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                  tab === t.id
+                    ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                    : "bg-white border-black/10"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {canFile && (
+            <Button size="sm" onClick={() => setOpenCreate(true)}>
+              + I paid for something
+            </Button>
+          )}
+        </div>
+      )}
 
       {error && (
         <Alert variant="error" className="mb-4">

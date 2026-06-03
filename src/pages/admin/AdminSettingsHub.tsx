@@ -7,16 +7,18 @@ import { AdminRestaurantHours } from "./AdminRestaurantHours";
 import { AdminTagLibrary } from "./AdminTagLibrary";
 import { AdminPos } from "./AdminPos";
 import { AdminSecurity } from "./AdminSecurity";
+import { AdminAudit } from "./AdminAudit";
 import { useAuth } from "../../context/AuthContext";
 import { isAdmin } from "../../lib/roles";
 
-type SettingsTab = "treasury" | "hours" | "tags" | "pos" | "security";
+type SettingsTab = "treasury" | "hours" | "tags" | "pos" | "audit" | "security";
 
 const ALL_TABS = [
   { value: "treasury", label: "Treasury" },
   { value: "hours",    label: "Hours" },
   { value: "tags",     label: "Tags" },
   { value: "pos",      label: "POS & Integrations" },
+  { value: "audit",    label: "Audit log" },
   { value: "security", label: "Security" },
 ] satisfies { value: SettingsTab; label: string }[];
 
@@ -46,6 +48,8 @@ export function AdminSettingsHub() {
     hasPermission("POS_INTEGRATION_MANAGE");
 
   const canSeeSecurity = isAdmin(user?.role);
+  const canSeeAudit =
+    isAdmin(user?.role) || hasPermission("AUDIT_VIEW");
 
   const visibleTabs = useMemo(() => {
     const tabs: Array<{ value: SettingsTab; label: string }> = [];
@@ -54,10 +58,11 @@ export function AdminSettingsHub() {
       if (t.value === "hours"     && canSeeHours)      tabs.push(t);
       if (t.value === "tags"      && canSeeTags)       tabs.push(t);
       if (t.value === "pos"       && canSeePos)        tabs.push(t);
+      if (t.value === "audit"     && canSeeAudit)      tabs.push(t);
       if (t.value === "security"  && canSeeSecurity)   tabs.push(t);
     });
     return tabs;
-  }, [canSeeTreasury, canSeeHours, canSeeTags, canSeePos, canSeeSecurity]);
+  }, [canSeeTreasury, canSeeHours, canSeeTags, canSeePos, canSeeAudit, canSeeSecurity]);
 
   const requestedTab = (searchParams.get("tab") as SettingsTab | null) ?? "treasury";
 
@@ -93,6 +98,7 @@ export function AdminSettingsHub() {
       {activeTab === "hours"    && <AdminRestaurantHours asTab />}
       {activeTab === "tags"     && <AdminTagLibrary asTab />}
       {activeTab === "pos"      && <AdminPos asTab />}
+      {activeTab === "audit"    && <AdminAudit asTab />}
       {activeTab === "security" && <AdminSecurity asTab />}
     </div>
   );

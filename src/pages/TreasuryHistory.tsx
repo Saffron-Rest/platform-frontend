@@ -139,7 +139,7 @@ function isBatchable(row: TreasuryLedgerRow): boolean {
 }
 
 
-export function TreasuryHistory() {
+export function TreasuryHistory({ asTab }: { asTab?: boolean } = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const source = readSource(searchParams.get("source"));
@@ -443,19 +443,21 @@ export function TreasuryHistory() {
 
   return (
     <div className="space-y-4 pb-24">
-      <PageHeader
-        title={sourceTitle}
-        subtitle={sourceSubtitle}
-        back={
-          <button
-            type="button"
-            className="text-sm text-[var(--color-muted)] hover:text-[var(--color-ink)]"
-            onClick={() => navigate(-1)}
-          >
-            ← Back
-          </button>
-        }
-      />
+      {!asTab && (
+        <PageHeader
+          title={sourceTitle}
+          subtitle={sourceSubtitle}
+          back={
+            <button
+              type="button"
+              className="text-sm text-[var(--color-muted)] hover:text-[var(--color-ink)]"
+              onClick={() => navigate(-1)}
+            >
+              ← Back
+            </button>
+          }
+        />
+      )}
 
       <Card className="space-y-3">
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Treasury source">

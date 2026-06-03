@@ -30,7 +30,7 @@ const emptyFilters = (): AuditFilterState => ({
   to: "",
 });
 
-export function AdminAudit() {
+export function AdminAudit({ asTab }: { asTab?: boolean } = {}) {
   const location = useLocation();
   const initialSelected = (location.state as { selectedId?: string } | null)?.selectedId;
   const [data, setData] = useState<AuditResponse | null>(null);
@@ -105,10 +105,12 @@ export function AdminAudit() {
 
   return (
     <div className="pb-8">
-      <PageHeader
-        title="Audit trail"
-        subtitle="Who did what, when — for compliance and troubleshooting"
-      />
+      {!asTab && (
+        <PageHeader
+          title="Audit trail"
+          subtitle="Who did what, when — for compliance and troubleshooting"
+        />
+      )}
 
       <div data-tour="tour-audit-filters">
       <AuditFilters

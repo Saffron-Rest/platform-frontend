@@ -111,7 +111,7 @@ const num = (s: string): number => {
   return parsed === null ? 0 : parsed;
 };
 
-export function AdminPayables() {
+export function AdminPayables({ asTab }: { asTab?: boolean } = {}) {
   const { hasPermission } = useAuth();
   const canManage = hasPermission("PAYABLES_MANAGE");
 
@@ -166,44 +166,78 @@ export function AdminPayables() {
 
   return (
     <>
-      <PageHeader
-        kicker="Finance"
-        title="Payables"
-        subtitle="Supplier credit / accounts payable. Booking an invoice hits stock and COGS today; payments only move cash."
-        action={
-          canManage && (
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  ensurePickerData();
-                  setOpenSupplier(true);
-                }}
+      {!asTab && (
+        <PageHeader
+          kicker="Finance"
+          title="Payables"
+          subtitle="Supplier credit / accounts payable. Booking an invoice hits stock and COGS today; payments only move cash."
+          action={
+            canManage && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    ensurePickerData();
+                    setOpenSupplier(true);
+                  }}
+                >
+                  + Supplier
+                </Button>
+                <Button
+                  onClick={() => {
+                    ensurePickerData();
+                    setOpenCreate(true);
+                  }}
+                >
+                  + Record credit invoice
+                </Button>
+              </>
+            )
+          }
+          tabs={TAB_DEFS.map((t) => ({
+            id: t.id,
+            label: t.label,
+            active: tab === t.id,
+            onClick: () => setTab(t.id),
+            badge:
+              t.id === "OUTSTANDING" && data?.totals.count !== undefined && tab === "OUTSTANDING"
+                ? data.totals.count
+                : undefined,
+          }))}
+        />
+      )}
+
+      {asTab && (
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex gap-1">
+            {TAB_DEFS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                  tab === t.id
+                    ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                    : "bg-white border-black/10"
+                }`}
               >
+                {t.label}
+                {t.id === "OUTSTANDING" && data?.totals.count ? ` (${data.totals.count})` : ""}
+              </button>
+            ))}
+          </div>
+          {canManage && (
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={() => { ensurePickerData(); setOpenSupplier(true); }}>
                 + Supplier
               </Button>
-              <Button
-                onClick={() => {
-                  ensurePickerData();
-                  setOpenCreate(true);
-                }}
-              >
+              <Button size="sm" onClick={() => { ensurePickerData(); setOpenCreate(true); }}>
                 + Record credit invoice
               </Button>
-            </>
-          )
-        }
-        tabs={TAB_DEFS.map((t) => ({
-          id: t.id,
-          label: t.label,
-          active: tab === t.id,
-          onClick: () => setTab(t.id),
-          badge:
-            t.id === "OUTSTANDING" && data?.totals.count !== undefined && tab === "OUTSTANDING"
-              ? data.totals.count
-              : undefined,
-        }))}
-      />
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <Alert variant="error" className="mb-4">

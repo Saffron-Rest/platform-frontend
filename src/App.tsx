@@ -26,19 +26,15 @@ import { AdminLayout } from "./components/admin/AdminLayout";
 /* ── Operations + finance pages (used by manager+) lazy-load so the
    cashier login bundle stays slim. Each section is a separate chunk. */
 const ReportsFinance = lazy(() => import("./pages/ReportsFinance").then((m) => ({ default: m.ReportsFinance })));
-const TreasuryHistory = lazy(() => import("./pages/TreasuryHistory").then((m) => ({ default: m.TreasuryHistory })));
 const MenuAnalytics = lazy(() => import("./pages/MenuAnalytics").then((m) => ({ default: m.MenuAnalytics })));
 const MenuEngineering = lazy(() => import("./pages/MenuEngineering").then((m) => ({ default: m.MenuEngineering })));
 
 /* ── Admin pages — heaviest in the codebase, always lazy. ── */
 const AdminPeople = lazy(() => import("./pages/admin/AdminPeople").then((m) => ({ default: m.AdminPeople })));
 const AdminSettingsHub = lazy(() => import("./pages/admin/AdminSettingsHub").then((m) => ({ default: m.AdminSettingsHub })));
-const AdminAudit = lazy(() => import("./pages/admin/AdminAudit").then((m) => ({ default: m.AdminAudit })));
 const AdminDataHealth = lazy(() => import("./pages/admin/AdminDataHealth").then((m) => ({ default: m.AdminDataHealth })));
 const AdminMenu = lazy(() => import("./pages/admin/AdminMenu").then((m) => ({ default: m.AdminMenu })));
 const AdminRecipes = lazy(() => import("./pages/admin/AdminRecipes").then((m) => ({ default: m.AdminRecipes })));
-const AdminPayables = lazy(() => import("./pages/admin/AdminPayables").then((m) => ({ default: m.AdminPayables })));
-const AdminOwnerExpenses = lazy(() => import("./pages/admin/AdminOwnerExpenses").then((m) => ({ default: m.AdminOwnerExpenses })));
 const AdminStock = lazy(() => import("./pages/admin/AdminStock").then((m) => ({ default: m.AdminStock })));
 const AdminIncidents = lazy(() => import("./pages/admin/AdminIncidents").then((m) => ({ default: m.AdminIncidents })));
 const AdminChecklists = lazy(() => import("./pages/admin/AdminChecklists").then((m) => ({ default: m.AdminChecklists })));
@@ -98,9 +94,9 @@ export default function App() {
                     <Route path="/analytics" element={<Navigate to="/reports?tab=export" replace />} />
                     <Route path="/profit-loss" element={<Navigate to="/reports?tab=pl" replace />} />
                     <Route path="/history" element={<Navigate to="/reports" replace />} />
-                    <Route path="/audit" element={<LazyRoute><AdminAudit /></LazyRoute>} />
+                    <Route path="/audit" element={<Navigate to="/admin/settings?tab=audit" replace />} />
                     <Route path="/finance" element={<FinanceRedirect />} />
-                    <Route path="/treasury/history" element={<LazyRoute><TreasuryHistory /></LazyRoute>} />
+                    <Route path="/treasury/history" element={<Navigate to="/reports?tab=treasury" replace />} />
                     <Route path="/menu" element={<LazyRoute><MenuAnalytics /></LazyRoute>} />
                     <Route path="/menu/engineering" element={<LazyRoute><MenuEngineering /></LazyRoute>} />
                   </Route>
@@ -168,22 +164,8 @@ export default function App() {
                     <Route element={<RequirePermission anyOf={["POS_INTEGRATION_MANAGE"]} />}>
                       <Route path="pos/simulator" element={<Navigate to="/admin/settings?tab=pos" replace />} />
                     </Route>
-                    <Route element={<RequirePermission anyOf={["PAYABLES_VIEW", "PAYABLES_MANAGE"]} />}>
-                      <Route path="payables" element={<LazyRoute><AdminPayables /></LazyRoute>} />
-                    </Route>
-                    <Route
-                      element={
-                        <RequirePermission
-                          anyOf={[
-                            "OWNER_EXPENSES_VIEW",
-                            "OWNER_EXPENSES_MANAGE",
-                            "OWNER_EXPENSES_FILE",
-                          ]}
-                        />
-                      }
-                    >
-                      <Route path="owner-expenses" element={<LazyRoute><AdminOwnerExpenses /></LazyRoute>} />
-                    </Route>
+                    <Route path="payables" element={<Navigate to="/reports?tab=payables" replace />} />
+                    <Route path="owner-expenses" element={<Navigate to="/reports?tab=owner-expenses" replace />} />
                     {/* security tab is admin-only, handled inside AdminSettingsHub via tab visibility */}
                     <Route element={<AdminGuard />}>
                       <Route path="security" element={<Navigate to="/admin/settings?tab=security" replace />} />
