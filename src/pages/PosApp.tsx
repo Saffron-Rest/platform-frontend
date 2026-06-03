@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addLine,
   closeSession,
@@ -7,7 +7,11 @@ import {
   getPosMenu,
   getPosTables,
   openSession,
+  parkOrder,
   payOrder,
+  recordCashMovement,
+  resumeOrder,
+  searchByBarcode,
   type PosMenuItem,
   type PosOrder,
   type PosSession,
@@ -166,6 +170,17 @@ export function PosApp() {
   const [areaFilter, setAreaFilter] = useState<string | null>(null);
   const [activeCat, setActiveCat] = useState<string | null>(null);
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [tip, setTip] = useState(0);
+  const [showParkModal, setShowParkModal] = useState(false);
+  const [parkNote, setParkNote] = useState("");
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [cashType, setCashType] = useState<"IN" | "OUT">("OUT");
+  const [cashAmount, setCashAmount] = useState("");
+  const [cashReason, setCashReason] = useState("OTHER");
+  const [cashNote, setCashNote] = useState("");
+  const [cashBusy, setCashBusy] = useState(false);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const [barcodeBuffer, setBarcodeBuffer] = useState("");
 
   const loadData = useCallback(async () => {
     try {
@@ -222,8 +237,78 @@ export function PosApp() {
     const gross = l.unitPrice * l.quantity;
     return s + gross - gross / (1 + l.vatRatePct / 100);
   }, 0);
-  const change = tendered ? Number(tendered) - cartTotal : null;
+  const paymentTotal = cartTotal + tip;
+  const change = tendered ? Number(tendered) - paymentTotal : null;
   const nipStatus = buyerNip.length === 0 ? "empty" : nipValid(buyerNip) ? "valid" : "invalid";
+
+  // ── Barcode scanner ───────────────────────────────────────────────────────
+  // Scanner devices type the barcode as keyboard input + Enter.
+  // We intercept keydown globally while in menu view, buffer chars, then
+  // fire the lookup on Enter.
+  useEffect(() => {
+    if (view !== "menu") return;
+    const onKey = async (e: KeyboardEvent) => {
+      if (e.key === "Enter" && barcodeBuffer.length >= 3) {
+        const code = barcodeBuffer;
+        setBarcodeBuffer("");
+        const item = await searchByBarcode(code);
+        if (item) {
+          addToCart(item);
+          setError("");
+        } else {
+          setError(`No item found for barcode: ${code}`);
+        }
+      } else if (e.key.length === 1) {
+        setBarcodeBuffer((prev) => prev + e.key);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, barcodeBuffer]);
+
+  // Clear buffer when switching away from menu
+  useEffect(() => { if (view !== "menu") setBarcodeBuffer(""); }, [view]);
+
+  // ── Park bill ─────────────────────────────────────────────────────────────
+  const handlePark = async () => {
+    if (!activeOrder) return;
+    try {
+      await parkOrder(activeOrder.id, parkNote.trim() || undefined);
+      setActiveOrder(null);
+      setCart([]);
+      setSelectedTable(null);
+      setParkNote("");
+      setShowParkModal(false);
+      setView("tables");
+      const updated = await getPosTables();
+      setTables(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Park failed");
+      setShowParkModal(false);
+    }
+  };
+
+  // ── Cash drawer ───────────────────────────────────────────────────────────
+  const handleCashMovement = async () => {
+    if (!session || !cashAmount) return;
+    setCashBusy(true);
+    try {
+      await recordCashMovement({
+        sessionId: session.id,
+        type: cashType,
+        reason: cashReason,
+        amount: Number(cashAmount),
+        note: cashNote.trim() || undefined,
+      });
+      setCashAmount("");
+      setCashNote("");
+      setShowCashModal(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Cash movement failed");
+    } finally {
+      setCashBusy(false);
+    }
+  };
 
   // ── Cart actions ──────────────────────────────────────────────────────────
 
@@ -274,11 +359,13 @@ export function PosApp() {
         paymentMethod: method,
         amountTendered: tendered ? Number(tendered) : undefined,
         buyerNip: buyerNip.trim() || undefined,
+        tipAmount: tip > 0 ? tip : undefined,
       });
       setActiveOrder(paid);
       setCart([]);
       setBuyerNip("");
       setTendered("");
+      setTip(0);
       setCovers("");
       setOrderNote("");
       setView("tables");
@@ -317,6 +404,98 @@ export function PosApp() {
         />
       )}
 
+      {/* Park bill modal */}
+      {showParkModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[var(--color-ink)] border border-white/10 rounded-2xl p-6 space-y-4 text-white">
+            <h2 className="text-lg font-bold">Park bill</h2>
+            <p className="text-sm text-white/60">The order will be saved. Tap the table again to resume it.</p>
+            <label className="block text-sm text-white/50">
+              Note (optional)
+              <input
+                type="text"
+                value={parkNote}
+                onChange={(e) => setParkNote(e.target.value)}
+                placeholder="e.g. Waiting for dessert"
+                className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-saffron)]"
+                autoFocus
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="ghost" onClick={() => setShowParkModal(false)}>Cancel</Button>
+              <Button onClick={handlePark} className="!bg-amber-500 hover:!bg-amber-600">Park bill</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash drawer modal */}
+      {showCashModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[var(--color-ink)] border border-white/10 rounded-2xl p-6 space-y-4 text-white">
+            <h2 className="text-lg font-bold">Cash drawer</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {(["OUT", "IN"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setCashType(t)}
+                  className={`py-2.5 rounded-xl font-semibold text-sm border-2 transition ${
+                    cashType === t
+                      ? t === "OUT" ? "bg-red-500/30 border-red-400 text-red-300" : "bg-emerald-500/30 border-emerald-400 text-emerald-300"
+                      : "bg-white/5 border-white/20 text-white/50"
+                  }`}
+                >
+                  {t === "OUT" ? "− Withdrawal" : "+ Deposit"}
+                </button>
+              ))}
+            </div>
+            <label className="block text-sm text-white/50">
+              Amount (PLN)
+              <input
+                type="number"
+                min={0.01}
+                step={0.01}
+                value={cashAmount}
+                onChange={(e) => setCashAmount(e.target.value)}
+                className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-[var(--color-saffron)]"
+                autoFocus
+              />
+            </label>
+            <label className="block text-sm text-white/50">
+              Reason
+              <select
+                value={cashReason}
+                onChange={(e) => setCashReason(e.target.value)}
+                className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none"
+              >
+                <option value="BANK_DEPOSIT">Bank deposit</option>
+                <option value="SUPPLIER_PAYMENT">Supplier payment</option>
+                <option value="PETTY_CASH">Petty cash</option>
+                <option value="CHANGE_FUND">Change fund</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </label>
+            <label className="block text-sm text-white/50">
+              Note (optional)
+              <input
+                type="text"
+                value={cashNote}
+                onChange={(e) => setCashNote(e.target.value)}
+                placeholder="e.g. Invoice #456"
+                className="mt-1 w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="ghost" onClick={() => setShowCashModal(false)}>Cancel</Button>
+              <Button onClick={handleCashMovement} disabled={!cashAmount || cashBusy}>
+                {cashBusy ? "Saving…" : "Confirm"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Left panel ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -341,13 +520,29 @@ export function PosApp() {
               📍 <strong className="text-white">{selectedTable.name}</strong>
             </span>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2 flex-wrap">
+            {cart.length > 0 && activeOrder && (
+              <button
+                type="button"
+                onClick={() => setShowParkModal(true)}
+                className="text-xs text-amber-400 hover:text-amber-300 px-3 py-1.5 rounded-lg border border-amber-400/30 hover:bg-amber-400/10"
+              >
+                🅿 Park bill
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowCashModal(true)}
+              className="text-xs text-white/50 hover:text-white/80 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/5"
+            >
+              💵 Cash drawer
+            </button>
             <button
               type="button"
               onClick={() => { window.location.href = "/"; }}
               className="text-xs text-white/40 hover:text-white/70 px-2 py-1.5 rounded-lg hover:bg-white/5 transition"
             >
-              ← Back to admin
+              ← Back
             </button>
             <button
               type="button"
@@ -407,7 +602,26 @@ export function PosApp() {
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => { setSelectedTable(t); setView("menu"); }}
+                  onClick={async () => {
+                    setSelectedTable(t);
+                    if (t.occupied && t.openOrderId) {
+                      // Resume the existing order on this table
+                      try {
+                        const resumed = await resumeOrder(t.openOrderId);
+                        setActiveOrder(resumed);
+                        setCart(resumed.lines.map((l) => ({
+                          menuItemId: l.menuItemId ?? l.id,
+                          itemName: l.itemName,
+                          unitPrice: l.unitPrice,
+                          vatRatePct: l.vatRatePct,
+                          quantity: l.quantity,
+                        })));
+                      } catch {
+                        // Order might already be OPEN, just navigate
+                      }
+                    }
+                    setView("menu");
+                  }}
                   className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 text-sm font-semibold border-2 transition active:scale-95 ${
                     t.occupied
                       ? "bg-amber-500/20 border-amber-400/50 text-amber-300 hover:bg-amber-500/30"
@@ -416,7 +630,7 @@ export function PosApp() {
                 >
                   <span>{t.name}</span>
                   <span className="text-[10px] font-normal opacity-60">{t.seats} 👤</span>
-                  {t.occupied && <span className="text-[9px] text-amber-400">●</span>}
+                  {t.occupied && <span className="text-[9px] text-amber-400">🅿</span>}
                 </button>
               ))}
               <button
@@ -600,8 +814,41 @@ export function PosApp() {
               <span>VAT</span><span>{fmt(cartVat)}</span>
             </div>
             <div className="flex justify-between font-bold text-lg">
-              <span>Total</span>
-              <span className="text-[var(--color-saffron)]">{fmt(cartTotal)}</span>
+              <span>Bill</span>
+              <span>{fmt(cartTotal)}</span>
+            </div>
+          </div>
+
+          {/* Tip selector */}
+          <div className="space-y-1.5">
+            <p className="text-xs text-white/40 uppercase tracking-wider">Tip</p>
+            <div className="grid grid-cols-4 gap-1">
+              {[0, 5, 10, 15].map((pct) => {
+                const tipVal = pct === 0 ? 0 : Math.round(cartTotal * pct) / 100;
+                return (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setTip(tipVal)}
+                    className={`py-1.5 rounded-lg text-xs font-semibold border transition ${
+                      tip === tipVal
+                        ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                        : "bg-white/5 border-white/15 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {pct === 0 ? "No tip" : `+${pct}%`}
+                  </button>
+                );
+              })}
+            </div>
+            {tip > 0 && (
+              <div className="flex justify-between text-xs text-white/50">
+                <span>Tip</span><span>+{fmt(tip)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-lg border-t border-white/10 pt-1.5">
+              <span>To pay</span>
+              <span className="text-[var(--color-saffron)]">{fmt(paymentTotal)}</span>
             </div>
           </div>
 

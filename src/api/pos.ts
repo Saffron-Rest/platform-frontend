@@ -54,19 +54,32 @@ export type PosOrderLine = {
   note?: string;
 };
 
+export type CashDrawerTransaction = {
+  id: string;
+  type: "IN" | "OUT";
+  amount: number;
+  reason: "BANK_DEPOSIT" | "SUPPLIER_PAYMENT" | "PETTY_CASH" | "CHANGE_FUND" | "OTHER";
+  note?: string;
+  createdAt: string;
+};
+
 export type PosOrder = {
   id: string;
   tableId?: string;
   cashierId: string;
-  status: "OPEN" | "PAYING" | "PAID" | "VOIDED";
+  status: "OPEN" | "PARKED" | "PAYING" | "PAID" | "VOIDED";
   covers?: number;
   orderNote?: string;
   totalGross: number;
   totalVat: number;
+  tipAmount: number;
+  paymentTotal: number;
   paymentMethod?: string;
   amountTendered?: number;
   fiscalReceiptNumber?: string;
   buyerNip?: string;
+  parkedAt?: string;
+  parkedNote?: string;
   openedAt: string;
   paidAt?: string;
   lines: PosOrderLine[];
@@ -131,6 +144,25 @@ export async function voidOrder(orderId: string): Promise<PosOrder> {
   return api<PosOrder>(`/pos/orders/${orderId}/void`, { method: "POST" });
 }
 
+export async function parkOrder(orderId: string, note?: string): Promise<PosOrder> {
+  return api<PosOrder>(`/pos/orders/${orderId}/park`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export async function resumeOrder(orderId: string): Promise<PosOrder> {
+  return api<PosOrder>(`/pos/orders/${orderId}/resume`, { method: "POST" });
+}
+
+export async function searchByBarcode(code: string): Promise<PosMenuItem | null> {
+  try {
+    return await api<PosMenuItem>(`/pos/menu/barcode/${encodeURIComponent(code)}`);
+  } catch {
+    return null;
+  }
+}
+
 // ─── Session ─────────────────────────────────────────────────────────────────
 
 export async function getCurrentSession(): Promise<PosSession | null> {
@@ -148,5 +180,18 @@ export async function closeSession(sessionId: string, closingFloat: number): Pro
   return api<PosSession>("/pos/session/close", {
     method: "POST",
     body: JSON.stringify({ sessionId, closingFloat }),
+  });
+}
+
+export async function recordCashMovement(payload: {
+  sessionId: string;
+  type: "IN" | "OUT";
+  reason: string;
+  amount: number;
+  note?: string;
+}): Promise<CashDrawerTransaction> {
+  return api<CashDrawerTransaction>("/pos/session/cash", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
