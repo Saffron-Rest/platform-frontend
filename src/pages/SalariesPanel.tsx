@@ -385,7 +385,7 @@ export function SalariesPanel() {
           <p className="text-xs text-center text-[var(--color-muted)]">
             {report.grandTotalHours.toFixed(1)} <strong>scheduled</strong> hours this period
             {" · "}
-            <Link to="/admin/attendance" className="text-[var(--color-saffron)] font-medium">
+            <Link to="/schedule" className="text-[var(--color-saffron)] font-medium">
               View schedule
             </Link>
           </p>
@@ -702,7 +702,7 @@ export function SalariesPanel() {
                             ? "Not scheduled this period."
                             : "Inactive employee — no shifts in this period."}{" "}
                           <Link
-                            to="/admin/attendance"
+                            to="/schedule"
                             className="text-[var(--color-saffron)] font-medium"
                           >
                             Edit schedule →

@@ -32,7 +32,6 @@ const MenuEngineering = lazy(() => import("./pages/MenuEngineering").then((m) =>
 
 /* ── Admin pages — heaviest in the codebase, always lazy. ── */
 const AdminPeople = lazy(() => import("./pages/admin/AdminPeople").then((m) => ({ default: m.AdminPeople })));
-const AdminAttendance = lazy(() => import("./pages/admin/AdminAttendance").then((m) => ({ default: m.AdminAttendance })));
 const AdminSettingsHub = lazy(() => import("./pages/admin/AdminSettingsHub").then((m) => ({ default: m.AdminSettingsHub })));
 const AdminAudit = lazy(() => import("./pages/admin/AdminAudit").then((m) => ({ default: m.AdminAudit })));
 const AdminDataHealth = lazy(() => import("./pages/admin/AdminDataHealth").then((m) => ({ default: m.AdminDataHealth })));
@@ -132,9 +131,7 @@ export default function App() {
                     <Route element={<RequirePermission anyOf={["CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"]} />}>
                       <Route path="certifications" element={<Navigate to="/admin/people?tab=certifications" replace />} />
                     </Route>
-                    <Route element={<RequirePermission anyOf={["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"]} />}>
-                      <Route path="attendance" element={<LazyRoute><AdminAttendance /></LazyRoute>} />
-                    </Route>
+                    <Route path="attendance" element={<Navigate to="/schedule" replace />} />
                     {/* Unified settings hub */}
                     <Route element={<RequirePermission anyOf={["SETTINGS_VIEW", "SETTINGS_MANAGE", "TREASURY_VIEW", "TREASURY_MANAGE", "TAGS_MANAGE", "POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"]} />}>
                       <Route path="settings" element={<LazyRoute><AdminSettingsHub /></LazyRoute>} />
@@ -164,9 +161,7 @@ export default function App() {
                     <Route element={<RequirePermission anyOf={["CHECKLISTS_RUN", "CHECKLISTS_CONFIGURE"]} />}>
                       <Route path="checklists" element={<LazyRoute><AdminChecklists /></LazyRoute>} />
                     </Route>
-                    <Route element={<RequirePermission anyOf={["HACCP_LOG", "HACCP_EXPORT", "HACCP_CONFIGURE"]} />}>
-                      <Route path="haccp" element={<RouteErrorBoundary><HaccpLogs /></RouteErrorBoundary>} />
-                    </Route>
+                    <Route path="haccp" element={<Navigate to="/haccp" replace />} />
                     <Route element={<RequirePermission anyOf={["POS_INTEGRATION_VIEW", "POS_INTEGRATION_MANAGE"]} />}>
                       <Route path="pos" element={<Navigate to="/admin/settings?tab=pos" replace />} />
                     </Route>

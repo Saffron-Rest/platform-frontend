@@ -729,8 +729,8 @@ export function AdminTeam({ asTab }: { asTab?: boolean } = {}) {
 
       <p className="text-xs text-[var(--color-muted)] text-center">
         Schedule shifts in{" "}
-        <Link to="/admin/attendance" className="text-[var(--color-saffron)] font-medium">
-          Attendance
+        <Link to="/schedule" className="text-[var(--color-saffron)] font-medium">
+          Schedule
         </Link>
         . View payroll in{" "}
         <Link

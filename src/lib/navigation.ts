@@ -106,13 +106,13 @@ function fullOperationsGroups(): NavGroup[] {
       label: "Operations",
       items: [
         { kind: "link", to: "/admin/inbox", label: "Issues", description: "Data health & open issues", icon: IconInbox, primary: true, requires: ["REPORTS_VIEW"] },
-        { kind: "link", to: "/admin/attendance", label: "Schedule", description: "Who works when", icon: IconCalendar, requires: ["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"] },
+        { kind: "link", to: "/schedule", label: "Schedule", description: "Who works when", icon: IconCalendar, requires: ["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"] },
         { kind: "link", to: "/admin/stock", label: "Stock", description: "Inventory & POS sync", icon: IconBoxes, requires: ["STOCK_VIEW", "STOCK_ADJUST", "STOCK_MANAGE", "STOCK_DELETE"] },
         { kind: "link", to: "/admin/incidents", label: "Incidents", description: "Breakages, complaints, accidents", icon: IconWarning, requires: ["INCIDENTS_VIEW", "INCIDENTS_FILE", "INCIDENTS_RESOLVE"] },
         { kind: "link", to: "/admin/menu", label: "Menu items", description: "Items, prices, costs", icon: IconUtensils, requires: ["MENU_VIEW", "MENU_MANAGE"] },
         { kind: "link", to: "/admin/recipes", label: "Recipes", description: "Cost cards & price suggestions", icon: IconUtensils, requires: ["MENU_VIEW", "MENU_RECIPES_MANAGE"] },
         { kind: "link", to: "/admin/checklists", label: "Checklist templates", description: "Opening / closing tasks", icon: IconCheckSquare, requires: ["CHECKLISTS_RUN", "CHECKLISTS_CONFIGURE"] },
-        { kind: "link", to: "/admin/haccp", label: "HACCP history", description: "Food-safety records & export", icon: IconThermometer, requires: ["HACCP_LOG", "HACCP_EXPORT", "HACCP_CONFIGURE"] },
+        { kind: "link", to: "/haccp", label: "HACCP history", description: "Food-safety records & export", icon: IconThermometer, requires: ["HACCP_LOG", "HACCP_EXPORT", "HACCP_CONFIGURE"] },
       ],
     },
     {
