@@ -8,7 +8,6 @@ import {
   getPosTables,
   openSession,
   payOrder,
-  voidOrder,
   type PosMenuItem,
   type PosOrder,
   type PosSession,
