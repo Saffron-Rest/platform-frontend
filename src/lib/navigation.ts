@@ -2,7 +2,6 @@ import type { ComponentType } from "react";
 import type { Role, User } from "../types";
 import {
   IconBadge,
-  IconBolt,
   IconBoxes,
   IconCalendar,
   IconCash,
