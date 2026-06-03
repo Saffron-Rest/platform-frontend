@@ -229,7 +229,7 @@ export function AdminSettings({ asTab = false }: { asTab?: boolean } = {}) {
       <Card>
         <h3 className="font-semibold mb-1">Recent activity</h3>
         <p className="text-xs text-[var(--color-muted)] mb-4">Latest sign-ins, edits, and exports</p>
-        <AuditRecentList logs={logs} onSelect={(id) => navigate("/audit", { state: { selectedId: id } })} />
+        <AuditRecentList logs={logs} onSelect={(id) => navigate("/admin/settings?tab=audit", { state: { selectedId: id } })} />
       </Card>
     </div>
   );

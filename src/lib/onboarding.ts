@@ -342,7 +342,7 @@ function managerTour(): TourStep[] {
     },
     {
       target: "nav-audit",
-      route: "/audit",
+      route: "/admin/settings?tab=audit",
       category: "Navigation",
       title: "Audit log",
       body: "Immutable-style log of who changed reports, expenses, users, and settings.",
@@ -350,7 +350,7 @@ function managerTour(): TourStep[] {
     },
     {
       target: "tour-audit-filters",
-      route: "/audit",
+      route: "/admin/settings?tab=audit",
       category: "Audit",
       title: "Search the trail",
       body: "Filter by person, action type, or date. Select a row to see before/after values.",

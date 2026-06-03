@@ -97,7 +97,7 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Link
-          to="/treasury/history?source=cash"
+          to="/reports?tab=treasury&source=cash"
           aria-label="Open cash history"
           className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
         >
@@ -130,7 +130,7 @@ export function TreasurySummaryCards({ className = "", compact = false, tourId }
           </Card>
         </Link>
         <Link
-          to="/treasury/history?source=card"
+          to="/reports?tab=treasury&source=card"
           aria-label="Open card and bank history"
           className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60"
         >

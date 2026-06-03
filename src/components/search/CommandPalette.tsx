@@ -95,7 +95,7 @@ export function CommandPalette() {
       { type: "audit", id: "qa-finance", title: "Go to finance ledger", subtitle: "Expenses & income", url: "/finance", score: 95 },
       { type: "audit", id: "qa-menu", title: "Go to menu analytics", subtitle: "Reports", url: "/menu", score: 90 },
       { type: "audit", id: "qa-menu-eng", title: "Menu engineering matrix", subtitle: "Reports", url: "/menu/engineering", score: 90 },
-      { type: "audit", id: "qa-treasury", title: "Treasury history", subtitle: "Reports", url: "/treasury/history", score: 90 },
+      { type: "audit", id: "qa-treasury", title: "Treasury history", subtitle: "Reports", url: "/reports?tab=treasury", score: 90 },
 
       // Admin — Operations
       { type: "audit", id: "qa-inbox", title: "Admin · inbox", subtitle: "Open issues & data health", url: "/admin/inbox", score: 85 },
@@ -119,7 +119,7 @@ export function CommandPalette() {
       { type: "audit", id: "qa-tags", title: "Admin · tag library", subtitle: "Custom labels", url: "/admin/tags", score: 80 },
       { type: "audit", id: "qa-security", title: "Admin · security & 2FA", subtitle: "Personal security settings", url: "/admin/security", score: 80 },
       { type: "audit", id: "qa-settings", title: "Admin · settings", subtitle: "Restaurant-wide settings", url: "/admin/settings", score: 80 },
-      { type: "audit", id: "qa-audit", title: "Audit log", subtitle: "Who changed what", url: "/audit", score: 80 },
+      { type: "audit", id: "qa-audit", title: "Audit log", subtitle: "Who changed what", url: "/admin/settings?tab=audit", score: 80 },
     ],
     []
   );

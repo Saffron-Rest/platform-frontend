@@ -751,7 +751,7 @@ export function FinanceLedger({ asTab }: { asTab?: boolean } = {}) {
                       </div>
                       {row.source === "OWNER_EXPENSE" && row.ownerExpenseId ? (
                         <Link
-                          to={`/admin/owner-expenses?focus=${encodeURIComponent(row.ownerExpenseId)}`}
+                          to={`/reports?tab=owner-expenses&focus=${encodeURIComponent(row.ownerExpenseId)}`}
                           className="text-[11px] font-medium text-[var(--color-saffron)] shrink-0 hover:underline"
                           title="Manage on the Owner reimbursements page so the workflow stays consistent."
                         >
