@@ -9,13 +9,11 @@ import { fmt } from "../lib/calc";
  */
 export function PosDisplay() {
   const [order, setOrder] = useState<PosOrder | null>(null);
-  const [lastUpdate, setLastUpdate] = useState(Date.now());
 
   useEffect(() => {
     const poll = () =>
       getDisplayOrder().then((o) => {
         setOrder(o);
-        setLastUpdate(Date.now());
       }).catch(() => {});
 
     poll();

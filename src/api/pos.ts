@@ -155,7 +155,7 @@ export async function removeLine(orderId: string, lineId: string): Promise<PosOr
 
 export async function payOrder(
   orderId: string,
-  payload: { paymentMethod: string; amountTendered?: number; buyerNip?: string; fiscalReceiptNumber?: string }
+  payload: { paymentMethod: string; amountTendered?: number; tipAmount?: number; buyerNip?: string; fiscalReceiptNumber?: string }
 ): Promise<PosOrder> {
   return api<PosOrder>(`/pos/orders/${orderId}/pay`, {
     method: "POST",

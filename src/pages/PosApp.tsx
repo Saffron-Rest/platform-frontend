@@ -183,7 +183,6 @@ export function PosApp() {
   const [cashReason, setCashReason] = useState("OTHER");
   const [cashNote, setCashNote] = useState("");
   const [cashBusy, setCashBusy] = useState(false);
-  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const [barcodeBuffer, setBarcodeBuffer] = useState("");
   // Discount
   const [showDiscountDrawer, setShowDiscountDrawer] = useState(false);
@@ -308,7 +307,7 @@ export function PosApp() {
 
   // ── Cash drawer ───────────────────────────────────────────────────────────
   const handleCashMovement = async () => {
-    if (!session || !cashAmount) return;
+    if (!session || session === "loading" || !cashAmount) return;
     setCashBusy(true);
     try {
       await recordCashMovement({
@@ -356,7 +355,7 @@ export function PosApp() {
     }
   };
 
-  const handleClearDiscount = async () => {
+  const handleClearDiscount = useCallback(async () => {
     if (!activeOrder) return;
     try {
       const updated = await clearDiscount(activeOrder.id);
@@ -364,7 +363,7 @@ export function PosApp() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to clear discount");
     }
-  };
+  }, [activeOrder]);
 
   // ── Combined payment ──────────────────────────────────────────────────────
   const legTotal = payLegs.reduce((s, l) => s + (Number(l.amount) || 0), 0);
@@ -636,9 +635,11 @@ export function PosApp() {
                 Saving: {fmt(discountIsPct ? cartTotal * Number(discountValue) / 100 : Number(discountValue))}
               </p>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="ghost" onClick={() => setShowDiscountDrawer(false)}>Cancel</Button>
-              <Button onClick={handleApplyDiscount} disabled={!discountValue || discountBusy || (discountType === "ITEM" && !discountLineId)}>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setShowDiscountDrawer(false)} className="flex-1">Cancel</Button>
+              <button type="button" onClick={() => { handleClearDiscount(); setShowDiscountDrawer(false); }}
+                className="text-xs text-red-400 hover:text-red-300 px-3">Clear</button>
+              <Button onClick={handleApplyDiscount} disabled={!discountValue || discountBusy || (discountType === "ITEM" && !discountLineId)} className="flex-1">
                 {discountBusy ? "Applying…" : "Apply"}
               </Button>
             </div>
