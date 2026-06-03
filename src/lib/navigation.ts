@@ -103,6 +103,7 @@ function fullOperationsGroups(): NavGroup[] {
       id: "operations",
       label: "Operations",
       items: [
+        { kind: "link", to: "/pos", label: "POS", description: "Open the tablet ordering screen", icon: IconCash, requires: ["REPORTS_VIEW"] },
         { kind: "link", to: "/admin/inbox", label: "Issues", description: "Data health & open issues", icon: IconInbox, primary: true, requires: ["REPORTS_VIEW"] },
         { kind: "link", to: "/schedule", label: "Schedule", description: "Who works when", icon: IconCalendar, requires: ["ATTENDANCE_VIEW", "SCHEDULE_MANAGE", "SCHEDULE_BULK"] },
         { kind: "link", to: "/admin/stock", label: "Stock", description: "Inventory & POS sync", icon: IconBoxes, requires: ["STOCK_VIEW", "STOCK_ADJUST", "STOCK_MANAGE", "STOCK_DELETE"] },
