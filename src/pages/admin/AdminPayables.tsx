@@ -421,6 +421,32 @@ function PayablesTable({
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Recent-supplier tracking (localStorage)
+// ───────────────────────────────────────────────────────────────────────────
+
+const RECENT_SUPPLIERS_KEY = "saffron:recent_suppliers";
+
+type RecentSupplier = { id: string; name: string };
+
+function loadRecentSuppliers(): RecentSupplier[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_SUPPLIERS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentSupplier(supplier: RecentSupplier) {
+  const existing = loadRecentSuppliers().filter((s) => s.id !== supplier.id);
+  const next: RecentSupplier[] = [supplier, ...existing].slice(0, 3);
+  try {
+    localStorage.setItem(RECENT_SUPPLIERS_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage full — skip
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Create-invoice dialog
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -448,13 +474,19 @@ function CreateInvoiceDialog({
   const [lines, setLines] = useState<LineDraft[]>([blankLine()]);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [recentSuppliers, setRecentSuppliers] = useState<RecentSupplier[]>([]);
 
   // Reset every time the dialog re-opens. We deliberately don't depend
   // on `suppliers` so changing the supplier list while the dialog is
   // open doesn't reset the user's draft.
   useEffect(() => {
     if (!open) return;
-    setSupplierId(suppliers[0]?.id ?? "");
+    const recent = loadRecentSuppliers().filter((r) =>
+      suppliers.some((s) => s.id === r.id)
+    );
+    setRecentSuppliers(recent);
+    // Pre-select the most recently used supplier, or fall back to first.
+    setSupplierId(recent[0]?.id ?? suppliers[0]?.id ?? "");
     setInvoiceNumber("");
     setInvoiceDate(today);
     setDueDate("");
@@ -521,6 +553,8 @@ function CreateInvoiceDialog({
     setSubmitting(true);
     try {
       await createPayable(payload);
+      const supplierName = suppliers.find((s) => s.id === supplierId)?.name ?? "";
+      if (supplierName) saveRecentSupplier({ id: supplierId, name: supplierName });
       onCreated();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to record invoice");
@@ -545,6 +579,26 @@ function CreateInvoiceDialog({
       </DialogTitle>
       <DialogBody className="space-y-4">
         {err && <Alert variant="error">{err}</Alert>}
+
+        {recentSuppliers.length > 0 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-[var(--color-muted)] shrink-0">Recent:</span>
+            {recentSuppliers.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setSupplierId(r.id)}
+                className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                  supplierId === r.id
+                    ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                    : "bg-white border-black/10 hover:bg-[var(--color-cream)]/60"
+                }`}
+              >
+                {r.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Field label="Supplier" required>
