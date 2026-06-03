@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   addLine,
   closeSession,
@@ -342,13 +341,22 @@ export function PosApp() {
               📍 <strong className="text-white">{selectedTable.name}</strong>
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => setShowCloseModal(true)}
-            className="ml-auto text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-400/30 hover:bg-red-400/10"
-          >
-            Close Shift
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { window.location.href = "/"; }}
+              className="text-xs text-white/40 hover:text-white/70 px-2 py-1.5 rounded-lg hover:bg-white/5 transition"
+            >
+              ← Back to admin
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCloseModal(true)}
+              className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-400/30 hover:bg-red-400/10"
+            >
+              Close Shift
+            </button>
+          </div>
         </div>
 
         {error && (
