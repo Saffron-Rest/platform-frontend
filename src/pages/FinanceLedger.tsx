@@ -160,7 +160,14 @@ export function FinanceLedger({ asTab }: { asTab?: boolean } = {}) {
   const openAdd = (kind: AddKind) => {
     setAddOpen(kind);
     setViewTab(kind === "expense" ? "expenses" : "delivery");
-    setSearchParams({ add: kind }, { replace: true });
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("add", kind);
+        return next;
+      },
+      { replace: true }
+    );
     requestAnimationFrame(() => {
       addPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
