@@ -42,6 +42,46 @@ function nipValid(nip: string) {
 
 const darkInput = "w-full bg-white/[0.06] border border-white/[0.10] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[var(--color-saffron)] focus:ring-1 focus:ring-[var(--color-saffron)]/25 transition";
 
+// ─── Primitive helpers ────────────────────────────────────────────────────────
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-[var(--color-ink)]/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#231f1c] rounded-2xl p-6 w-full max-w-md border border-white/[0.08] shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-bold text-white">{title}</h2>
+          <button type="button" onClick={onClose}
+            className="w-8 h-8 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-white/50 flex items-center justify-center text-lg leading-none transition">×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ErrBox({ children }: { children: React.ReactNode }) {
+  return <div className="mb-4 px-3 py-2.5 rounded-xl bg-[var(--color-danger)]/15 text-[var(--color-danger)] text-sm border border-[var(--color-danger)]/20">{children}</div>;
+}
+
+function GhostBtn({ onClick, className = "", children }: { onClick: () => void; className?: string; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`py-3 rounded-xl border border-white/[0.10] text-white/55 text-sm hover:bg-white/[0.05] hover:text-white/80 transition ${className}`}>
+      {children}
+    </button>
+  );
+}
+
+function PrimaryBtn({ onClick, disabled, children, className = "" }: { onClick: () => void; disabled?: boolean; children: React.ReactNode; className?: string }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className={`py-3 rounded-xl text-white font-semibold text-sm transition disabled:opacity-40 active:scale-95 ${className}`}
+      style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}>
+      {children}
+    </button>
+  );
+}
+
 // ─── Session gate ─────────────────────────────────────────────────────────────
 
 function SessionGate({ onOpen }: { onOpen: (s: PosSession) => void }) {
@@ -103,9 +143,8 @@ function CloseModal({ session, onClosed, onCancel }: { session: PosSession; onCl
     catch (e) { setErr(e instanceof Error ? e.message : "Failed"); setBusy(false); }
   };
   return (
-    <Overlay onClose={onCancel}>
-      <h2 className="text-base font-bold text-white mb-1">Close Shift</h2>
-      <p className="text-white/45 text-sm mb-5">Opening float: <strong className="text-white">{fmt(session.openingFloat)}</strong></p>
+    <Modal title="Close Shift" onClose={onCancel}>
+      <p className="text-white/45 text-sm mb-5 -mt-3">Opening float: <strong className="text-white">{fmt(session.openingFloat)}</strong></p>
       {err && <ErrBox>{err}</ErrBox>}
       <label className="block mb-5">
         <span className="text-xs font-bold uppercase tracking-wider text-white/45">Closing cash count (PLN)</span>
@@ -120,47 +159,7 @@ function CloseModal({ session, onClosed, onCancel }: { session: PosSession; onCl
           {busy ? "Closing…" : "Close Shift"}
         </button>
       </div>
-    </Overlay>
-  );
-}
-
-// ─── Primitive helpers ────────────────────────────────────────────────────────
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-[var(--color-ink)]/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#231f1c] rounded-2xl p-6 w-full max-w-md border border-white/[0.08] shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-bold text-white">{title}</h2>
-          <button type="button" onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-white/50 flex items-center justify-center text-lg leading-none transition">×</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function ErrBox({ children }: { children: React.ReactNode }) {
-  return <div className="mb-4 px-3 py-2.5 rounded-xl bg-[var(--color-danger)]/15 text-[var(--color-danger)] text-sm border border-[var(--color-danger)]/20">{children}</div>;
-}
-
-function GhostBtn({ onClick, className = "", children }: { onClick: () => void; className?: string; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={`py-3 rounded-xl border border-white/[0.10] text-white/55 text-sm hover:bg-white/[0.05] hover:text-white/80 transition ${className}`}>
-      {children}
-    </button>
-  );
-}
-
-function PrimaryBtn({ onClick, disabled, children, className = "" }: { onClick: () => void; disabled?: boolean; children: React.ReactNode; className?: string }) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled}
-      className={`py-3 rounded-xl text-white font-semibold text-sm transition disabled:opacity-40 active:scale-95 ${className}`}
-      style={{ background: "linear-gradient(145deg,var(--color-saffron),var(--color-saffron-dark))" }}>
-      {children}
-    </button>
+    </Modal>
   );
 }
 
