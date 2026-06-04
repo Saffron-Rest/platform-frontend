@@ -58,6 +58,33 @@ Dovga,Soups,DOVGA-1,18.00,5.50,8,"Yogurt and herb soup"
 Chai Black,Drinks,CHAI-BLK,8.00,1.20,23,"Traditional black tea"
 `;
 
+type VariantRow = { name: string; price: string };
+
+function parseVariants(raw: string | null | undefined): VariantRow[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map((v: { name?: string; price?: number }) => ({
+      name: v.name ?? "",
+      price: v.price != null ? String(v.price) : "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function serializeVariants(rows: VariantRow[]): string | null {
+  const filtered = rows.filter(r => r.name.trim());
+  if (filtered.length === 0) return null;
+  return JSON.stringify(
+    filtered.map(r => {
+      const p = parseFloat(r.price.replace(",", "."));
+      return { name: r.name.trim(), ...(Number.isFinite(p) && p >= 0 ? { price: p } : {}) };
+    })
+  );
+}
+
 type ItemDraft = {
   id?: string;
   name: string;
@@ -73,6 +100,8 @@ type ItemDraft = {
   featured: boolean;
   active: boolean;
   imageUrl: string | null;
+  portionSize: string;
+  variants: VariantRow[];
 };
 
 const blankDraft: ItemDraft = {
@@ -89,6 +118,8 @@ const blankDraft: ItemDraft = {
   featured: false,
   active: true,
   imageUrl: null,
+  portionSize: "",
+  variants: [],
 };
 
 function parseTagList(raw: string | null | undefined): string[] {
@@ -182,6 +213,8 @@ export function AdminMenu() {
       featured: i.featured,
       active: i.active,
       imageUrl: i.imageUrl,
+      portionSize: i.portionSize ?? "",
+      variants: parseVariants(i.variants),
     });
   };
 
@@ -249,6 +282,8 @@ export function AdminMenu() {
         vatRatePct: vatNum,
         featured: draft.featured,
         active: draft.active,
+        portionSize: draft.portionSize.trim() || null,
+        variants: serializeVariants(draft.variants),
       };
       if (draft.id) {
         await updateItem(draft.id, payload);
@@ -645,6 +680,80 @@ export function AdminMenu() {
                   placeholder="Slow-braised lamb shoulder, saffron rice, sour barberries, served with cucumber-mint yogurt."
                 />
               </label>
+
+              {/* ── Portion size ──────────────────────────────────────── */}
+              <label className="field-label">
+                Portion / Serving size
+                <span className="ml-1 text-xs font-normal text-[var(--color-muted)]">(optional)</span>
+                <input
+                  className="field-input"
+                  value={draft.portionSize}
+                  maxLength={40}
+                  onChange={e => setDraft(d => ({ ...d, portionSize: e.target.value }))}
+                  placeholder="e.g. 500g · 330ml · 2 pcs"
+                />
+                <span className="text-xs text-[var(--color-muted)] mt-0.5">
+                  Shown in parentheses next to the name on the printed menu.
+                </span>
+              </label>
+
+              {/* ── Variants ──────────────────────────────────────────── */}
+              <div className="field-label">
+                <span>Variants</span>
+                <span className="ml-1 text-xs font-normal text-[var(--color-muted)]">(optional)</span>
+                <p className="text-xs text-[var(--color-muted)] mt-0.5 mb-2">
+                  For items with multiple options, e.g. Small&nbsp;/ Large or Chicken&nbsp;/ Lamb.
+                  Leave price blank to inherit the item's sell price.
+                </p>
+
+                {draft.variants.length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    <div className="grid grid-cols-[1fr_7rem_2rem] gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-muted)] px-0.5">
+                      <span>Option name</span><span>Price (PLN)</span><span />
+                    </div>
+                    {draft.variants.map((v, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_7rem_2rem] gap-1.5 items-center">
+                        <input
+                          className="field-input"
+                          value={v.name}
+                          maxLength={60}
+                          placeholder="e.g. Small, Chicken, Regular…"
+                          onChange={e => setDraft(d => {
+                            const vars = d.variants.map((r, i) => i === idx ? { ...r, name: e.target.value } : r);
+                            return { ...d, variants: vars };
+                          })}
+                        />
+                        <input
+                          className="field-input tabular-nums"
+                          value={v.price}
+                          placeholder={draft.sellPrice || "same"}
+                          inputMode="decimal"
+                          onChange={e => setDraft(d => {
+                            const vars = d.variants.map((r, i) => i === idx ? { ...r, price: e.target.value } : r);
+                            return { ...d, variants: vars };
+                          })}
+                        />
+                        <button
+                          type="button"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-black/10 text-[var(--color-muted)] hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition text-sm"
+                          onClick={() => setDraft(d => ({ ...d, variants: d.variants.filter((_, i) => i !== idx) }))}
+                          title="Remove variant"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="text-sm font-medium text-[var(--color-saffron-dark)] hover:underline"
+                  onClick={() => setDraft(d => ({ ...d, variants: [...d.variants, { name: "", price: "" }] }))}
+                >
+                  + Add variant
+                </button>
+              </div>
 
               <div className="field-label md:col-span-2">
                 <span>Dietary tags</span>

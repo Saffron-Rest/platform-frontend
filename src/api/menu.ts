@@ -8,6 +8,11 @@ export type MenuCategory = {
   itemCount?: number;
 };
 
+export type MenuItemVariant = {
+  name: string;
+  price?: number;  // omitted = inherits item's sellPrice
+};
+
 export type MenuItem = {
   id: string;
   name: string;
@@ -25,6 +30,10 @@ export type MenuItem = {
   foodCost: number | null;
   vatRatePct: number;
   active: boolean;
+  /** e.g. "500g", "330ml", "2 pcs" — shown next to the name on the menu */
+  portionSize: string | null;
+  /** JSON-encoded MenuItemVariant[]. Null when item has no variants. */
+  variants: string | null;
   marginAmount?: number;
   marginPct?: number;
   foodCostPct?: number;
@@ -45,6 +54,8 @@ export type MenuItemPayload = {
   vatRatePct?: number;
   featured?: boolean;
   active?: boolean;
+  portionSize?: string | null;
+  variants?: string | null;
 };
 
 export type CategoryPayload = {
