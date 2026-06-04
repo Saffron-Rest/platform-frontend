@@ -9,7 +9,6 @@ import {
   HubScreen,
   OpenOrdersScreen,
   OrderScreen,
-  SessionOpenScreen,
   TablesScreen,
 } from "./pos/screens";
 import { PinScreen } from "./pos/PinScreen";
@@ -40,10 +39,10 @@ export function PosApp() {
 function PosAppInner({ onLogout }: { onLogout: () => void }) {
   const c = usePosController();
 
-  // Shift closed → back to PIN
+  // Register closed → stay on hub showing "Open Register"
   const handleShiftClosed = () => {
     c.setSession(null);
-    onLogout();
+    c.setScreen("hub");
   };
 
   if (c.session === "loading" || c.loading) {
@@ -56,11 +55,7 @@ function PosAppInner({ onLogout }: { onLogout: () => void }) {
     );
   }
 
-  // No open session → show "Open Register" screen
-  if (!c.session) {
-    return <SessionOpenScreen onOpen={c.setSession} onLogout={onLogout} />;
-  }
-
+  // Hub is always the entry point — it handles both open and closed register states
   return (
     <>
       {c.screen === "hub"         && <HubScreen c={c} onLogout={onLogout} />}
@@ -69,7 +64,9 @@ function PosAppInner({ onLogout }: { onLogout: () => void }) {
       {c.screen === "order"       && <OrderScreen c={c} />}
       {c.screen === "checkout"    && <CheckoutScreen c={c} />}
       {c.screen === "open-orders" && <OpenOrdersScreen c={c} />}
-      <PosModals c={c} session={c.session} onShiftClosed={handleShiftClosed} />
+      {c.session && (
+        <PosModals c={c} session={c.session} onShiftClosed={handleShiftClosed} />
+      )}
     </>
   );
 }
