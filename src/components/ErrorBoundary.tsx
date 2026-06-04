@@ -43,6 +43,17 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   }
 
+  static isChunkError(error: Error): boolean {
+    const m = error?.message ?? "";
+    return (
+      m.includes("Failed to fetch dynamically imported module") ||
+      m.includes("Importing a module script failed") ||
+      m.includes("error loading dynamically imported module") ||
+      m.includes("Unable to preload CSS for") ||
+      (error?.name === "TypeError" && m.includes("import("))
+    );
+  }
+
   componentDidUpdate(prev: Props) {
     if (this.state.error && prev.resetKey !== this.props.resetKey) {
       this.setState({ error: null });
@@ -55,12 +66,50 @@ export class ErrorBoundary extends Component<Props, State> {
     const { error } = this.state;
     if (!error) return this.props.children;
 
+    if (ErrorBoundary.isChunkError(error)) {
+      return <ChunkFallback />;
+    }
+
     if (this.props.fallback) {
       return this.props.fallback(error, this.reset);
     }
 
     return <DefaultFallback error={error} onReset={this.reset} />;
   }
+}
+
+/**
+ * Shown when a lazy chunk can't be fetched — typically means a new
+ * deployment replaced the hashed file the browser was expecting.
+ * A full reload picks up the new index.html and resolves the mismatch.
+ */
+function ChunkFallback() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="max-w-sm w-full text-center">
+        <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-[var(--color-saffron-light)] text-[var(--color-saffron)] flex items-center justify-center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7" aria-hidden="true">
+            <polyline points="23 4 23 10 17 10" />
+            <polyline points="1 20 1 14 7 14" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+        </div>
+        <h2 className="text-lg font-semibold text-[var(--color-ink)]">
+          New version available
+        </h2>
+        <p className="text-sm text-[var(--color-muted)] mt-1">
+          The app was updated. Reload to get the latest version.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition px-6 py-3 text-sm min-h-11 bg-[var(--color-saffron)] text-white hover:bg-[var(--color-saffron-dark)] shadow-sm shadow-[var(--color-saffron)]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] focus-visible:ring-offset-2"
+        >
+          Reload page
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function DefaultFallback({
