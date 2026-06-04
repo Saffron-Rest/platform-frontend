@@ -177,12 +177,14 @@ export function PosModals({ c, session }: { c: C; session: PosSession }) {
   if (c.modal === "qr" && c.qrTx) {
     return (
       <PosModal title="BLIK / QR" onClose={() => c.setModal(null)}>
-        <div style={{ textAlign: "center" }}>
-          <p style={{ fontSize: "2rem", fontWeight: 800, color: "var(--color-saffron)" }}>{fmt(c.qrTx.amount)}</p>
-          <p style={{ marginTop: "0.5rem", fontWeight: 600 }}>{c.qrTx.status}</p>
+        <div style={{ textAlign: "center", padding: "0.5rem 0 1rem" }}>
+          <p style={{ fontSize: "2.25rem", fontWeight: 800, color: "var(--pos-orange)", fontVariantNumeric: "tabular-nums" }}>
+            {fmt(c.qrTx.amount)}
+          </p>
+          <p style={{ marginTop: "0.5rem", fontWeight: 600, color: "var(--pos-muted)" }}>{c.qrTx.status}</p>
           <button
             type="button"
-            style={{ marginTop: "1rem", fontSize: "0.75rem", color: "var(--pos-muted)", background: "none", border: "none", cursor: "pointer" }}
+            style={{ marginTop: "1.25rem", fontSize: "0.8125rem", color: "var(--pos-muted)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
             onClick={async () => {
               await cancelQrPayment(c.qrTx!.id).catch(() => {});
               c.setQrTx(null);

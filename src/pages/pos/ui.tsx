@@ -58,9 +58,9 @@ export function PosSteps({ steps, current }: { steps: string[]; current: number 
 
 export function PosAlert({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
-    <div className="pos-alert" style={{ marginTop: "0.75rem" }}>
-      <span className="flex-1">{message}</span>
-      <button type="button" onClick={onDismiss} className="font-bold opacity-70">
+    <div className="pos-alert">
+      <span style={{ flex: 1 }}>{message}</span>
+      <button type="button" onClick={onDismiss} style={{ fontWeight: 700, opacity: 0.7, background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: "1rem", padding: 0 }}>
         ✕
       </button>
     </div>
@@ -86,6 +86,7 @@ export function PosBtn({
   variant = "default",
   className = "",
   type = "button",
+  style,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
@@ -93,8 +94,9 @@ export function PosBtn({
   variant?: "default" | "primary" | "cash" | "ghost" | "pill" | "pill-active" | "danger";
   className?: string;
   type?: "button" | "submit";
+  style?: React.CSSProperties;
 }) {
-  const v =
+  const cls =
     variant === "primary"
       ? "pos-btn pos-btn--primary"
       : variant === "cash"
@@ -108,18 +110,24 @@ export function PosBtn({
               : variant === "danger"
                 ? "pos-btn"
                 : "pos-btn";
-  const style = variant === "danger" ? { color: "var(--color-danger)", borderColor: "rgb(155 34 38 / 0.25)" } : undefined;
+
+  const dangerStyle: React.CSSProperties | undefined =
+    variant === "danger" ? { color: "var(--pos-red)", borderColor: "rgba(155 34 38 / 0.2)", ...style } : style;
+
   return (
-    <button type={type} className={`${v} w-full ${className}`} onClick={onClick} disabled={disabled} style={style}>
+    <button type={type} className={`${cls} w-full ${className}`} onClick={onClick} disabled={disabled} style={dangerStyle}>
       {children}
     </button>
   );
 }
 
 export function PosMoney({ amount, hero }: { amount: number; hero?: boolean }) {
-  if (hero) return <span className="pos-total-hero__amount">{fmt(amount)}</span>;
+  if (hero)
+    return <span className="pos-total-hero__amount">{fmt(amount)}</span>;
   return (
-    <span style={{ fontWeight: 800, color: "var(--color-saffron)", fontVariantNumeric: "tabular-nums" }}>{fmt(amount)}</span>
+    <span style={{ fontWeight: 800, color: "var(--pos-orange)", fontVariantNumeric: "tabular-nums" }}>
+      {fmt(amount)}
+    </span>
   );
 }
 
@@ -138,7 +146,7 @@ export function PosActionCard({
 }) {
   return (
     <button type="button" className="pos-action-card" onClick={onClick}>
-      <div className="pos-action-card__icon" style={{ background: iconBg, color: "var(--pos-ink)" }}>
+      <div className="pos-action-card__icon" style={{ background: iconBg }}>
         {icon}
       </div>
       <span className="pos-action-card__title">{title}</span>
@@ -161,11 +169,9 @@ export function PosModal({
   return (
     <div className="pos-modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div className={`pos-modal ${wide ? "pos-modal--wide" : ""}`} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-          <h2 style={{ fontSize: "1.125rem", fontWeight: 700 }}>{title}</h2>
-          <button type="button" className="pos-btn pos-btn--ghost" style={{ width: "2.5rem", minHeight: "2.5rem", padding: 0 }} onClick={onClose}>
-            ✕
-          </button>
+        <div className="pos-modal__hd">
+          <h2 className="pos-modal__title">{title}</h2>
+          <button type="button" className="pos-modal__close" onClick={onClose}>✕</button>
         </div>
         {children}
       </div>
@@ -189,7 +195,7 @@ export function PosNumpad({ value, onChange }: { value: string; onChange: (v: st
           {k}
         </button>
       ))}
-      <button type="button" onClick={() => press("C")} style={{ gridColumn: "span 3", color: "var(--color-danger)" }}>
+      <button type="button" onClick={() => press("C")} className="pos-numpad__clear" style={{ gridColumn: "span 3" }}>
         Clear
       </button>
     </div>
@@ -207,13 +213,9 @@ export function PosQtyControl({
 }) {
   return (
     <div className="pos-qty">
-      <button type="button" onClick={onMinus} aria-label="Decrease">
-        −
-      </button>
+      <button type="button" onClick={onMinus} aria-label="Decrease">−</button>
       <span>{qty}</span>
-      <button type="button" onClick={onPlus} aria-label="Increase">
-        +
-      </button>
+      <button type="button" onClick={onPlus} aria-label="Increase">+</button>
     </div>
   );
 }
@@ -237,13 +239,14 @@ export function PosPageChrome({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
-  const showSteps = stepIndex >= 0;
   return (
     <PosShell>
       <PosTopBar title={title} backLabel={backLabel} onBack={onBack} />
-      {showSteps && <PosSteps steps={["Where", "Order", "Pay"]} current={stepIndex} />}
+      {stepIndex >= 0 && <PosSteps steps={["Where", "Order", "Pay"]} current={stepIndex} />}
       {error && onDismissError && <PosAlert message={error} onDismiss={onDismissError} />}
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>{children}</div>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {children}
+      </div>
       {footer}
     </PosShell>
   );
