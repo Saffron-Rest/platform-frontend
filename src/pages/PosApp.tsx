@@ -13,44 +13,65 @@ import {
   TablesScreen,
 } from "./pos/screens";
 import { PinScreen } from "./pos/PinScreen";
+import { RegisterChoiceScreen } from "./pos/RegisterChoiceScreen";
 import { usePosController } from "./pos/usePosController";
 
 const POS_TOKEN_KEY = "pos_token";
 
-export function PosApp() {
-  // POS uses its own token key so it doesn't collide with the main platform JWT.
-  const [posToken, setPosToken] = useState<string | null>(() =>
-    localStorage.getItem(POS_TOKEN_KEY)
-  );
+type Stage = "pin" | "register" | "pos";
 
-  const handlePinAuth = (token: string) => {
+export function PosApp() {
+  const [stage, setStage]   = useState<Stage>("pin");
+  const [cashier, setCashier] = useState<{ id: string; name: string } | null>(null);
+
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    if (localStorage.getItem(POS_TOKEN_KEY)) {
+      // Token already present — skip PIN, go straight to register choice
+      // (cashier name will be missing but PosAppInner loads from session)
+      setStage("register");
+    }
+  }, []);
+
+  const handlePinAuth = (token: string, c: { id: string; name: string }) => {
     localStorage.setItem(POS_TOKEN_KEY, token);
-    // Also set as the main token so all api() calls work
     localStorage.setItem("token", token);
-    setPosToken(token);
+    setCashier(c);
+    setStage("register");
   };
 
-  // Keep the main "token" in sync when pos_token is cleared (shift end)
-  useEffect(() => {
-    if (!posToken) {
-      localStorage.removeItem(POS_TOKEN_KEY);
-      localStorage.removeItem("token");
-    }
-  }, [posToken]);
+  const handleOpenRegister = () => setStage("pos");
 
-  // Show PIN screen when no token
-  if (!posToken) {
+  const handleLogout = () => {
+    localStorage.removeItem(POS_TOKEN_KEY);
+    localStorage.removeItem("token");
+    setCashier(null);
+    setStage("pin");
+  };
+
+  if (stage === "pin") {
     return <PinScreen onAuth={handlePinAuth} />;
   }
 
-  return <PosAppInner onLogout={() => setPosToken(null)} />;
+  if (stage === "register") {
+    return (
+      <RegisterChoiceScreen
+        cashier={cashier ?? { id: "", name: "Cashier" }}
+        onOpenRegister={handleOpenRegister}
+        onBack={handleLogout}
+      />
+    );
+  }
+
+  return <PosAppInner onLogout={handleLogout} />;
 }
+
+// ─── Active POS ───────────────────────────────────────────────────────────────
 
 function PosAppInner({ onLogout }: { onLogout: () => void }) {
   const c = usePosController();
 
-  // When the shift is closed, clear POS auth and show PIN screen again
-  const handleSessionClosed = () => {
+  const handleShiftClosed = () => {
     c.setSession(null);
     onLogout();
   };
@@ -65,25 +86,19 @@ function PosAppInner({ onLogout }: { onLogout: () => void }) {
     );
   }
 
-  // 401 from the server means the token expired — return to PIN screen
-  if (c.error === "401" || c.error?.includes("Unauthorized")) {
-    onLogout();
-    return null;
-  }
-
   if (!c.session) {
     return <SessionOpenScreen onOpen={c.setSession} />;
   }
 
   return (
     <>
-      {c.screen === "hub" && <HubScreen c={c} />}
-      {c.screen === "tables" && <TablesScreen c={c} />}
-      {c.screen === "delivery" && <DeliveryScreen c={c} />}
-      {c.screen === "order" && <OrderScreen c={c} />}
-      {c.screen === "checkout" && <CheckoutScreen c={c} />}
-      {c.screen === "open-orders" && <OpenOrdersScreen c={c} />}
-      <PosModals c={c} session={c.session} onShiftClosed={handleSessionClosed} />
+      {c.screen === "hub"          && <HubScreen c={c} />}
+      {c.screen === "tables"       && <TablesScreen c={c} />}
+      {c.screen === "delivery"     && <DeliveryScreen c={c} />}
+      {c.screen === "order"        && <OrderScreen c={c} />}
+      {c.screen === "checkout"     && <CheckoutScreen c={c} />}
+      {c.screen === "open-orders"  && <OpenOrdersScreen c={c} />}
+      <PosModals c={c} session={c.session} onShiftClosed={handleShiftClosed} />
     </>
   );
 }
