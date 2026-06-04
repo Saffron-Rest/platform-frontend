@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import "./pos/pos.css";
 import { Spinner } from "../components/ui/Spinner";
 import { PosModals } from "./pos/modals";
@@ -11,16 +12,48 @@ import {
   SessionOpenScreen,
   TablesScreen,
 } from "./pos/screens";
+import { PinScreen } from "./pos/PinScreen";
 import { usePosController } from "./pos/usePosController";
 
-/**
- * Saffron POS — rebuilt UX/UI from zero.
- *
- * Flow: Hub → Where (table / delivery) → Order (menu) → Checkout (pay)
- * Visual: warm light surfaces, large touch targets, category sidebar, payment numpad.
- */
+const POS_TOKEN_KEY = "pos_token";
+
 export function PosApp() {
+  // POS uses its own token key so it doesn't collide with the main platform JWT.
+  const [posToken, setPosToken] = useState<string | null>(() =>
+    localStorage.getItem(POS_TOKEN_KEY)
+  );
+
+  const handlePinAuth = (token: string) => {
+    localStorage.setItem(POS_TOKEN_KEY, token);
+    // Also set as the main token so all api() calls work
+    localStorage.setItem("token", token);
+    setPosToken(token);
+  };
+
+  // Keep the main "token" in sync when pos_token is cleared (shift end)
+  useEffect(() => {
+    if (!posToken) {
+      localStorage.removeItem(POS_TOKEN_KEY);
+      localStorage.removeItem("token");
+    }
+  }, [posToken]);
+
+  // Show PIN screen when no token
+  if (!posToken) {
+    return <PinScreen onAuth={handlePinAuth} />;
+  }
+
+  return <PosAppInner onLogout={() => setPosToken(null)} />;
+}
+
+function PosAppInner({ onLogout }: { onLogout: () => void }) {
   const c = usePosController();
+
+  // When the shift is closed, clear POS auth and show PIN screen again
+  const handleSessionClosed = () => {
+    c.setSession(null);
+    onLogout();
+  };
 
   if (c.session === "loading" || c.loading) {
     return (
@@ -30,6 +63,12 @@ export function PosApp() {
         </div>
       </PosRoot>
     );
+  }
+
+  // 401 from the server means the token expired — return to PIN screen
+  if (c.error === "401" || c.error?.includes("Unauthorized")) {
+    onLogout();
+    return null;
   }
 
   if (!c.session) {
@@ -44,7 +83,7 @@ export function PosApp() {
       {c.screen === "order" && <OrderScreen c={c} />}
       {c.screen === "checkout" && <CheckoutScreen c={c} />}
       {c.screen === "open-orders" && <OpenOrdersScreen c={c} />}
-      <PosModals c={c} session={c.session} />
+      <PosModals c={c} session={c.session} onShiftClosed={handleSessionClosed} />
     </>
   );
 }

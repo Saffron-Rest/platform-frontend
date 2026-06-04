@@ -6,11 +6,17 @@ import { PosBtn, PosInput, PosLabel, PosModal } from "./ui";
 
 type C = ReturnType<typeof usePosController>;
 
-export function PosModals({ c, session }: { c: C; session: PosSession }) {
+export function PosModals({ c, session, onShiftClosed }: { c: C; session: PosSession; onShiftClosed?: () => void }) {
   if (!c.modal) return null;
 
   if (c.modal === "close-shift") {
-    return <CloseShiftModal session={session} onClosed={() => c.setSession(null)} onClose={() => c.setModal(null)} />;
+    return (
+      <CloseShiftModal
+        session={session}
+        onClosed={() => { c.setSession(null); onShiftClosed?.(); }}
+        onClose={() => c.setModal(null)}
+      />
+    );
   }
 
   if (c.modal === "cash") {

@@ -76,6 +76,8 @@ export type User = {
    *  — what the user actually has. Useful for client-side gating; the
    *  backend is the source of truth. */
   effectivePermissions?: string[];
+  /** True if this cashier has a POS PIN set. */
+  hasPin?: boolean;
 };
 
 export type PayRateHistoryEntry = {

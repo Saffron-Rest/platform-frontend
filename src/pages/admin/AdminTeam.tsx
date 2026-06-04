@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
+import { setPosPin } from "../../api/pos";
 import { addPayRate, deletePayRate, listPayRates } from "../../api/payRates";
 import {
   getUserPermissions,
@@ -104,6 +105,12 @@ export function AdminTeam({ asTab }: { asTab?: boolean } = {}) {
   const [permsReason, setPermsReason] = useState("");
   const [permsLoading, setPermsLoading] = useState(false);
   const [permsSaving, setPermsSaving] = useState(false);
+
+  // ----- POS PIN modal -----
+  const [pinTarget, setPinTarget] = useState<User | null>(null);
+  const [pinValue, setPinValue] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinMsg, setPinMsg] = useState("");
 
   const loadUsers = () =>
     api<User[]>("/users")
@@ -639,11 +646,21 @@ export function AdminTeam({ asTab }: { asTab?: boolean } = {}) {
                     </p>
                   )}
                 </div>
-                {u.active === false ? (
-                  <Badge variant="inactive">Inactive</Badge>
-                ) : (
-                  <Badge variant="neutral">Active</Badge>
-                )}
+                <div className="flex flex-col items-end gap-1">
+                  {u.active === false ? (
+                    <Badge variant="inactive">Inactive</Badge>
+                  ) : (
+                    <Badge variant="neutral">Active</Badge>
+                  )}
+                  {u.role === "CASHIER" && (
+                    <span
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-full ${u.hasPin ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}
+                      title={u.hasPin ? "POS PIN set" : "No POS PIN"}
+                    >
+                      {u.hasPin ? "PIN ✓" : "No PIN"}
+                    </span>
+                  )}
+                </div>
               </div>
               {u.role === "CASHIER" && (
                 <p className="text-sm bg-[var(--color-cream)] rounded-lg px-3 py-2">
@@ -691,6 +708,16 @@ export function AdminTeam({ asTab }: { asTab?: boolean } = {}) {
                     title="Grant or revoke specific capabilities for this teammate"
                   >
                     Permissions
+                  </button>
+                )}
+                {u.active !== false && u.role === "CASHIER" && (
+                  <button
+                    type="button"
+                    onClick={() => { setPinTarget(u); setPinValue(""); setPinMsg(""); }}
+                    className="flex-1 text-sm font-medium text-[var(--color-saffron-dark)] py-2"
+                    title="Set or clear this cashier's 4-digit POS PIN"
+                  >
+                    {u.hasPin ? "Change PIN" : "Set PIN"}
                   </button>
                 )}
                 {u.active !== false && (
@@ -1008,6 +1035,34 @@ export function AdminTeam({ asTab }: { asTab?: boolean } = {}) {
           onResetToRoleDefaults={resetPermissionsToRoleDefaults}
           onGrantAll={grantAllPermissions}
           onRevokeAll={revokeAllPermissions}
+        />
+      )}
+
+      {pinTarget && (
+        <PinModal
+          user={pinTarget}
+          pin={pinValue}
+          busy={pinBusy}
+          message={pinMsg}
+          onChange={setPinValue}
+          onSave={async () => {
+            setPinBusy(true);
+            setPinMsg("");
+            try {
+              await setPosPin(pinTarget.id, pinValue.trim() || null);
+              setUsers(prev =>
+                prev.map(u => u.id === pinTarget.id ? { ...u, hasPin: !!pinValue.trim() } as User : u)
+              );
+              setPinMsg(pinValue.trim() ? "PIN saved." : "PIN cleared.");
+              setPinValue("");
+              setTimeout(() => { setPinTarget(null); setPinMsg(""); }, 1200);
+            } catch {
+              setPinMsg("Failed to save PIN.");
+            } finally {
+              setPinBusy(false);
+            }
+          }}
+          onClose={() => { setPinTarget(null); setPinValue(""); setPinMsg(""); }}
         />
       )}
       </div>
@@ -1469,6 +1524,97 @@ function PermissionsModal({
           <Button onClick={onSave} disabled={saving || !hasChanges || loading || !view}>
             {saving ? "Saving…" : "Save permissions"}
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinModal({
+  user,
+  pin,
+  busy,
+  message,
+  onChange,
+  onSave,
+  onClose,
+}: {
+  user: User;
+  pin: string;
+  busy: boolean;
+  message: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const hasPin = !!user.hasPin;
+  const isValid = pin.trim() === "" || /^\d{4}$/.test(pin.trim());
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-bold mb-1">POS PIN — {user.name}</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          {hasPin
+            ? "Enter a new 4-digit PIN to replace it, or clear to remove POS access."
+            : "Set a 4-digit PIN so this cashier can log in to the POS."}
+        </p>
+
+        <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+          PIN (4 digits)
+        </label>
+        <input
+          type="text"
+          inputMode="numeric"
+          maxLength={4}
+          value={pin}
+          onChange={e => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          placeholder="e.g. 1234"
+          autoFocus
+          className="w-full border rounded-xl px-4 py-3 text-2xl font-bold text-center mb-1 focus:outline-none focus:border-[var(--color-saffron)]"
+        />
+        {pin && !isValid && (
+          <p className="text-xs text-red-500 mb-2">Must be exactly 4 digits</p>
+        )}
+        {message && (
+          <p className={`text-sm mb-2 ${message.startsWith("Failed") ? "text-red-500" : "text-green-600"}`}>
+            {message}
+          </p>
+        )}
+
+        <div className="flex gap-2 mt-4">
+          {hasPin && (
+            <button
+              type="button"
+              className="flex-1 py-2 text-sm font-medium text-red-500 border border-red-200 rounded-xl hover:bg-red-50"
+              disabled={busy}
+              onClick={() => { onChange(""); onSave(); }}
+            >
+              Clear PIN
+            </button>
+          )}
+          <button
+            type="button"
+            className="flex-1 py-2 text-sm font-medium text-gray-500 border rounded-xl hover:bg-gray-50"
+            disabled={busy}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="flex-1 py-2 text-sm font-bold text-white rounded-xl bg-[var(--color-saffron)] disabled:opacity-50"
+            disabled={busy || !pin.trim() || !isValid}
+            onClick={onSave}
+          >
+            {busy ? "Saving…" : "Save PIN"}
+          </button>
         </div>
       </div>
     </div>

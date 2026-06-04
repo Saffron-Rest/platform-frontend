@@ -1,5 +1,31 @@
 import { api } from "./client";
 
+// ─── PIN auth ─────────────────────────────────────────────────────────────────
+
+export type PosCashierToday = {
+  id: string;
+  name: string;
+  hasPin: boolean;
+};
+
+export async function getScheduledCashiers(): Promise<PosCashierToday[]> {
+  return api<PosCashierToday[]>("/pos/cashiers-today");
+}
+
+export async function pinAuth(pin: string): Promise<{ token: string; cashier: { id: string; name: string } }> {
+  return api<{ token: string; cashier: { id: string; name: string } }>("/pos/pin-auth", {
+    method: "POST",
+    body: JSON.stringify({ pin }),
+  });
+}
+
+export async function setPosPin(userId: string, pin: string | null): Promise<{ success: boolean; hasPin: boolean }> {
+  return api<{ success: boolean; hasPin: boolean }>(`/users/${userId}/pos-pin`, {
+    method: "PUT",
+    body: JSON.stringify({ pin }),
+  });
+}
+
 export type PosSession = {
   id: string;
   cashierId: string;
