@@ -139,7 +139,7 @@ export function SessionOpenScreen({
   );
 }
 
-// ─── Register chip (shown in topbar of every screen) ─────────────────────────
+// ─── Register chip — topbar button for inner screens ──────────────────────────
 
 function RegisterChip({ c }: { c: C }) {
   const open = c.session !== null && c.session !== "loading";
@@ -153,18 +153,18 @@ function RegisterChip({ c }: { c: C }) {
         gap: "0.35rem",
         padding: "0.3rem 0.75rem",
         borderRadius: "999px",
-        border: `1.5px solid ${open ? "rgba(155 34 38 / 0.22)" : "rgba(45 106 79 / 0.28)"}`,
-        background: open ? "var(--pos-red-bg)" : "var(--pos-green-bg)",
-        color: open ? "var(--pos-red)" : "var(--pos-green)",
+        border: "1.5px solid var(--pos-border-med)",
+        background: "var(--pos-surface-2)",
+        color: "var(--pos-muted)",
         fontSize: "0.75rem",
-        fontWeight: 700,
+        fontWeight: 600,
         cursor: "pointer",
         fontFamily: "var(--font-sans)",
         flexShrink: 0,
+        transition: "background 0.12s",
       }}
     >
-      <span style={{ width: "0.4375rem", height: "0.4375rem", borderRadius: "999px", background: "currentColor", flexShrink: 0 }} />
-      {open ? "Close" : "Open"}
+      {open ? "Close register" : "Open register"}
     </button>
   );
 }
@@ -195,7 +195,6 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
             <p style={{ fontSize: "0.625rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--pos-orange)", lineHeight: 1 }}>POS</p>
             <h1 style={{ fontSize: "1.125rem", fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, fontFamily: "var(--font-display)" }}>New order</h1>
           </div>
-          <RegisterChip c={c} />
           <LiveClock />
         </header>
 
@@ -207,6 +206,7 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
 
         {/* Body */}
         <div className="pos-hub-body">
+          {/* Session stats — informational only, shown when register is open */}
           {sessionOpen && (
             <div className="pos-hub-stats">
               <div className="pos-hub-stat">
@@ -226,6 +226,7 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
             </div>
           )}
 
+          {/* Action cards — always fully accessible */}
           <div className="pos-hub-grid">
             <PosActionCard
               title="Dine in"
@@ -258,11 +259,15 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer — register toggle sits alongside the other tools */}
         <div className="pos-footer-tools">
           <PosBtn variant="ghost" onClick={() => c.setModal("cash")}>Cash</PosBtn>
           <PosBtn variant="ghost" onClick={() => window.open("/pos/display", "_blank")}>Display</PosBtn>
           <PosBtn variant="ghost" onClick={() => window.open("/pos/waiter", "_blank")}>Waiter</PosBtn>
+          {sessionOpen
+            ? <PosBtn variant="danger" onClick={() => c.setModal("close-shift")}>Close Register</PosBtn>
+            : <PosBtn variant="cash"   onClick={() => c.setModal("open-register")}>Open Register</PosBtn>
+          }
         </div>
 
         <button

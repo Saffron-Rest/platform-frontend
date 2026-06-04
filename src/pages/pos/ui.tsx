@@ -29,11 +29,10 @@ export function PosTopBar({
         </button>
       )}
       <h1 className="pos-title">{title}</h1>
-      {right ?? (
-        <span className="pos-clock">
-          {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
-      )}
+      {right}
+      <span className="pos-clock">
+        {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      </span>
     </header>
   );
 }
