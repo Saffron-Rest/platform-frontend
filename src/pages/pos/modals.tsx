@@ -1,15 +1,35 @@
 import { useState } from "react";
-import { closeSession, cancelQrPayment, type PosSession } from "../../api/pos";
+import { closeSession, openSession, cancelQrPayment, type PosSession } from "../../api/pos";
 import { fmt } from "../../lib/calc";
 import type { usePosController } from "./usePosController";
 import { PosBtn, PosInput, PosLabel, PosModal } from "./ui";
 
 type C = ReturnType<typeof usePosController>;
 
-export function PosModals({ c, session, onShiftClosed }: { c: C; session: PosSession; onShiftClosed?: () => void }) {
+export function PosModals({
+  c,
+  session,
+  onShiftClosed,
+  onSessionOpened,
+}: {
+  c: C;
+  session: PosSession | null;
+  onShiftClosed?: () => void;
+  onSessionOpened?: (s: PosSession) => void;
+}) {
   if (!c.modal) return null;
 
+  if (c.modal === "open-register") {
+    return (
+      <OpenRegisterModal
+        onOpen={s => { onSessionOpened?.(s); c.setModal(null); }}
+        onClose={() => c.setModal(null)}
+      />
+    );
+  }
+
   if (c.modal === "close-shift") {
+    if (!session) { c.setModal(null); return null; }
     return (
       <CloseShiftModal
         session={session}
@@ -253,6 +273,67 @@ function CloseShiftModal({
       >
         {busy ? "Closing…" : "Close register"}
       </button>
+    </PosModal>
+  );
+}
+
+// ─── Open Register modal ──────────────────────────────────────────────────────
+
+function OpenRegisterModal({
+  onOpen,
+  onClose,
+}: {
+  onOpen: (s: PosSession) => void;
+  onClose: () => void;
+}) {
+  const [float_, setFloat] = useState("0");
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState("");
+  const presets = [0, 100, 200, 500];
+
+  const submit = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      onOpen(await openSession(Number(float_) || 0));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to open register");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <PosModal title="Open Register" onClose={onClose}>
+      <p style={{ color: "var(--pos-muted)", fontSize: "0.875rem", marginBottom: "1.25rem" }}>
+        Count your opening cash float before starting.
+      </p>
+      {err && <p style={{ color: "var(--color-danger)", fontSize: "0.875rem", marginBottom: "1rem" }}>{err}</p>}
+      <PosLabel>Opening float (PLN)</PosLabel>
+      <PosInput
+        type="number"
+        min={0}
+        value={float_}
+        onChange={e => setFloat(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && !busy && submit()}
+        style={{ fontSize: "1.75rem", fontWeight: 800, textAlign: "center", marginBottom: "0.875rem", height: "3.75rem" }}
+        autoFocus
+      />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.5rem", marginBottom: "1.25rem" }}>
+        {presets.map(p => (
+          <button
+            key={p}
+            type="button"
+            className={`pos-btn pos-btn--pill ${Number(float_) === p ? "pos-btn--pill-active" : ""}`}
+            style={{ width: "100%" }}
+            onClick={() => setFloat(String(p))}
+          >
+            {p === 0 ? "0" : fmt(p)}
+          </button>
+        ))}
+      </div>
+      <PosBtn variant="primary" onClick={submit} disabled={busy}>
+        {busy ? "Opening…" : "Open register →"}
+      </PosBtn>
     </PosModal>
   );
 }

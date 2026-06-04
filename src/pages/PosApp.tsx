@@ -39,12 +39,6 @@ export function PosApp() {
 function PosAppInner({ onLogout }: { onLogout: () => void }) {
   const c = usePosController();
 
-  // Register closed → stay on hub showing "Open Register"
-  const handleShiftClosed = () => {
-    c.setSession(null);
-    c.setScreen("hub");
-  };
-
   if (c.session === "loading" || c.loading) {
     return (
       <PosRoot>
@@ -55,7 +49,9 @@ function PosAppInner({ onLogout }: { onLogout: () => void }) {
     );
   }
 
-  // Hub is always the entry point — it handles both open and closed register states
+  // After the loading guard above, session is PosSession | null
+  const sessionForModals = c.session as import("../api/pos").PosSession | null;
+
   return (
     <>
       {c.screen === "hub"         && <HubScreen c={c} onLogout={onLogout} />}
@@ -64,9 +60,14 @@ function PosAppInner({ onLogout }: { onLogout: () => void }) {
       {c.screen === "order"       && <OrderScreen c={c} />}
       {c.screen === "checkout"    && <CheckoutScreen c={c} />}
       {c.screen === "open-orders" && <OpenOrdersScreen c={c} />}
-      {c.session && (
-        <PosModals c={c} session={c.session} onShiftClosed={handleShiftClosed} />
-      )}
+
+      {/* Always rendered — handles both open-register and close-shift modals */}
+      <PosModals
+        c={c}
+        session={sessionForModals}
+        onSessionOpened={c.setSession}
+        onShiftClosed={() => { c.setSession(null); c.setScreen("hub"); }}
+      />
     </>
   );
 }

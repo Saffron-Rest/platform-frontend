@@ -229,6 +229,7 @@ export function PosPageChrome({
   onDismissError,
   children,
   footer,
+  right,
 }: {
   title: string;
   backLabel?: string;
@@ -238,10 +239,11 @@ export function PosPageChrome({
   onDismissError?: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  right?: React.ReactNode;
 }) {
   return (
     <PosShell>
-      <PosTopBar title={title} backLabel={backLabel} onBack={onBack} />
+      <PosTopBar title={title} backLabel={backLabel} onBack={onBack} right={right} />
       {stepIndex >= 0 && <PosSteps steps={["Where", "Order", "Pay"]} current={stepIndex} />}
       {error && onDismissError && <PosAlert message={error} onDismiss={onDismissError} />}
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>

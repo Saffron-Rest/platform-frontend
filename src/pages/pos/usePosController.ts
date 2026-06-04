@@ -53,6 +53,7 @@ export function usePosController() {
 
   const [modal, setModal] = useState<
     | null
+    | "open-register"
     | "close-shift"
     | "cash"
     | "park"

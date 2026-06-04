@@ -139,100 +139,42 @@ export function SessionOpenScreen({
   );
 }
 
-// ─── Open Register modal (inline, shown from hub) ─────────────────────────────
+// ─── Register chip (shown in topbar of every screen) ─────────────────────────
 
-function OpenRegisterModal({
-  onOpen,
-  onClose,
-}: {
-  onOpen: (s: PosSession) => void;
-  onClose: () => void;
-}) {
-  const [float_, setFloat] = useState("0");
-  const [busy, setBusy]   = useState(false);
-  const [err, setErr]     = useState("");
-  const presets = [0, 100, 200, 500];
-
-  const submit = async () => {
-    setBusy(true);
-    setErr("");
-    try {
-      onOpen(await openSession(Number(float_) || 0));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed to open register");
-      setBusy(false);
-    }
-  };
-
+function RegisterChip({ c }: { c: C }) {
+  const open = c.session !== null && c.session !== "loading";
   return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(26 20 16 / 0.45)", backdropFilter: "blur(6px)", padding: "1rem" }}
-      onClick={onClose}
+    <button
+      type="button"
+      onClick={() => c.setModal(open ? "close-shift" : "open-register")}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.35rem",
+        padding: "0.3rem 0.75rem",
+        borderRadius: "999px",
+        border: `1.5px solid ${open ? "rgba(155 34 38 / 0.22)" : "rgba(45 106 79 / 0.28)"}`,
+        background: open ? "var(--pos-red-bg)" : "var(--pos-green-bg)",
+        color: open ? "var(--pos-red)" : "var(--pos-green)",
+        fontSize: "0.75rem",
+        fontWeight: 700,
+        cursor: "pointer",
+        fontFamily: "var(--font-sans)",
+        flexShrink: 0,
+      }}
     >
-      <div
-        style={{ width: "100%", maxWidth: "22rem", background: "var(--pos-surface)", borderRadius: "var(--pos-r-xl)", padding: "2rem", boxShadow: "var(--pos-shadow-lg)" }}
-        onClick={e => e.stopPropagation()}
-      >
-        <p style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--pos-orange)", marginBottom: "0.25rem" }}>
-          Register
-        </p>
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.02em", marginBottom: "0.25rem", color: "var(--pos-ink)" }}>
-          Open Register
-        </h2>
-        <p style={{ color: "var(--pos-muted)", fontSize: "0.875rem", marginBottom: "1.75rem" }}>
-          Count your opening cash float
-        </p>
-
-        {err && <p style={{ color: "var(--pos-red)", fontSize: "0.875rem", marginBottom: "1rem" }}>{err}</p>}
-
-        <PosLabel>Opening float (PLN)</PosLabel>
-        <PosInput
-          type="number"
-          min={0}
-          value={float_}
-          onChange={e => setFloat(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && !busy && submit()}
-          style={{ fontSize: "1.875rem", fontWeight: 800, textAlign: "center", marginBottom: "0.875rem", height: "4rem" }}
-          autoFocus
-        />
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.5rem", marginBottom: "1.5rem" }}>
-          {presets.map(p => (
-            <button
-              key={p}
-              type="button"
-              className={`pos-btn pos-btn--pill ${Number(float_) === p ? "pos-btn--pill-active" : ""}`}
-              style={{ width: "100%" }}
-              onClick={() => setFloat(String(p))}
-            >
-              {p === 0 ? "0" : fmt(p)}
-            </button>
-          ))}
-        </div>
-
-        <PosBtn variant="primary" onClick={submit} disabled={busy}>
-          {busy ? "Opening…" : "Open register →"}
-        </PosBtn>
-        <button
-          type="button"
-          onClick={onClose}
-          style={{ display: "block", width: "100%", textAlign: "center", marginTop: "0.75rem", fontSize: "0.8125rem", color: "var(--pos-muted)", background: "none", border: "none", cursor: "pointer" }}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
+      <span style={{ width: "0.4375rem", height: "0.4375rem", borderRadius: "999px", background: "currentColor", flexShrink: 0 }} />
+      {open ? "Close" : "Open"}
+    </button>
   );
 }
 
 // ─── Hub ──────────────────────────────────────────────────────────────────────
 
 export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
-  const [showOpenModal, setShowOpenModal] = useState(false);
-
   const sessionOpen = c.session !== null && c.session !== "loading";
-  const busy  = c.tables.filter(t => t.occupied).length;
-  const free  = c.tables.length - busy;
+  const busyTables  = c.tables.filter(t => t.occupied).length;
+  const freeTables  = c.tables.length - busyTables;
 
   const shiftMinutes = sessionOpen
     ? Math.round((Date.now() - new Date((c.session as PosSession).openedAt).getTime()) / 60000)
@@ -244,25 +186,16 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
   return (
     <PosRoot>
       <PosShell>
-        {/* ── Header ────────────────────────────────────────────────── */}
+        {/* Header */}
         <header style={{ display: "flex", alignItems: "center", gap: "0.75rem", height: "var(--pos-topbar-h)", padding: "0 1rem", background: "var(--pos-surface)", borderBottom: "1px solid var(--pos-border)", flexShrink: 0 }}>
           <div style={{ width: "2.25rem", height: "2.25rem", borderRadius: "0.75rem", background: "linear-gradient(145deg, var(--pos-orange), var(--pos-orange-dk))", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: "1.125rem", flexShrink: 0 }}>
             S
           </div>
           <div style={{ flex: 1 }}>
-            <p style={{ fontSize: "0.625rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--pos-orange)", lineHeight: 1 }}>
-              POS
-            </p>
-            <h1 style={{ fontSize: "1.125rem", fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, fontFamily: "var(--font-display)" }}>
-              {sessionOpen ? "New order" : "Register closed"}
-            </h1>
+            <p style={{ fontSize: "0.625rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--pos-orange)", lineHeight: 1 }}>POS</p>
+            <h1 style={{ fontSize: "1.125rem", fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, fontFamily: "var(--font-display)" }}>New order</h1>
           </div>
-
-          {/* Register status badge */}
-          <span style={{ fontSize: "0.6875rem", fontWeight: 700, padding: "0.25rem 0.625rem", borderRadius: "999px", background: sessionOpen ? "var(--pos-green-bg)" : "var(--pos-red-bg)", color: sessionOpen ? "var(--pos-green)" : "var(--pos-red)" }}>
-            {sessionOpen ? "● Open" : "● Closed"}
-          </span>
-
+          <RegisterChip c={c} />
           <LiveClock />
         </header>
 
@@ -272,20 +205,18 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
           </div>
         )}
 
-        {/* ── Body ──────────────────────────────────────────────────── */}
+        {/* Body */}
         <div className="pos-hub-body">
-
-          {/* Status chips — only when register open */}
           {sessionOpen && (
             <div className="pos-hub-stats">
               <div className="pos-hub-stat">
                 <span className="pos-hub-stat__dot" style={{ background: "var(--pos-green)" }} />
-                {free} free
+                {freeTables} free
               </div>
-              {busy > 0 && (
+              {busyTables > 0 && (
                 <div className="pos-hub-stat">
                   <span className="pos-hub-stat__dot" style={{ background: "var(--pos-orange)" }} />
-                  {busy} in service
+                  {busyTables} in service
                 </div>
               )}
               <div className="pos-hub-stat">
@@ -295,11 +226,10 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
             </div>
           )}
 
-          {/* Action grid — dimmed when register is closed */}
-          <div className="pos-hub-grid" style={!sessionOpen ? { opacity: 0.35, pointerEvents: "none" } : undefined}>
+          <div className="pos-hub-grid">
             <PosActionCard
               title="Dine in"
-              subtitle={sessionOpen ? `${free} table${free !== 1 ? "s" : ""} free` : "Open register first"}
+              subtitle={`${freeTables} table${freeTables !== 1 ? "s" : ""} free`}
               icon={<IconTable />}
               iconBg="var(--pos-orange-bg)"
               onClick={c.startTableService}
@@ -328,27 +258,12 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
           </div>
         </div>
 
-        {/* ── Footer ────────────────────────────────────────────────── */}
-        {sessionOpen ? (
-          /* Register is OPEN — show normal tools + Close Register */
-          <div className="pos-footer-tools">
-            <PosBtn variant="ghost" onClick={() => c.setModal("cash")}>Cash</PosBtn>
-            <PosBtn variant="ghost" onClick={() => window.open("/pos/display", "_blank")}>Display</PosBtn>
-            <PosBtn variant="ghost" onClick={() => window.open("/pos/waiter", "_blank")}>Waiter</PosBtn>
-            <PosBtn variant="danger" onClick={() => c.setModal("close-shift")}>Close Register</PosBtn>
-          </div>
-        ) : (
-          /* Register is CLOSED — show Open Register prominently */
-          <div style={{ padding: "0.875rem 1rem 1rem", background: "var(--pos-surface)", borderTop: "1px solid var(--pos-border)" }}>
-            <button
-              type="button"
-              onClick={() => setShowOpenModal(true)}
-              style={{ width: "100%", minHeight: "3.5rem", borderRadius: "var(--pos-r)", border: "none", background: "var(--pos-green)", color: "#fff", fontSize: "1rem", fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)", boxShadow: "0 2px 10px rgba(45 106 79 / 0.3)", transition: "box-shadow 0.15s" }}
-            >
-              Open Register
-            </button>
-          </div>
-        )}
+        {/* Footer */}
+        <div className="pos-footer-tools">
+          <PosBtn variant="ghost" onClick={() => c.setModal("cash")}>Cash</PosBtn>
+          <PosBtn variant="ghost" onClick={() => window.open("/pos/display", "_blank")}>Display</PosBtn>
+          <PosBtn variant="ghost" onClick={() => window.open("/pos/waiter", "_blank")}>Waiter</PosBtn>
+        </div>
 
         <button
           type="button"
@@ -358,14 +273,6 @@ export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
           ← Logout / switch cashier
         </button>
       </PosShell>
-
-      {/* Open Register modal */}
-      {showOpenModal && (
-        <OpenRegisterModal
-          onOpen={s => { c.setSession(s); setShowOpenModal(false); }}
-          onClose={() => setShowOpenModal(false)}
-        />
-      )}
     </PosRoot>
   );
 }
@@ -382,6 +289,7 @@ export function TablesScreen({ c }: { c: C }) {
         stepIndex={0}
         error={c.error}
         onDismissError={() => c.setError("")}
+        right={<RegisterChip c={c} />}
       >
         {c.areas.length > 0 && (
           <div className="pos-area-strip">
@@ -442,6 +350,7 @@ export function DeliveryScreen({ c }: { c: C }) {
         stepIndex={0}
         error={c.error}
         onDismissError={() => c.setError("")}
+        right={<RegisterChip c={c} />}
         footer={
           <div className="pos-dock">
             <PosBtn variant="primary" disabled={!ok} onClick={() => c.setScreen("order")}>
@@ -556,7 +465,7 @@ export function OrderScreen({ c }: { c: C }) {
     <PosRoot>
       <PosShell>
         {/* Topbar */}
-        <PosTopBar title={label} backLabel="Cancel" onBack={leave} />
+        <PosTopBar title={label} backLabel="Cancel" onBack={leave} right={<RegisterChip c={c} />} />
         <PosSteps steps={["Where", "Order", "Pay"]} current={1} />
         {c.error && <PosAlert message={c.error} onDismiss={() => c.setError("")} />}
 
@@ -678,7 +587,7 @@ export function CheckoutScreen({ c }: { c: C }) {
   return (
     <PosRoot>
       <PosShell>
-        <PosTopBar title="Checkout" backLabel="Menu" onBack={() => c.setScreen("order")} />
+        <PosTopBar title="Checkout" backLabel="Menu" onBack={() => c.setScreen("order")} right={<RegisterChip c={c} />} />
         <PosSteps steps={["Where", "Order", "Pay"]} current={2} />
         {c.error && <PosAlert message={c.error} onDismiss={() => c.setError("")} />}
 
@@ -844,6 +753,7 @@ export function OpenOrdersScreen({ c }: { c: C }) {
         stepIndex={-1}
         error={c.error}
         onDismissError={() => c.setError("")}
+        right={<RegisterChip c={c} />}
       >
         <div style={{ flex: 1, overflow: "auto", padding: "1.25rem" }}>
           {c.openOrders.length === 0 ? (
