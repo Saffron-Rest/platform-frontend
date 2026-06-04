@@ -233,7 +233,7 @@ function CloseShiftModal({
   };
 
   return (
-    <PosModal title="End shift" onClose={onClose}>
+    <PosModal title="Close Register" onClose={onClose}>
       <p style={{ color: "var(--pos-muted)", fontSize: "0.875rem", marginBottom: "1rem" }}>
         Opening float was <strong>{fmt(session.openingFloat)}</strong>
       </p>
@@ -251,7 +251,7 @@ function CloseShiftModal({
         className="pos-btn w-full"
         style={{ background: "var(--color-danger)", color: "white", border: "none", minHeight: "3rem", fontWeight: 700 }}
       >
-        {busy ? "Closing…" : "Close shift"}
+        {busy ? "Closing…" : "Close register"}
       </button>
     </PosModal>
   );

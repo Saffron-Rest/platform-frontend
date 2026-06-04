@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import "./pos/pos.css";
 import { Spinner } from "../components/ui/Spinner";
 import { PosModals } from "./pos/modals";
@@ -13,64 +13,34 @@ import {
   TablesScreen,
 } from "./pos/screens";
 import { PinScreen } from "./pos/PinScreen";
-import { RegisterChoiceScreen } from "./pos/RegisterChoiceScreen";
 import { usePosController } from "./pos/usePosController";
 
 const POS_TOKEN_KEY = "pos_token";
 
-type Stage = "pin" | "register" | "pos";
-
 export function PosApp() {
-  const [stage, setStage]   = useState<Stage>("pin");
-  const [cashier, setCashier] = useState<{ id: string; name: string } | null>(null);
+  const [authed, setAuthed] = useState(() => !!localStorage.getItem(POS_TOKEN_KEY));
 
-  // Restore session from localStorage on mount
-  useEffect(() => {
-    if (localStorage.getItem(POS_TOKEN_KEY)) {
-      // Token already present — skip PIN, go straight to register choice
-      // (cashier name will be missing but PosAppInner loads from session)
-      setStage("register");
-    }
-  }, []);
-
-  const handlePinAuth = (token: string, c: { id: string; name: string }) => {
+  const handlePinAuth = (token: string) => {
     localStorage.setItem(POS_TOKEN_KEY, token);
     localStorage.setItem("token", token);
-    setCashier(c);
-    setStage("register");
+    setAuthed(true);
   };
-
-  const handleOpenRegister = () => setStage("pos");
 
   const handleLogout = () => {
     localStorage.removeItem(POS_TOKEN_KEY);
     localStorage.removeItem("token");
-    setCashier(null);
-    setStage("pin");
+    setAuthed(false);
   };
 
-  if (stage === "pin") {
-    return <PinScreen onAuth={handlePinAuth} />;
-  }
-
-  if (stage === "register") {
-    return (
-      <RegisterChoiceScreen
-        cashier={cashier ?? { id: "", name: "Cashier" }}
-        onOpenRegister={handleOpenRegister}
-        onBack={handleLogout}
-      />
-    );
-  }
+  if (!authed) return <PinScreen onAuth={handlePinAuth} />;
 
   return <PosAppInner onLogout={handleLogout} />;
 }
 
-// ─── Active POS ───────────────────────────────────────────────────────────────
-
 function PosAppInner({ onLogout }: { onLogout: () => void }) {
   const c = usePosController();
 
+  // Shift closed → back to PIN
   const handleShiftClosed = () => {
     c.setSession(null);
     onLogout();
@@ -80,24 +50,25 @@ function PosAppInner({ onLogout }: { onLogout: () => void }) {
     return (
       <PosRoot>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-          <Spinner label="Loading POS…" />
+          <Spinner label="Loading…" />
         </div>
       </PosRoot>
     );
   }
 
+  // No open session → show "Open Register" screen
   if (!c.session) {
-    return <SessionOpenScreen onOpen={c.setSession} />;
+    return <SessionOpenScreen onOpen={c.setSession} onLogout={onLogout} />;
   }
 
   return (
     <>
-      {c.screen === "hub"          && <HubScreen c={c} />}
-      {c.screen === "tables"       && <TablesScreen c={c} />}
-      {c.screen === "delivery"     && <DeliveryScreen c={c} />}
-      {c.screen === "order"        && <OrderScreen c={c} />}
-      {c.screen === "checkout"     && <CheckoutScreen c={c} />}
-      {c.screen === "open-orders"  && <OpenOrdersScreen c={c} />}
+      {c.screen === "hub"         && <HubScreen c={c} onLogout={onLogout} />}
+      {c.screen === "tables"      && <TablesScreen c={c} />}
+      {c.screen === "delivery"    && <DeliveryScreen c={c} />}
+      {c.screen === "order"       && <OrderScreen c={c} />}
+      {c.screen === "checkout"    && <CheckoutScreen c={c} />}
+      {c.screen === "open-orders" && <OpenOrdersScreen c={c} />}
       <PosModals c={c} session={c.session} onShiftClosed={handleShiftClosed} />
     </>
   );

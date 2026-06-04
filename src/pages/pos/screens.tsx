@@ -40,7 +40,13 @@ function LiveClock() {
 
 // ─── Session open ──────────────────────────────────────────────────────────────
 
-export function SessionOpenScreen({ onOpen }: { onOpen: (s: PosSession) => void }) {
+export function SessionOpenScreen({
+  onOpen,
+  onLogout,
+}: {
+  onOpen: (s: PosSession) => void;
+  onLogout?: () => void;
+}) {
   const [float_, setFloat] = useState("0");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -75,13 +81,13 @@ export function SessionOpenScreen({ onOpen }: { onOpen: (s: PosSession) => void 
         <div className="pos-session-form-side">
           <div className="pos-card" style={{ width: "100%", maxWidth: "22rem", padding: "2rem" }}>
             <p style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--pos-orange)", marginBottom: "0.25rem" }}>
-              New shift
+              Register
             </p>
             <h2 style={{ fontSize: "1.625rem", fontWeight: 800, letterSpacing: "-0.02em", marginBottom: "0.25rem" }}>
-              Start shift
+              Open Register
             </h2>
             <p style={{ color: "var(--pos-muted)", fontSize: "0.875rem", marginBottom: "1.75rem" }}>
-              Enter your opening cash float
+              Count your opening float
             </p>
 
             {err && (
@@ -114,8 +120,18 @@ export function SessionOpenScreen({ onOpen }: { onOpen: (s: PosSession) => void 
             </div>
 
             <PosBtn variant="primary" onClick={submit} disabled={busy}>
-              {busy ? "Opening…" : "Open shift →"}
+              {busy ? "Opening…" : "Open register →"}
             </PosBtn>
+
+            {onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                style={{ display: "block", width: "100%", textAlign: "center", marginTop: "1rem", fontSize: "0.8125rem", color: "var(--pos-muted)", background: "none", border: "none", cursor: "pointer" }}
+              >
+                ← Back to PIN
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -125,7 +141,7 @@ export function SessionOpenScreen({ onOpen }: { onOpen: (s: PosSession) => void 
 
 // ─── Hub ──────────────────────────────────────────────────────────────────────
 
-export function HubScreen({ c }: { c: C }) {
+export function HubScreen({ c, onLogout }: { c: C; onLogout?: () => void }) {
   const busy = c.tables.filter(t => t.occupied).length;
   const free = c.tables.length - busy;
 
@@ -245,15 +261,15 @@ export function HubScreen({ c }: { c: C }) {
           <PosBtn variant="ghost" onClick={() => c.setModal("cash")}>Cash</PosBtn>
           <PosBtn variant="ghost" onClick={() => window.open("/pos/display", "_blank")}>Display</PosBtn>
           <PosBtn variant="ghost" onClick={() => window.open("/pos/waiter", "_blank")}>Waiter</PosBtn>
-          <PosBtn variant="danger" onClick={() => c.setModal("close-shift")}>End shift</PosBtn>
+          <PosBtn variant="danger" onClick={() => c.setModal("close-shift")}>Close Register</PosBtn>
         </div>
 
         <button
           type="button"
-          onClick={() => { window.location.href = "/"; }}
+          onClick={onLogout}
           style={{ display: "block", width: "100%", textAlign: "center", padding: "0.5rem", fontSize: "0.75rem", color: "var(--pos-muted)", background: "none", border: "none", cursor: "pointer" }}
         >
-          Exit to platform
+          ← Logout / switch cashier
         </button>
       </PosShell>
     </PosRoot>
