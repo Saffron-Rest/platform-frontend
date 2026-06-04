@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { openSession, type PosOrder, type PosSession, type PosTable } from "../../api/pos";
 import { fmt } from "../../lib/calc";
-import { IconBag, IconCard, IconCash, IconList, IconSearch, IconTable, IconTruck } from "./icons";
+import { IconBag, IconList, IconSearch, IconTable, IconTruck } from "./icons";
 import type { usePosController } from "./usePosController";
 import { orderLabel } from "./utils";
 import {
@@ -584,10 +584,67 @@ export function OrderScreen({ c }: { c: C }) {
   );
 }
 
+// ─── Checkout helpers ─────────────────────────────────────────────────────────
+
+const PRIMARY_METHODS = [
+  { id: "CASH", label: "Cash",   emoji: "💵", color: "#2d6a4f", bg: "rgba(45 106 79 / 0.1)" },
+  { id: "CARD", label: "Card",   emoji: "💳", color: "#1e5fa8", bg: "rgba(30 95 168 / 0.1)" },
+  { id: "BLIK", label: "BLIK",   emoji: "📱", color: "#6c3aad", bg: "rgba(108 58 173 / 0.1)" },
+] as const;
+
+const PLATFORM_METHODS = [
+  { id: "WOLT",       label: "Wolt",       dot: "#009de0" },
+  { id: "BOLT_FOOD",  label: "Bolt Food",  dot: "#34c759" },
+  { id: "GLOVO",      label: "Glovo",      dot: "#ff9500" },
+  { id: "UBER_EATS",  label: "Uber Eats",  dot: "#050505" },
+] as const;
+
+type PayView = "select" | "cash" | "confirm";
+
 // ─── Checkout ─────────────────────────────────────────────────────────────────
 
 export function CheckoutScreen({ c }: { c: C }) {
   const { subtotal, vat, total, count } = c.totals;
+
+  const [payView, setPayView]             = useState<PayView>("select");
+  const [pendingMethod, setPendingMethod] = useState<string>("CARD");
+  const [customTipInput, setCustomTipInput] = useState("");
+  const [showCustomTip, setShowCustomTip] = useState(false);
+  const [splitN, setSplitN]               = useState(2);
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  const selectMethod = (id: string) => {
+    if (id === "CASH") {
+      c.setTendered("");
+      setPayView("cash");
+    } else {
+      setPendingMethod(id);
+      setPayView("confirm");
+    }
+  };
+
+  const applyCustomTip = () => {
+    const v = parseFloat(customTipInput);
+    if (!isNaN(v) && v >= 0) c.setTip(Math.round(v * 100) / 100);
+    setShowCustomTip(false);
+    setCustomTipInput("");
+  };
+
+  const openSplitBill = () => {
+    const perPerson = Math.round((total / splitN) * 100) / 100;
+    c.setPayLegs(
+      Array.from({ length: splitN }, () => ({ method: "CASH", amount: String(perPerson) }))
+    );
+    c.setModal("split-pay");
+  };
+
+  const canPay = !c.paying && c.nipStatus !== "invalid" && count > 0;
+  const cashOk = canPay && c.change !== null && c.change >= 0;
+
+  const pendingLabel = [...PRIMARY_METHODS, ...PLATFORM_METHODS].find(m => m.id === pendingMethod)?.label ?? pendingMethod;
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <PosRoot>
@@ -597,51 +654,88 @@ export function CheckoutScreen({ c }: { c: C }) {
         {c.error && <PosAlert message={c.error} onDismiss={() => c.setError("")} />}
 
         <div className="pos-checkout-shell">
-          {/* Left: order review */}
-          <div className="pos-checkout-review">
-            {/* Total hero */}
-            <div className="pos-total-hero">
-              <span className="pos-total-hero__label">Total due</span>
-              <PosMoney amount={total} hero />
-              <p className="pos-total-hero__sub">
-                {orderLabel(c.draft)} · {count} item{count !== 1 ? "s" : ""}
-              </p>
-            </div>
 
-            {/* Items */}
+          {/* ── LEFT: order summary ────────────────────────────────── */}
+          <div className="pos-checkout-review">
+
+            {/* Item list */}
             <div className="pos-card" style={{ overflow: "hidden" }}>
               <ul className="pos-checkout-items">
                 {c.draft.cart.map(line => (
                   <li key={line.menuItemId} className="pos-checkout-item">
-                    <span>{line.quantity}× {line.itemName}</span>
-                    <span style={{ fontWeight: 700 }}>{fmt(line.unitPrice * line.quantity)}</span>
+                    <span style={{ color: "var(--pos-muted)", minWidth: "1.5rem", textAlign: "right", flexShrink: 0 }}>{line.quantity}×</span>
+                    <span style={{ flex: 1 }}>{line.itemName}</span>
+                    <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmt(line.unitPrice * line.quantity)}</span>
                   </li>
                 ))}
               </ul>
-              <div className="pos-checkout-breakdown">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", padding: "0.625rem 1rem", borderTop: "1px solid var(--pos-border)", fontSize: "0.8125rem", color: "var(--pos-muted)", fontVariantNumeric: "tabular-nums" }}>
                 <span>Net {fmt(subtotal - vat)}</span>
-                <span>VAT {fmt(vat)}</span>
+                <span style={{ textAlign: "center" }}>VAT {fmt(vat)}</span>
+                <span style={{ textAlign: "right" }}>Sub {fmt(subtotal)}</span>
               </div>
             </div>
 
             {/* Tip */}
             <div>
               <PosLabel>Tip</PosLabel>
-              <div className="pos-tip-grid">
+              <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
                 {[0, 5, 10, 15].map(pct => {
                   const v = pct === 0 ? 0 : Math.round(subtotal * pct) / 100;
                   return (
                     <button
                       key={pct}
                       type="button"
-                      className={`pos-btn pos-btn--pill ${c.tip === v ? "pos-btn--pill-active" : ""}`}
-                      style={{ width: "100%" }}
-                      onClick={() => c.setTip(v)}
+                      className={`pos-btn pos-btn--pill ${c.tip === v && !showCustomTip ? "pos-btn--pill-active" : ""}`}
+                      onClick={() => { c.setTip(v); setShowCustomTip(false); setCustomTipInput(""); }}
                     >
                       {pct === 0 ? "None" : `${pct}%`}
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  className={`pos-btn pos-btn--pill ${showCustomTip ? "pos-btn--pill-active" : ""}`}
+                  onClick={() => setShowCustomTip(v => !v)}
+                >
+                  Custom
+                </button>
+              </div>
+
+              {showCustomTip && (
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.625rem" }}>
+                  <PosInput
+                    type="number"
+                    min={0}
+                    value={customTipInput}
+                    onChange={e => setCustomTipInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && applyCustomTip()}
+                    placeholder="Amount (PLN)"
+                    autoFocus
+                    style={{ flex: 1 }}
+                  />
+                  <button type="button" className="pos-btn pos-btn--primary" style={{ width: "5rem" }} onClick={applyCustomTip}>
+                    Apply
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Total = subtotal + tip */}
+            <div style={{ background: "var(--pos-surface)", borderRadius: "var(--pos-r-lg)", border: "1px solid var(--pos-border)", padding: "1rem 1.25rem" }}>
+              {c.tip > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--pos-muted)", marginBottom: "0.5rem", fontVariantNumeric: "tabular-nums" }}>
+                  <span>Subtotal</span><span>{fmt(subtotal)}</span>
+                </div>
+              )}
+              {c.tip > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--pos-muted)", marginBottom: "0.5rem", fontVariantNumeric: "tabular-nums" }}>
+                  <span>Tip</span><span>+ {fmt(c.tip)}</span>
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: c.tip > 0 ? "1.5px solid var(--pos-border)" : "none", paddingTop: c.tip > 0 ? "0.5rem" : 0 }}>
+                <span style={{ fontSize: "1rem", fontWeight: 700 }}>Total</span>
+                <span style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--pos-orange)", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" }}>{fmt(total)}</span>
               </div>
             </div>
 
@@ -655,90 +749,185 @@ export function CheckoutScreen({ c }: { c: C }) {
                 placeholder="10-digit tax ID"
                 style={c.nipStatus === "invalid" ? { borderColor: "var(--pos-red)" } : undefined}
               />
-              {c.nipStatus === "invalid" && (
-                <p style={{ color: "var(--pos-red)", fontSize: "0.75rem", marginTop: "0.25rem" }}>Invalid NIP</p>
-              )}
             </div>
+
+            {/* Order notes */}
+            <button
+              type="button"
+              onClick={() => c.setModal("order-details")}
+              style={{ fontSize: "0.8125rem", color: "var(--pos-muted)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", textAlign: "left" }}
+            >
+              Order notes & discount
+            </button>
           </div>
 
-          {/* Right: payment */}
+          {/* ── RIGHT: payment panel ───────────────────────────────── */}
           <div className="pos-checkout-pay">
-            {/* Cash tendered */}
-            <div className="pos-pay-section">
-              <PosLabel>Cash received</PosLabel>
-              <div className={`pos-tendered-display ${!c.tendered ? "pos-tendered-display--empty" : ""}`}>
-                {c.tendered || "Enter amount"}
-              </div>
-            </div>
 
-            {/* Numpad */}
-            <div className="pos-pay-section">
-              <PosNumpad value={c.tendered} onChange={c.setTendered} />
-              <div className="pos-quick-amounts">
-                {[total, 50, 100, 200].map(amt => (
-                  <button
-                    key={amt}
-                    type="button"
-                    className="pos-quick-amount"
-                    onClick={() => c.setTendered(String(amt))}
-                  >
-                    {amt === total ? "Exact" : fmt(amt)}
-                  </button>
-                ))}
-              </div>
-              {c.change !== null && c.tendered && (
-                <div className={`pos-change ${c.change >= 0 ? "pos-change--ok" : "pos-change--short"}`}>
-                  {c.change >= 0 ? `Change  ${fmt(c.change)}` : `Short  ${fmt(Math.abs(c.change))}`}
+            {/* ── View: method selection ─────────────────────────── */}
+            {payView === "select" && (
+              <>
+                <div className="pos-pay-section">
+                  <p style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--pos-muted)", marginBottom: "0.875rem" }}>
+                    Payment method
+                  </p>
+
+                  {/* Primary methods */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.625rem", marginBottom: "0.75rem" }}>
+                    {PRIMARY_METHODS.map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        disabled={!canPay}
+                        onClick={() => selectMethod(m.id)}
+                        style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "1.125rem 0.5rem", borderRadius: "var(--pos-r-lg)", border: `1.5px solid ${m.bg}`, background: m.bg, cursor: "pointer", fontFamily: "var(--font-sans)", transition: "transform 0.1s", opacity: canPay ? 1 : 0.45 }}
+                      >
+                        <span style={{ fontSize: "1.625rem" }}>{m.emoji}</span>
+                        <span style={{ fontSize: "0.875rem", fontWeight: 700, color: m.color }}>{m.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Delivery platforms */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.5rem" }}>
+                    {PLATFORM_METHODS.map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        disabled={!canPay}
+                        onClick={() => selectMethod(m.id)}
+                        style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.3rem", padding: "0.75rem 0.25rem", borderRadius: "var(--pos-r)", border: "1.5px solid var(--pos-border)", background: "var(--pos-surface)", cursor: "pointer", fontFamily: "var(--font-sans)", transition: "transform 0.1s", opacity: canPay ? 1 : 0.45 }}
+                      >
+                        <span style={{ width: "0.625rem", height: "0.625rem", borderRadius: "999px", background: m.dot, flexShrink: 0 }} />
+                        <span style={{ fontSize: "0.6875rem", fontWeight: 700, color: "var(--pos-ink-2)", textAlign: "center", lineHeight: 1.2 }}>{m.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )}
-            </div>
 
-            {/* Payment method tiles */}
-            <div className="pos-pay-section">
-              <div className="pos-methods">
-                <button
-                  type="button"
-                  className="pos-method-btn pos-method-btn--cash"
-                  onClick={c.payCash}
-                  disabled={c.paying || c.nipStatus === "invalid" || count === 0}
-                >
-                  <IconCash className="w-6 h-6" />
-                  <span className="pos-method-btn__label">{c.paying ? "…" : "Cash"}</span>
-                </button>
-                <button
-                  type="button"
-                  className="pos-method-btn pos-method-btn--card"
-                  onClick={c.payCard}
-                  disabled={c.paying || c.nipStatus === "invalid" || count === 0}
-                >
-                  <IconCard className="w-6 h-6" />
-                  <span className="pos-method-btn__label">{c.paying ? "…" : "Card"}</span>
-                </button>
-              </div>
-            </div>
+                {/* Split options */}
+                <div className="pos-pay-section">
+                  <p style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--pos-muted)", marginBottom: "0.875rem" }}>
+                    Split
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.625rem" }}>
+                    {/* Split payment */}
+                    <button
+                      type="button"
+                      disabled={!canPay}
+                      onClick={() => c.setModal("split-pay")}
+                      style={{ padding: "0.875rem 0.625rem", borderRadius: "var(--pos-r)", border: "1.5px solid var(--pos-border)", background: "var(--pos-surface)", cursor: "pointer", fontFamily: "var(--font-sans)", textAlign: "center" }}
+                    >
+                      <div style={{ fontSize: "1.25rem" }}>✂️</div>
+                      <div style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--pos-ink)", marginTop: "0.25rem" }}>Split payment</div>
+                      <div style={{ fontSize: "0.6875rem", color: "var(--pos-muted)" }}>Multiple methods</div>
+                    </button>
 
-            {/* Secondary actions */}
-            <div className="pos-pay-secondary">
-              <PosBtn variant="ghost" onClick={() => c.setModal("split-pay")}>Split</PosBtn>
-              <PosBtn variant="ghost" onClick={c.startQr} disabled={c.qrBusy}>BLIK</PosBtn>
-              <PosBtn
-                variant="ghost"
-                onClick={() => c.setModal("park")}
-                style={{ color: "var(--pos-orange)" }}
-              >
-                Park
-              </PosBtn>
-            </div>
+                    {/* Split bill */}
+                    <button
+                      type="button"
+                      disabled={!canPay}
+                      onClick={openSplitBill}
+                      style={{ padding: "0.875rem 0.625rem", borderRadius: "var(--pos-r)", border: "1.5px solid var(--pos-border)", background: "var(--pos-surface)", cursor: "pointer", fontFamily: "var(--font-sans)", textAlign: "center" }}
+                    >
+                      <div style={{ fontSize: "1.25rem" }}>👥</div>
+                      <div style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--pos-ink)", marginTop: "0.25rem" }}>Split bill</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", marginTop: "0.375rem" }}>
+                        <button type="button" onClick={e => { e.stopPropagation(); setSplitN(n => Math.max(2, n - 1)); }} style={{ width: "1.25rem", height: "1.25rem", borderRadius: "999px", border: "1px solid var(--pos-border)", background: "var(--pos-surface-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.875rem", fontWeight: 700, flexShrink: 0 }}>−</button>
+                        <span style={{ fontSize: "0.875rem", fontWeight: 700, minWidth: "1.25rem", textAlign: "center" }}>{splitN}</span>
+                        <button type="button" onClick={e => { e.stopPropagation(); setSplitN(n => Math.min(10, n + 1)); }} style={{ width: "1.25rem", height: "1.25rem", borderRadius: "999px", border: "1px solid var(--pos-border)", background: "var(--pos-surface-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.875rem", fontWeight: 700, flexShrink: 0 }}>+</button>
+                      </div>
+                    </button>
+                  </div>
+                </div>
 
-            <div style={{ padding: "0 1.25rem 1.25rem", textAlign: "center" }}>
-              <button
-                type="button"
-                onClick={() => c.setModal("order-details")}
-                style={{ color: "var(--pos-muted)", fontSize: "0.8125rem", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
-              >
-                Order notes & discount
-              </button>
-            </div>
+                <div className="pos-pay-secondary">
+                  <PosBtn variant="ghost" onClick={c.startQr} disabled={c.qrBusy}>BLIK QR</PosBtn>
+                  <PosBtn variant="ghost" onClick={() => c.setModal("park")} style={{ color: "var(--pos-orange)" }}>Park bill</PosBtn>
+                  <PosBtn variant="ghost" onClick={() => c.setScreen("order")}>Back</PosBtn>
+                </div>
+              </>
+            )}
+
+            {/* ── View: cash numpad ──────────────────────────────── */}
+            {payView === "cash" && (
+              <>
+                <div className="pos-pay-section">
+                  <button type="button" onClick={() => { setPayView("select"); c.setTendered(""); }} style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--pos-orange)", background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: "0.875rem", fontFamily: "var(--font-sans)" }}>
+                    ← Choose different method
+                  </button>
+                  <PosLabel>Cash received</PosLabel>
+                  <div className={`pos-tendered-display ${!c.tendered ? "pos-tendered-display--empty" : ""}`}>
+                    {c.tendered || "0.00"}
+                  </div>
+                </div>
+
+                <div className="pos-pay-section">
+                  <PosNumpad value={c.tendered} onChange={c.setTendered} />
+                  <div className="pos-quick-amounts">
+                    {[total, 50, 100, 200].map(amt => (
+                      <button key={amt} type="button" className="pos-quick-amount" onClick={() => c.setTendered(String(amt))}>
+                        {amt === total ? "Exact" : fmt(amt)}
+                      </button>
+                    ))}
+                  </div>
+                  {c.change !== null && c.tendered && (
+                    <div className={`pos-change ${c.change >= 0 ? "pos-change--ok" : "pos-change--short"}`}>
+                      {c.change >= 0 ? `Change  ${fmt(c.change)}` : `Short  ${fmt(Math.abs(c.change))}`}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ padding: "0 1.25rem 1.25rem" }}>
+                  <button
+                    type="button"
+                    disabled={!cashOk || c.paying}
+                    onClick={c.payCash}
+                    style={{ width: "100%", minHeight: "3.5rem", borderRadius: "var(--pos-r)", border: "none", background: cashOk ? "var(--pos-green)" : "var(--pos-surface-3)", color: cashOk ? "#fff" : "var(--pos-muted)", fontSize: "1rem", fontWeight: 700, cursor: cashOk ? "pointer" : "default", fontFamily: "var(--font-sans)", transition: "background 0.15s" }}
+                  >
+                    {c.paying ? "Processing…" : cashOk ? `Confirm — ${fmt(total)}` : "Enter amount"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* ── View: non-cash confirmation ────────────────────── */}
+            {payView === "confirm" && (
+              <>
+                <div className="pos-pay-section">
+                  <button type="button" onClick={() => setPayView("select")} style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--pos-orange)", background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: "1.5rem", fontFamily: "var(--font-sans)" }}>
+                    ← Choose different method
+                  </button>
+
+                  {/* Method + amount */}
+                  <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
+                    <p style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--pos-muted)", marginBottom: "0.5rem" }}>
+                      {pendingLabel}
+                    </p>
+                    <p style={{ fontSize: "2.75rem", fontWeight: 800, color: "var(--pos-ink)", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.03em", lineHeight: 1 }}>
+                      {fmt(total)}
+                    </p>
+                    {c.tip > 0 && (
+                      <p style={{ fontSize: "0.875rem", color: "var(--pos-muted)", marginTop: "0.5rem" }}>
+                        incl. {fmt(c.tip)} tip
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ padding: "0 1.25rem 1.25rem", marginTop: "auto" }}>
+                  <button
+                    type="button"
+                    disabled={!canPay || c.paying}
+                    onClick={() => c.payMethod(pendingMethod)}
+                    style={{ width: "100%", minHeight: "3.5rem", borderRadius: "var(--pos-r)", border: "none", background: "var(--pos-green)", color: "#fff", fontSize: "1rem", fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)", boxShadow: "0 2px 10px rgba(45 106 79 / 0.3)", transition: "opacity 0.12s", opacity: canPay ? 1 : 0.45 }}
+                  >
+                    {c.paying ? "Processing…" : `Confirm ${pendingLabel} — ${fmt(total)}`}
+                  </button>
+                </div>
+              </>
+            )}
+
           </div>
         </div>
       </PosShell>

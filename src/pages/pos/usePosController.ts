@@ -309,6 +309,20 @@ export function usePosController() {
     [syncLinesAndPay, tip, buyerNip],
   );
 
+  /** Generic single-method payment — handles Card, BLIK, Wolt, Bolt, Glovo, Uber Eats, etc. */
+  const payMethod = useCallback(
+    (method: string, amountTendered?: number) =>
+      syncLinesAndPay(id =>
+        payOrder(id, {
+          paymentMethod: method,
+          amountTendered: amountTendered,
+          tipAmount: tip > 0 ? tip : undefined,
+          buyerNip: buyerNip.trim() || undefined,
+        }),
+      ),
+    [syncLinesAndPay, tip, buyerNip],
+  );
+
   const payMulti = useCallback(async () => {
     if (nipStatus === "invalid") {
       setError("Invalid NIP");
@@ -554,6 +568,7 @@ export function usePosController() {
     goCheckout,
     payCash,
     payCard,
+    payMethod,
     payMulti,
     parkBill,
     handleCashMovement,

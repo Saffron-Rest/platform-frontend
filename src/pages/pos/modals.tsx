@@ -159,42 +159,74 @@ export function PosModals({
   }
 
   if (c.modal === "split-pay") {
+    const allMethods = [
+      { id: "CASH",          label: "Cash" },
+      { id: "CARD",          label: "Card" },
+      { id: "BLIK",          label: "BLIK" },
+      { id: "WOLT",          label: "Wolt" },
+      { id: "BOLT_FOOD",     label: "Bolt Food" },
+      { id: "GLOVO",         label: "Glovo" },
+      { id: "UBER_EATS",     label: "Uber Eats" },
+      { id: "VOUCHER",       label: "Voucher" },
+      { id: "BANK_TRANSFER", label: "Bank transfer" },
+      { id: "OTHER",         label: "Other" },
+    ];
+
     return (
       <PosModal title="Split payment" onClose={() => c.setModal(null)} wide>
-        <p style={{ marginBottom: "1rem", color: "var(--pos-muted)" }}>
-          Total <strong style={{ color: "var(--pos-ink)" }}>{fmt(c.totals.total)}</strong>
-        </p>
+        {/* Total + remaining */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 0", marginBottom: "0.75rem", borderBottom: "1px solid var(--pos-border)" }}>
+          <div>
+            <p style={{ fontSize: "0.75rem", color: "var(--pos-muted)", fontWeight: 600 }}>Total</p>
+            <p style={{ fontWeight: 800, fontSize: "1.125rem", fontVariantNumeric: "tabular-nums" }}>{fmt(c.totals.total)}</p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ fontSize: "0.75rem", color: "var(--pos-muted)", fontWeight: 600 }}>Remaining</p>
+            <p style={{ fontWeight: 800, fontSize: "1.125rem", fontVariantNumeric: "tabular-nums", color: c.legRemaining <= 0.005 ? "var(--pos-green)" : "var(--pos-orange)" }}>
+              {c.legRemaining <= 0.005 ? "Covered ✓" : fmt(c.legRemaining)}
+            </p>
+          </div>
+        </div>
+
+        {/* Payment legs */}
         {c.payLegs.map((leg, i) => (
-          <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+          <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
             <select
               className="pos-input"
-              style={{ width: "7rem", flexShrink: 0 }}
+              style={{ flex: "0 0 9rem" }}
               value={leg.method}
-              onChange={e => c.setPayLegs(p => p.map((l, j) => (j === i ? { ...l, method: e.target.value } : l)))}
+              onChange={e => c.setPayLegs(p => p.map((l, j) => j === i ? { ...l, method: e.target.value } : l))}
             >
-              {["CASH", "CARD", "VOUCHER", "BANK_TRANSFER", "OTHER"].map(m => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
+              {allMethods.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
-            <PosInput type="number" value={leg.amount} onChange={e => c.setPayLegs(p => p.map((l, j) => (j === i ? { ...l, amount: e.target.value } : l)))} />
+            <PosInput
+              type="number"
+              value={leg.amount}
+              onChange={e => c.setPayLegs(p => p.map((l, j) => j === i ? { ...l, amount: e.target.value } : l))}
+              placeholder="0.00"
+            />
+            {c.payLegs.length > 1 && (
+              <button
+                type="button"
+                onClick={() => c.setPayLegs(p => p.filter((_, j) => j !== i))}
+                style={{ width: "2.25rem", height: "2.25rem", flexShrink: 0, border: "1.5px solid var(--pos-border)", borderRadius: "0.625rem", background: "var(--pos-surface-2)", cursor: "pointer", fontSize: "1rem", color: "var(--pos-muted)", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                ✕
+              </button>
+            )}
           </div>
         ))}
         <button
           type="button"
           style={{ color: "var(--color-saffron)", fontSize: "0.8125rem", fontWeight: 600, marginBottom: "1rem", background: "none", border: "none", cursor: "pointer" }}
           onClick={() =>
-            c.setPayLegs(p => [...p, { method: "CARD", amount: c.legRemaining > 0 ? String(Math.round(c.legRemaining * 100) / 100) : "" }])
+            c.setPayLegs(p => [...p, { method: "CASH", amount: c.legRemaining > 0 ? String(Math.round(c.legRemaining * 100) / 100) : "" }])
           }
         >
-          + Add payment method
+          + Add leg
         </button>
-        <p style={{ fontWeight: 700, marginBottom: "1rem", color: c.legRemaining <= 0.005 ? "var(--color-success)" : "var(--color-saffron)" }}>
-          {c.legRemaining <= 0.005 ? "Fully covered" : `Remaining ${fmt(c.legRemaining)}`}
-        </p>
         <PosBtn variant="primary" disabled={c.legRemaining > 0.005 || c.payBusy} onClick={c.payMulti}>
-          Confirm payment
+          {c.payBusy ? "Processing…" : `Confirm split payment — ${fmt(c.totals.total)}`}
         </PosBtn>
       </PosModal>
     );
