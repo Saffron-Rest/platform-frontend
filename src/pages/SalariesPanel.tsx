@@ -171,20 +171,46 @@ function PaySalaryForm({
   );
 }
 
+type RangePreset = "this-month" | "last-month" | "custom";
+
+function presetBounds(preset: RangePreset, customFrom: string, customTo: string) {
+  const now = new Date();
+  if (preset === "this-month") return monthBounds(now.getFullYear(), now.getMonth());
+  if (preset === "last-month") {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return monthBounds(d.getFullYear(), d.getMonth());
+  }
+  return { from: customFrom, to: customTo };
+}
+
 export function SalariesPanel() {
   const now = new Date();
-  const [viewYear, setViewYear] = useState(now.getFullYear());
+  const [preset, setPreset]         = useState<RangePreset>("this-month");
+  const [customFrom, setCustomFrom] = useState(() => monthBounds(now.getFullYear(), now.getMonth()).from);
+  const [customTo, setCustomTo]     = useState(() => monthBounds(now.getFullYear(), now.getMonth()).to);
+
+  // keep month nav for ← → buttons on non-custom presets
+  const [viewYear, setViewYear]   = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
-  const [report, setReport] = useState<PayrollReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+
+  const [report, setReport]                     = useState<PayrollReport | null>(null);
+  const [loading, setLoading]                   = useState(true);
+  const [error, setError]                       = useState("");
+  const [expanded, setExpanded]                 = useState<string | null>(null);
+  const [refreshKey, setRefreshKey]             = useState(0);
   const [removingPaymentId, setRemovingPaymentId] = useState<string | null>(null);
-  const [showInactive, setShowInactive] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkSource, setBulkSource] = useState<PaymentSource>("CASH");
-  const [bulkPaying, setBulkPaying] = useState(false);
+  const [showInactive, setShowInactive]         = useState(false);
+  const [selectedIds, setSelectedIds]           = useState<Set<string>>(new Set());
+  const [bulkSource, setBulkSource]             = useState<PaymentSource>("CASH");
+  const [bulkPaying, setBulkPaying]             = useState(false);
+
+  // Derive active from/to from either preset or custom inputs
+  const { from, to } = useMemo(
+    () => preset === "custom"
+      ? { from: customFrom, to: customTo }
+      : presetBounds(preset, customFrom, customTo),
+    [preset, customFrom, customTo, viewYear, viewMonth] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const removePayment = async (id: string, label: string) => {
     if (!confirm(`Remove this payment (${label})? Treasury balances will recalculate.`)) return;
@@ -198,8 +224,6 @@ export function SalariesPanel() {
       setRemovingPaymentId(null);
     }
   };
-
-  const { from, to } = useMemo(() => monthBounds(viewYear, viewMonth), [viewYear, viewMonth]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -279,6 +303,10 @@ export function SalariesPanel() {
     const d = new Date(viewYear, viewMonth + delta, 1);
     setViewYear(d.getFullYear());
     setViewMonth(d.getMonth());
+    const bounds = monthBounds(d.getFullYear(), d.getMonth());
+    setCustomFrom(bounds.from);
+    setCustomTo(bounds.to);
+    setPreset("custom");
   };
 
   const grandPaid = report?.grandTotalPaid ?? 0;
@@ -345,22 +373,81 @@ export function SalariesPanel() {
         </p>
       </Card>
 
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => goMonth(-1)} className="!px-3">
-            ←
-          </Button>
-          <h3 className="font-semibold text-lg capitalize min-w-[10rem] text-center">
-            {monthLabel(viewYear, viewMonth)}
-          </h3>
-          <Button variant="secondary" onClick={() => goMonth(1)} className="!px-3">
-            →
-          </Button>
+      {/* ── Date range controls ─────────────────────────────────── */}
+      <Card className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Preset chips */}
+          {(["this-month", "last-month"] as RangePreset[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => {
+                setPreset(p);
+                const now2 = new Date();
+                const d = p === "last-month" ? new Date(now2.getFullYear(), now2.getMonth() - 1, 1) : now2;
+                setViewYear(d.getFullYear());
+                setViewMonth(d.getMonth());
+              }}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
+                preset === p
+                  ? "bg-[var(--color-ink)] text-white border-[var(--color-ink)]"
+                  : "bg-white border-black/10 text-[var(--color-muted)] hover:border-[var(--color-saffron)]"
+              }`}
+            >
+              {p === "this-month" ? "This month" : "Last month"}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setPreset("custom")}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
+              preset === "custom"
+                ? "bg-[var(--color-ink)] text-white border-[var(--color-ink)]"
+                : "bg-white border-black/10 text-[var(--color-muted)] hover:border-[var(--color-saffron)]"
+            }`}
+          >
+            Custom range
+          </button>
+
+          {/* Month arrows — shown for all presets */}
+          <div className="flex items-center gap-1 ml-auto">
+            <Button variant="secondary" onClick={() => goMonth(-1)} className="!px-3 !py-1.5 !text-sm">←</Button>
+            <span className="text-sm font-semibold min-w-[9rem] text-center capitalize">
+              {preset === "custom"
+                ? `${customFrom} → ${customTo}`
+                : monthLabel(viewYear, viewMonth)}
+            </span>
+            <Button variant="secondary" onClick={() => goMonth(1)} className="!px-3 !py-1.5 !text-sm">→</Button>
+          </div>
         </div>
-        <Button variant="secondary" onClick={() => setRefreshKey((k) => k + 1)} className="!text-sm">
-          Refresh
-        </Button>
-      </div>
+
+        {preset === "custom" && (
+          <div className="flex flex-wrap items-end gap-3 pt-1">
+            <label className="field-label !mb-0">
+              From
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="field-input"
+              />
+            </label>
+            <label className="field-label !mb-0">
+              To
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="field-input"
+              />
+            </label>
+            <Button onClick={() => setRefreshKey((k) => k + 1)} className="!text-sm self-end">
+              Apply
+            </Button>
+          </div>
+        )}
+      </Card>
 
       {error && <Alert variant="error">{error}</Alert>}
 
@@ -383,12 +470,98 @@ export function SalariesPanel() {
             </div>
           </div>
           <p className="text-xs text-center text-[var(--color-muted)]">
-            {report.grandTotalHours.toFixed(1)} <strong>scheduled</strong> hours this period
+            {report.grandTotalHours.toFixed(1)} <strong>scheduled</strong> hours · {from} → {to}
             {" · "}
             <Link to="/schedule" className="text-[var(--color-saffron)] font-medium">
               View schedule
             </Link>
           </p>
+
+          {/* ── Summary table ─────────────────────────────────────── */}
+          <Card className="!p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-black/5 text-[var(--color-muted)] text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="text-left px-4 py-2.5">Employee</th>
+                    <th className="text-right px-4 py-2.5">Days</th>
+                    <th className="text-right px-4 py-2.5">Hours</th>
+                    <th className="text-right px-4 py-2.5">Earned</th>
+                    <th className="text-right px-4 py-2.5">Paid</th>
+                    <th className="text-right px-4 py-2.5">Remaining</th>
+                    <th className="text-right px-4 py-2.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/5">
+                  {visibleEmployees.map((e) => {
+                    const paid      = e.paidAmount ?? 0;
+                    const remaining = e.remainingPay ?? Math.max(0, e.totalPay - paid);
+                    return (
+                      <tr
+                        key={e.userId}
+                        className="hover:bg-[var(--color-cream)]/50 cursor-pointer transition"
+                        onClick={() => setExpanded(expanded === e.userId ? null : e.userId)}
+                      >
+                        <td className="px-4 py-2.5 font-medium">
+                          {e.name}
+                          {!e.active && (
+                            <span className="ml-1.5 text-[10px] font-semibold text-[var(--color-muted)] bg-black/6 rounded px-1">
+                              inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-[var(--color-muted)]">
+                          {e.shiftCount}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-[var(--color-muted)]">
+                          {e.totalHours.toFixed(1)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[var(--color-saffron-dark)]">
+                          {fmt(e.totalPay)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
+                          {paid > 0 ? fmt(paid) : <span className="text-[var(--color-muted)] font-normal">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold">
+                          {remaining > 0.005 ? (
+                            <span className="text-amber-700">{fmt(remaining)}</span>
+                          ) : e.totalPay > 0 ? (
+                            <span className="text-emerald-700 text-xs font-semibold">✓ Paid</span>
+                          ) : (
+                            <span className="text-[var(--color-muted)] font-normal">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {e.fullyPaid && e.totalPay > 0 ? (
+                            <Badge variant="locked">Paid</Badge>
+                          ) : paid > 0 && remaining > 0.01 ? (
+                            <Badge variant="neutral">Partial</Badge>
+                          ) : e.totalPay > 0 ? (
+                            <Badge variant="inactive">Unpaid</Badge>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-[var(--color-ink)] text-white text-sm font-semibold">
+                    <td className="px-4 py-3">Total ({visibleEmployees.length})</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-white/70">
+                      {visibleEmployees.reduce((s, e) => s + e.shiftCount, 0)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-white/70">
+                      {report.grandTotalHours.toFixed(1)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">{fmt(report.grandTotalPay)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-emerald-300">{fmt(grandPaid)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-amber-300">{fmt(grandRemaining)}</td>
+                    <td className="px-4 py-3" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
 
           {hiddenInactiveCount > 0 && (
             <label className="flex items-center justify-end gap-1.5 text-xs text-[var(--color-muted)] cursor-pointer select-none">
