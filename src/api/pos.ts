@@ -1,5 +1,39 @@
 import { api } from "./client";
 
+// ─── Pending items approval queue ─────────────────────────────────────────────
+
+export type PosPendingItem = {
+  name: string;
+  sku: string | null;
+  salesCount: number;
+  lastPrice: number;
+  lastSeen: string | null;
+};
+
+export async function listPendingPosItems(): Promise<PosPendingItem[]> {
+  return api<PosPendingItem[]>("/pos/integrations/pending-items");
+}
+
+export async function approvePendingPosItem(payload: {
+  name: string;
+  sku: string | null;
+  unitPrice: number;
+  addToMenu: boolean;
+  addToStock: boolean;
+}): Promise<{ ok: boolean; menuItemId?: string; stockItemId?: string }> {
+  return api("/pos/integrations/pending-items/approve", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function dismissPendingPosItem(name: string, sku: string | null): Promise<void> {
+  await api("/pos/integrations/pending-items/dismiss", {
+    method: "POST",
+    body: JSON.stringify({ name, sku }),
+  });
+}
+
 // ─── PIN auth ─────────────────────────────────────────────────────────────────
 
 export type PosCashierToday = {

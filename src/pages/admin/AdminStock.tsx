@@ -17,6 +17,12 @@ import {
   type StockMovementType,
   type StockStatus,
 } from "../../api/stock";
+import {
+  listPendingPosItems,
+  approvePendingPosItem,
+  dismissPendingPosItem,
+  type PosPendingItem,
+} from "../../api/pos";
 import { listItems as listMenuItems, type MenuItem } from "../../api/menu";
 import { getRecipesAffectedByStock, type RecipeRef } from "../../api/recipes";
 import { Link } from "react-router-dom";
@@ -110,6 +116,8 @@ export function AdminStock() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+
+  const [pendingItems, setPendingItems] = useState<PosPendingItem[]>([]);
   const [tab, setTab] = useState<Tab>("ALL");
   const [search, setSearch] = useState("");
 
@@ -130,12 +138,14 @@ export function AdminStock() {
     setLoading(true);
     setError("");
     try {
-      const [rows, menu] = await Promise.all([
+      const [rows, menu, pending] = await Promise.all([
         listStock(),
         listMenuItems({ includeArchived: false }).catch(() => [] as MenuItem[]),
+        listPendingPosItems().catch(() => [] as PosPendingItem[]),
       ]);
       setItems(rows);
       setMenuItems(menu);
+      setPendingItems(pending);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load stock");
     } finally {
@@ -319,6 +329,35 @@ export function AdminStock() {
             </button>
           </div>
         </Alert>
+      )}
+
+      {pendingItems.length > 0 && (
+        <PendingPosPanel
+          items={pendingItems}
+          onApprove={async (item, addToMenu, addToStock) => {
+            try {
+              await approvePendingPosItem({
+                name: item.name,
+                sku: item.sku,
+                unitPrice: item.lastPrice,
+                addToMenu,
+                addToStock,
+              });
+              setInfo(`Added "${item.name}" ${[addToMenu && "to Menu", addToStock && "to Stock"].filter(Boolean).join(" & ")}`);
+              await load();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "Approve failed");
+            }
+          }}
+          onDismiss={async (item) => {
+            try {
+              await dismissPendingPosItem(item.name, item.sku);
+              await load();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "Dismiss failed");
+            }
+          }}
+        />
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -687,7 +726,20 @@ function EditorModal({
           <select
             className="field-input"
             value={draft.menuItemId}
-            onChange={(e) => onChange({ ...draft, menuItemId: e.target.value })}
+            onChange={(e) => {
+              const menuItemId = e.target.value;
+              if (!menuItemId) { onChange({ ...draft, menuItemId: "" }); return; }
+              const mi = menuItems.find((m) => m.id === menuItemId);
+              if (!mi) { onChange({ ...draft, menuItemId }); return; }
+              onChange({
+                ...draft,
+                menuItemId,
+                name: draft.name.trim() ? draft.name : mi.name,
+                sku: draft.sku.trim() ? draft.sku : (mi.sku ?? ""),
+                category: draft.category.trim() ? draft.category : (mi.categoryName ?? ""),
+                unitCost: draft.unitCost.trim() ? draft.unitCost : (mi.foodCost != null ? String(mi.foodCost) : ""),
+              });
+            }}
           >
             <option value="">— No menu link (manual only) —</option>
             {menuItems.map((m) => {
@@ -1114,6 +1166,119 @@ function typeBadge(t: StockMovementType): string {
     case "REVERT":
       return "bg-orange-100 text-orange-800 ring-orange-200";
   }
+}
+
+// ============================================================================
+// Pending POS items panel
+// ============================================================================
+
+function PendingPosPanel({
+  items,
+  onApprove,
+  onDismiss,
+}: {
+  items: PosPendingItem[];
+  onApprove: (item: PosPendingItem, addToMenu: boolean, addToStock: boolean) => Promise<void>;
+  onDismiss: (item: PosPendingItem) => Promise<void>;
+}) {
+  const [approving, setApproving] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState<string | null>(null);
+  const [selections, setSelections] = useState<Record<string, { menu: boolean; stock: boolean }>>({});
+
+  const getSelection = (item: PosPendingItem) =>
+    selections[item.name] ?? { menu: true, stock: true };
+
+  const toggle = (name: string, field: "menu" | "stock") =>
+    setSelections((prev) => ({
+      ...prev,
+      [name]: { ...(prev[name] ?? { menu: true, stock: true }), [field]: !(prev[name]?.[field] ?? true) },
+    }));
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--color-ink)]">
+            Unrecognised POS items — waiting for approval
+          </h3>
+          <p className="text-xs text-[var(--color-muted)] mt-0.5">
+            These items came in via POS but aren't in the menu or stock yet. Choose what to add and approve.
+          </p>
+        </div>
+        <span className="text-xs bg-amber-100 text-amber-900 ring-1 ring-amber-200 px-2 py-0.5 rounded-full font-medium">
+          {items.length} pending
+        </span>
+      </div>
+
+      <div className="divide-y divide-black/5">
+        {items.map((item) => {
+          const key = item.name;
+          const sel = getSelection(item);
+          const busy = approving === key || dismissing === key;
+          return (
+            <div key={key} className="py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm text-[var(--color-ink)]">{item.name}</div>
+                <div className="text-xs text-[var(--color-muted)] flex flex-wrap gap-2 mt-0.5">
+                  {item.sku && <span>SKU: {item.sku}</span>}
+                  <span>{item.salesCount} sale{item.salesCount === 1 ? "" : "s"}</span>
+                  <span>Last price: {item.lastPrice.toFixed(2)} zł</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={sel.menu}
+                    onChange={() => toggle(key, "menu")}
+                    disabled={busy}
+                    className="accent-[var(--color-saffron)]"
+                  />
+                  Add to Menu
+                </label>
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={sel.stock}
+                    onChange={() => toggle(key, "stock")}
+                    disabled={busy}
+                    className="accent-[var(--color-saffron)]"
+                  />
+                  Add to Stock
+                </label>
+
+                <button
+                  type="button"
+                  disabled={busy || (!sel.menu && !sel.stock)}
+                  onClick={async () => {
+                    setApproving(key);
+                    await onApprove(item, sel.menu, sel.stock);
+                    setApproving(null);
+                  }}
+                  className="text-xs rounded-md bg-[var(--color-saffron)] px-3 py-1.5 font-medium text-white hover:bg-[var(--color-saffron-dark)] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {approving === key ? "Adding…" : "Approve"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    setDismissing(key);
+                    await onDismiss(item);
+                    setDismissing(null);
+                  }}
+                  className="text-xs text-[var(--color-muted)] hover:text-red-700 disabled:opacity-40"
+                >
+                  {dismissing === key ? "…" : "Dismiss"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
 }
 
 // ============================================================================
