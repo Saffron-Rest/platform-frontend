@@ -392,6 +392,33 @@ export async function getPosActivity(id: string) {
   return api<PosActivity>(`/pos/integrations/${id}/activity`);
 }
 
+export type WebhookLogItem = {
+  name: string | null;
+  sku: string | null;
+  quantity: number;
+  unitPrice: number;
+  discount: number | null;
+  lineTotal: number;
+  matched: boolean;
+  menuItemId: string | null;
+  categoryId: string | null;
+};
+
+export type WebhookReceipt = {
+  receiptId: string;
+  receivedAt: string | null;
+  occurredAt: string | null;
+  paymentMethod: string | null;
+  itemCount: number;
+  total: number;
+  hasUnmatched: boolean;
+  items: WebhookLogItem[];
+};
+
+export async function getWebhookLog(id: string, limit = 200) {
+  return api<WebhookReceipt[]>(`/pos/integrations/${id}/webhook-log?limit=${limit}`);
+}
+
 export async function sendTestReceipt(id: string) {
   return api<{ ok: boolean; inserted?: number; skipped?: number; unmatched?: number; error?: string }>(
     `/pos/integrations/${id}/test-receipt`,

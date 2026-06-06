@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   configureDotykacka,
   createPosIntegration,
   deletePosIntegration,
   getPosActivity,
+  getWebhookLog,
   listPosIntegrations,
   registerDotyposWebhook,
   rotatePosSecret,
@@ -14,6 +15,7 @@ import {
   unregisterDotyposWebhook,
   type PosActivity,
   type PosIntegration,
+  type WebhookReceipt,
 } from "../../api/menu";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
@@ -40,6 +42,14 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
   const [busy, setBusy] = useState<Record<string, string | null>>({});
   /** Per-integration activity snapshot, refreshed every 10s while the card is open. */
   const [activity, setActivity] = useState<Record<string, PosActivity | null>>({});
+  /** Webhook log per integration — keyed by id, null = not loaded yet. */
+  const [webhookLog, setWebhookLog] = useState<Record<string, WebhookReceipt[] | null>>({});
+  /** Which integration's webhook log panel is open. */
+  const [logOpenFor, setLogOpenFor] = useState<string | null>(null);
+  const [logLoading, setLogLoading] = useState(false);
+  /** Which receipt rows are expanded to show items. */
+  const [expandedReceipts, setExpandedReceipts] = useState<Set<string>>(new Set());
+  const logRef = useRef<HTMLDivElement | null>(null);
   /** Per-integration Dotykačka form state. */
   const [dotyForm, setDotyForm] = useState<
     Record<
@@ -326,6 +336,29 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
     }
   };
 
+  const openLog = async (i: PosIntegration) => {
+    if (logOpenFor === i.id) { setLogOpenFor(null); return; }
+    setLogOpenFor(i.id);
+    setExpandedReceipts(new Set());
+    setLogLoading(true);
+    try {
+      const log = await getWebhookLog(i.id);
+      setWebhookLog((prev) => ({ ...prev, [i.id]: log }));
+    } catch {
+      setWebhookLog((prev) => ({ ...prev, [i.id]: [] }));
+    } finally {
+      setLogLoading(false);
+      setTimeout(() => logRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+    }
+  };
+
+  const toggleReceipt = (receiptId: string) =>
+    setExpandedReceipts((prev) => {
+      const next = new Set(prev);
+      next.has(receiptId) ? next.delete(receiptId) : next.add(receiptId);
+      return next;
+    });
+
   const toggleDotyForm = (i: PosIntegration) => {
     setDotyForm((f) => {
       const current = f[i.id] ?? {
@@ -520,8 +553,9 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
       ) : (
         <div className="space-y-4">
           {integrations.map((i) => (
+            <React.Fragment key={i.id}>
             <IntegrationCard
-              key={i.id}
+              key={undefined}
               integration={i}
               baseUrl={baseUrl}
               busy={busy[i.id] ?? null}
@@ -546,7 +580,21 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
               onDelete={() => void remove(i)}
               onCopy={(text) => void copy(text)}
               activity={activity[i.id] ?? null}
+              logOpen={logOpenFor === i.id}
+              onOpenLog={() => void openLog(i)}
             />
+            {logOpenFor === i.id && (
+              <div ref={logRef}>
+                <WebhookLogPanel
+                  loading={logLoading}
+                  receipts={webhookLog[i.id] ?? null}
+                  expandedReceipts={expandedReceipts}
+                  onToggleReceipt={toggleReceipt}
+                  onRefresh={() => void openLog(i)}
+                />
+              </div>
+            )}
+            </React.Fragment>
           ))}
         </div>
       )}
@@ -571,6 +619,8 @@ function IntegrationCard({
   onDelete,
   onCopy,
   activity,
+  logOpen,
+  onOpenLog,
 }: {
   integration: PosIntegration;
   baseUrl: string;
@@ -597,6 +647,8 @@ function IntegrationCard({
   onDelete: () => void;
   onCopy: (text: string) => void;
   activity: PosActivity | null;
+  logOpen: boolean;
+  onOpenLog: () => void;
 }) {
   const isDotykacka = (i.vendor ?? "").toLowerCase() === "dotykacka";
   const credentialsReady =
@@ -664,6 +716,9 @@ function IntegrationCard({
           )}
           <Button variant="ghost" onClick={onToggleActive} disabled={busy !== null}>
             {i.active ? "Deactivate" : "Activate"}
+          </Button>
+          <Button variant="ghost" onClick={onOpenLog}>
+            {logOpen ? "Hide log" : "Webhook log"}
           </Button>
           <Button variant="ghost" onClick={onDelete} disabled={busy !== null}>
             Delete
@@ -842,6 +897,144 @@ function IntegrationCard({
  * parent. Shows three counters (total / last 24h / last hour) and the most
  * recent five payloads with timestamps.
  */
+// ─── Webhook Log Panel ────────────────────────────────────────────────────────
+
+const fmtTs = (iso: string | null) => {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+};
+
+function WebhookLogPanel({
+  loading,
+  receipts,
+  expandedReceipts,
+  onToggleReceipt,
+  onRefresh,
+}: {
+  loading: boolean;
+  receipts: WebhookReceipt[] | null;
+  expandedReceipts: Set<string>;
+  onToggleReceipt: (id: string) => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <Card className="border-t-2 border-t-[var(--color-saffron)]/40">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-semibold text-sm text-[var(--color-ink)]">Webhook log</h4>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="text-xs text-[var(--color-saffron-dark)] hover:underline"
+        >
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="py-6 flex justify-center"><Spinner /></div>
+      ) : !receipts || receipts.length === 0 ? (
+        <p className="text-sm text-[var(--color-muted)] py-4 text-center">No receipts received yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {receipts.map((r) => {
+            const isOpen = expandedReceipts.has(r.receiptId);
+            return (
+              <div key={r.receiptId} className="rounded-lg border border-black/8 overflow-hidden">
+                {/* Receipt header row */}
+                <button
+                  type="button"
+                  onClick={() => onToggleReceipt(r.receiptId)}
+                  className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-black/3 transition-colors"
+                >
+                  <span className="text-[10px] mr-1 text-[var(--color-muted)]">{isOpen ? "▼" : "▶"}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono text-[var(--color-muted)] truncate max-w-[220px]" title={r.receiptId}>
+                        {r.receiptId}
+                      </span>
+                      {r.hasUnmatched && (
+                        <span className="text-[10px] bg-amber-100 text-amber-800 ring-1 ring-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                          unmatched items
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-[var(--color-muted)] mt-0.5 flex gap-3 flex-wrap">
+                      <span>received {fmtTs(r.receivedAt)}</span>
+                      {r.paymentMethod && <span>{r.paymentMethod}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-semibold text-[var(--color-ink)]">{r.total.toFixed(2)} zł</div>
+                    <div className="text-xs text-[var(--color-muted)]">{r.itemCount} item{r.itemCount === 1 ? "" : "s"}</div>
+                  </div>
+                </button>
+
+                {/* Expanded items table */}
+                {isOpen && (
+                  <div className="border-t border-black/8 bg-[var(--color-cream)]/40 px-4 py-3">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[var(--color-muted)] uppercase tracking-wide">
+                          <th className="pb-1.5 pr-3">Item</th>
+                          <th className="pb-1.5 pr-3">SKU</th>
+                          <th className="pb-1.5 pr-3 text-right">Qty</th>
+                          <th className="pb-1.5 pr-3 text-right">Unit price</th>
+                          <th className="pb-1.5 pr-3 text-right">Discount</th>
+                          <th className="pb-1.5 text-right">Line total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-black/5">
+                        {r.items.map((item, idx) => (
+                          <tr key={idx}>
+                            <td className="py-1.5 pr-3">
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${item.matched ? "bg-emerald-500" : "bg-amber-400"}`}
+                                  title={item.matched ? "Matched to menu item" : "No menu match"}
+                                />
+                                <span className={item.matched ? "text-[var(--color-ink)]" : "text-amber-800"}>
+                                  {item.name ?? "—"}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-1.5 pr-3 font-mono text-[var(--color-muted)]">{item.sku ?? "—"}</td>
+                            <td className="py-1.5 pr-3 text-right font-mono">{item.quantity}</td>
+                            <td className="py-1.5 pr-3 text-right font-mono">{item.unitPrice?.toFixed(2) ?? "—"}</td>
+                            <td className="py-1.5 pr-3 text-right font-mono text-red-600">
+                              {item.discount ? `-${item.discount.toFixed(2)}` : "—"}
+                            </td>
+                            <td className="py-1.5 text-right font-mono font-medium">{item.lineTotal.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t border-black/10">
+                          <td colSpan={5} className="pt-1.5 text-[var(--color-muted)] text-right pr-3 font-medium">Total</td>
+                          <td className="pt-1.5 text-right font-mono font-semibold">{r.total.toFixed(2)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                    <p className="text-[10px] text-[var(--color-muted)] mt-2">
+                      occurred {fmtTs(r.occurredAt)}
+                      {" · "}
+                      <span className="text-emerald-700">● matched</span>
+                      {" "}
+                      <span className="text-amber-700">● unmatched</span>
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ActivityPanel({ activity }: { activity: PosActivity | null }) {
   if (!activity) {
     return (
