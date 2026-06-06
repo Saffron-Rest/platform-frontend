@@ -907,6 +907,92 @@ const fmtTs = (iso: string | null) => {
   });
 };
 
+function ReceiptDetail({ receipt: r }: { receipt: WebhookReceipt }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const prettyJson = (() => {
+    if (!r.rawBody) return null;
+    try { return JSON.stringify(JSON.parse(r.rawBody), null, 2); }
+    catch { return r.rawBody; }
+  })();
+
+  return (
+    <div className="border-t border-black/8 bg-[var(--color-cream)]/40 px-4 py-3 space-y-3">
+      {/* Parsed items table */}
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left text-[var(--color-muted)] uppercase tracking-wide">
+            <th className="pb-1.5 pr-3">Item</th>
+            <th className="pb-1.5 pr-3">SKU</th>
+            <th className="pb-1.5 pr-3 text-right">Qty</th>
+            <th className="pb-1.5 pr-3 text-right">Unit price</th>
+            <th className="pb-1.5 pr-3 text-right">Discount</th>
+            <th className="pb-1.5 text-right">Line total</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-black/5">
+          {r.items.map((item, idx) => (
+            <tr key={idx}>
+              <td className="py-1.5 pr-3">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${item.matched ? "bg-emerald-500" : "bg-amber-400"}`}
+                    title={item.matched ? "Matched to menu item" : "No menu match"}
+                  />
+                  <span className={item.matched ? "text-[var(--color-ink)]" : "text-amber-800"}>
+                    {item.name ?? "—"}
+                  </span>
+                </div>
+              </td>
+              <td className="py-1.5 pr-3 font-mono text-[var(--color-muted)]">{item.sku ?? "—"}</td>
+              <td className="py-1.5 pr-3 text-right font-mono">{item.quantity}</td>
+              <td className="py-1.5 pr-3 text-right font-mono">{item.unitPrice?.toFixed(2) ?? "—"}</td>
+              <td className="py-1.5 pr-3 text-right font-mono text-red-600">
+                {item.discount ? `-${item.discount.toFixed(2)}` : "—"}
+              </td>
+              <td className="py-1.5 text-right font-mono font-medium">{item.lineTotal.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-black/10">
+            <td colSpan={5} className="pt-1.5 text-[var(--color-muted)] text-right pr-3 font-medium">Total</td>
+            <td className="pt-1.5 text-right font-mono font-semibold">{r.total.toFixed(2)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <p className="text-[10px] text-[var(--color-muted)]">
+        occurred {fmtTs(r.occurredAt)}
+        {" · "}
+        <span className="text-emerald-700">● matched</span>
+        {" "}
+        <span className="text-amber-700">● unmatched</span>
+      </p>
+
+      {/* Raw payload toggle */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowRaw((v) => !v)}
+          className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
+        >
+          {showRaw ? "Hide raw payload" : "Show raw payload"}
+        </button>
+        {prettyJson === null && !showRaw && (
+          <span className="text-xs text-[var(--color-muted)] ml-2">
+            (not available — only captured for webhooks received after this feature was enabled)
+          </span>
+        )}
+        {showRaw && (
+          <pre className="mt-2 rounded-lg bg-[var(--color-ink)]/90 text-[var(--color-cream)] text-xs font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-96">
+            {prettyJson ?? "Raw payload was not captured for this receipt."}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function WebhookLogPanel({
   loading,
   receipts,
@@ -972,59 +1058,9 @@ function WebhookLogPanel({
                   </div>
                 </button>
 
-                {/* Expanded items table */}
+                {/* Expanded items table + raw payload */}
                 {isOpen && (
-                  <div className="border-t border-black/8 bg-[var(--color-cream)]/40 px-4 py-3">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-[var(--color-muted)] uppercase tracking-wide">
-                          <th className="pb-1.5 pr-3">Item</th>
-                          <th className="pb-1.5 pr-3">SKU</th>
-                          <th className="pb-1.5 pr-3 text-right">Qty</th>
-                          <th className="pb-1.5 pr-3 text-right">Unit price</th>
-                          <th className="pb-1.5 pr-3 text-right">Discount</th>
-                          <th className="pb-1.5 text-right">Line total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-black/5">
-                        {r.items.map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="py-1.5 pr-3">
-                              <div className="flex items-center gap-1.5">
-                                <span
-                                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${item.matched ? "bg-emerald-500" : "bg-amber-400"}`}
-                                  title={item.matched ? "Matched to menu item" : "No menu match"}
-                                />
-                                <span className={item.matched ? "text-[var(--color-ink)]" : "text-amber-800"}>
-                                  {item.name ?? "—"}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-1.5 pr-3 font-mono text-[var(--color-muted)]">{item.sku ?? "—"}</td>
-                            <td className="py-1.5 pr-3 text-right font-mono">{item.quantity}</td>
-                            <td className="py-1.5 pr-3 text-right font-mono">{item.unitPrice?.toFixed(2) ?? "—"}</td>
-                            <td className="py-1.5 pr-3 text-right font-mono text-red-600">
-                              {item.discount ? `-${item.discount.toFixed(2)}` : "—"}
-                            </td>
-                            <td className="py-1.5 text-right font-mono font-medium">{item.lineTotal.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t border-black/10">
-                          <td colSpan={5} className="pt-1.5 text-[var(--color-muted)] text-right pr-3 font-medium">Total</td>
-                          <td className="pt-1.5 text-right font-mono font-semibold">{r.total.toFixed(2)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                    <p className="text-[10px] text-[var(--color-muted)] mt-2">
-                      occurred {fmtTs(r.occurredAt)}
-                      {" · "}
-                      <span className="text-emerald-700">● matched</span>
-                      {" "}
-                      <span className="text-amber-700">● unmatched</span>
-                    </p>
-                  </div>
+                  <ReceiptDetail receipt={r} />
                 )}
               </div>
             );

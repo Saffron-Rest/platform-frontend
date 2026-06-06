@@ -413,6 +413,8 @@ export type WebhookReceipt = {
   total: number;
   hasUnmatched: boolean;
   items: WebhookLogItem[];
+  /** Full raw JSON body as received from the POS. Null for old receipts. */
+  rawBody: string | null;
 };
 
 export async function getWebhookLog(id: string, limit = 200) {
