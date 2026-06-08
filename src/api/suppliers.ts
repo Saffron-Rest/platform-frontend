@@ -9,6 +9,9 @@ export type Supplier = {
   vatId?: string;
   address?: string;
   paymentTermsDays: number;
+  bankAccountNumber?: string;
+  bankName?: string;
+  bankBicSwift?: string;
   notes?: string;
   active: boolean;
   createdAt?: string;
@@ -23,6 +26,9 @@ export type SupplierInput = {
   vatId?: string | null;
   address?: string | null;
   paymentTermsDays: number;
+  bankAccountNumber?: string | null;
+  bankName?: string | null;
+  bankBicSwift?: string | null;
   notes?: string | null;
   active?: boolean;
 };

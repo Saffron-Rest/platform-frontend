@@ -28,11 +28,14 @@ import {
 } from "../../components/ui/Field";
 import {
   createPayable,
+  deletePayableAttachment,
   deletePayablePayment,
   getPayable,
   getPayableAging,
   listPayables,
+  payableAttachmentUrl,
   recordPayablePayment,
+  uploadPayableAttachment,
   voidPayable,
   type CreatePayableInput,
   type PayableAging,
@@ -103,6 +106,8 @@ type LineDraft = {
   quantity: string;
   unit: string;
   unitCost: string;
+  discountType: "PERCENTAGE" | "AMOUNT" | "";
+  discountValue: string;
   vatPct: string;
 };
 
@@ -112,6 +117,8 @@ const blankLine = (): LineDraft => ({
   quantity: "1",
   unit: "pcs",
   unitCost: "",
+  discountType: "",
+  discountValue: "",
   vatPct: "",
 });
 
@@ -557,17 +564,29 @@ function CreateInvoiceDialog({
     setDueDate(iso);
   }, [supplierId, invoiceDate, suppliers]);
 
+  const lineCalc = useMemo(() => lines.map((l) => {
+    const gross = num(l.quantity) * num(l.unitCost);
+    const discAmt = l.discountType === "PERCENTAGE"
+      ? gross * Math.min(num(l.discountValue), 100) / 100
+      : l.discountType === "AMOUNT"
+        ? Math.min(num(l.discountValue), gross)
+        : 0;
+    const net = gross - discAmt;
+    const vatAmt = l.vatPct !== "" ? net * num(l.vatPct) / 100 : 0;
+    return { gross, discAmt, net, vatAmt };
+  }), [lines]);
+
   const subtotal = useMemo(
-    () => lines.reduce((acc, l) => acc + num(l.quantity) * num(l.unitCost), 0),
-    [lines],
+    () => lineCalc.reduce((acc, l) => acc + l.net, 0),
+    [lineCalc],
+  );
+  const totalDiscount = useMemo(
+    () => lineCalc.reduce((acc, l) => acc + l.discAmt, 0),
+    [lineCalc],
   );
   const vatFromLines = useMemo(
-    () => lines.reduce((acc, l) => {
-      const pct = num(l.vatPct);
-      if (!pct) return acc;
-      return acc + num(l.quantity) * num(l.unitCost) * pct / 100;
-    }, 0),
-    [lines],
+    () => lineCalc.reduce((acc, l) => acc + l.vatAmt, 0),
+    [lineCalc],
   );
   const hasLineVat = lines.some((l) => l.vatPct !== "");
   const total = useMemo(
@@ -607,6 +626,8 @@ function CreateInvoiceDialog({
         quantity: num(l.quantity),
         unit: l.unit || "pcs",
         unitCost: num(l.unitCost),
+        discountType: l.discountType || null,
+        discountValue: l.discountType && l.discountValue !== "" ? num(l.discountValue) : null,
         vatPct: l.vatPct !== "" ? num(l.vatPct) : null,
       })),
     };
@@ -740,6 +761,7 @@ function CreateInvoiceDialog({
               <LineRow
                 key={i}
                 line={line}
+                calc={lineCalc[i]}
                 stockItems={localStockItems}
                 onChange={(patch) => setLine(i, patch)}
                 onRemove={lines.length > 1 ? () => removeLine(i) : undefined}
@@ -757,8 +779,22 @@ function CreateInvoiceDialog({
         </div>
 
         <div className="rounded-xl bg-[var(--color-cream)] px-4 py-3 text-sm space-y-1">
+          {totalDiscount > 0 && (
+            <div className="flex justify-between text-[var(--color-muted)]">
+              <span>Gross (before discount)</span>
+              <Money value={subtotal + totalDiscount} />
+            </div>
+          )}
+          {totalDiscount > 0 && (
+            <div className="flex justify-between text-emerald-700">
+              <span>Discount saving</span>
+              <span>−<Money value={totalDiscount} /></span>
+            </div>
+          )}
           <div className="flex justify-between">
-            <span className="text-[var(--color-muted)]">Subtotal (ex-VAT)</span>
+            <span className="text-[var(--color-muted)]">
+              {totalDiscount > 0 ? "Net subtotal (ex-VAT)" : "Subtotal (ex-VAT)"}
+            </span>
             <Money value={subtotal} />
           </div>
           <div className="flex justify-between">
@@ -796,22 +832,22 @@ function CreateInvoiceDialog({
 
 function LineRow({
   line,
+  calc,
   stockItems,
   onChange,
   onRemove,
   onStockCreated,
 }: {
   line: LineDraft;
+  calc: { gross: number; discAmt: number; net: number; vatAmt: number };
   stockItems: StockItem[];
   onChange: (patch: Partial<LineDraft>) => void;
   onRemove?: () => void;
   onStockCreated: (item: StockItem) => void;
 }) {
   const [creating, setCreating] = useState(false);
-
-  const netTotal = num(line.quantity) * num(line.unitCost);
-  const vatAmt = line.vatPct !== "" ? netTotal * num(line.vatPct) / 100 : 0;
-  const lineTotal = netTotal + vatAmt;
+  const { gross, discAmt, net, vatAmt } = calc;
+  const lineTotal = net + vatAmt;
 
   const quickCreate = async () => {
     const desc = line.description.trim();
@@ -924,6 +960,53 @@ function LineRow({
           </Field>
         </div>
         <div className="col-span-6 md:col-span-2">
+          <Field label="Discount">
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => onChange({
+                  discountType: line.discountType === "PERCENTAGE" ? "" : "PERCENTAGE",
+                  discountValue: "",
+                })}
+                className={`px-2 py-1.5 rounded-l border text-xs font-medium transition-colors ${
+                  line.discountType === "PERCENTAGE"
+                    ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                    : "border-black/15 hover:bg-[var(--color-cream)]"
+                }`}
+              >
+                %
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange({
+                  discountType: line.discountType === "AMOUNT" ? "" : "AMOUNT",
+                  discountValue: "",
+                })}
+                className={`px-2 py-1.5 rounded-r border text-xs font-medium transition-colors ${
+                  line.discountType === "AMOUNT"
+                    ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                    : "border-black/15 hover:bg-[var(--color-cream)]"
+                }`}
+              >
+                zł
+              </button>
+              {line.discountType && (
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step={line.discountType === "PERCENTAGE" ? "0.01" : "0.01"}
+                  min="0"
+                  max={line.discountType === "PERCENTAGE" ? "100" : undefined}
+                  value={line.discountValue}
+                  onChange={(e) => onChange({ discountValue: e.target.value })}
+                  placeholder={line.discountType === "PERCENTAGE" ? "10" : "5.00"}
+                  className="flex-1"
+                />
+              )}
+            </div>
+          </Field>
+        </div>
+        <div className="col-span-6 md:col-span-2">
           <Field label="VAT rate">
             <div className="flex gap-1 flex-wrap">
               {VAT_RATES.map((r) => (
@@ -945,10 +1028,16 @@ function LineRow({
         </div>
         <div className="col-span-6 md:col-span-3 text-right">
           <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">Line total</p>
-          <p className="font-semibold text-[var(--color-ink)]"><Money value={netTotal} /></p>
+          {discAmt > 0 && (
+            <p className="text-xs line-through text-[var(--color-muted)]"><Money value={gross} /></p>
+          )}
+          {discAmt > 0 && (
+            <p className="text-xs text-emerald-700">−<Money value={discAmt} /></p>
+          )}
+          <p className="font-semibold text-[var(--color-ink)]"><Money value={net} /></p>
           {vatAmt > 0 && (
             <p className="text-xs text-[var(--color-muted)]">
-              + <Money value={vatAmt} /> VAT = <Money value={lineTotal} />
+              +<Money value={vatAmt} /> VAT = <Money value={lineTotal} />
             </p>
           )}
         </div>
@@ -1104,7 +1193,9 @@ function DetailDrawer({
                       <th className="px-2 py-1 text-right">Qty</th>
                       <th className="px-2 py-1 text-left">Unit</th>
                       <th className="px-2 py-1 text-right">Unit cost</th>
-                      <th className="px-2 py-1 text-right">Line total</th>
+                      <th className="px-2 py-1 text-right">Discount</th>
+                      <th className="px-2 py-1 text-right">VAT</th>
+                      <th className="px-2 py-1 text-right">Net total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-black/[0.05]">
@@ -1113,19 +1204,21 @@ function DetailDrawer({
                         <td className="px-2 py-1.5">
                           {l.description}
                           {l.stockItemId && (
-                            <span className="ml-2 text-xs text-[var(--color-muted)]">
-                              (stock-linked)
-                            </span>
+                            <span className="ml-2 text-xs text-[var(--color-muted)]">(stock)</span>
                           )}
                         </td>
                         <td className="px-2 py-1.5 text-right tabular-nums">{l.quantity}</td>
                         <td className="px-2 py-1.5">{l.unit}</td>
-                        <td className="px-2 py-1.5 text-right">
-                          <Money value={l.unitCost} />
+                        <td className="px-2 py-1.5 text-right"><Money value={l.unitCost} /></td>
+                        <td className="px-2 py-1.5 text-right text-emerald-700">
+                          {l.discountAmount
+                            ? <>−<Money value={l.discountAmount} />{l.discountType === "PERCENTAGE" && l.discountValue != null ? ` (${l.discountValue}%)` : ""}</>
+                            : "—"}
                         </td>
-                        <td className="px-2 py-1.5 text-right">
-                          <Money value={l.lineTotal} />
+                        <td className="px-2 py-1.5 text-right text-[var(--color-muted)]">
+                          {l.vatPct != null ? `${l.vatPct}%` : "—"}
                         </td>
+                        <td className="px-2 py-1.5 text-right"><Money value={l.lineTotal} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -1192,6 +1285,122 @@ function DetailDrawer({
                     </tbody>
                   </table>
                 </div>
+              )}
+            </section>
+
+            {/* Supplier bank account */}
+            {invoice.supplierBank && (invoice.supplierBank.accountNumber || invoice.supplierBank.bankName) && (
+              <section className="rounded-xl border border-blue-200/60 bg-blue-50/40 px-4 py-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">
+                  Supplier bank details
+                </h3>
+                <div className="space-y-1 text-sm">
+                  {invoice.supplierBank.accountNumber && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[var(--color-muted)] shrink-0">Account</span>
+                      <code className="font-mono text-[var(--color-ink)] break-all">
+                        {invoice.supplierBank.accountNumber}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard?.writeText(invoice.supplierBank!.accountNumber!)}
+                        className="text-xs text-[var(--color-saffron-dark)] hover:underline shrink-0"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  )}
+                  {invoice.supplierBank.bankName && (
+                    <div className="flex gap-2">
+                      <span className="text-[var(--color-muted)] shrink-0">Bank</span>
+                      <span>{invoice.supplierBank.bankName}</span>
+                    </div>
+                  )}
+                  {invoice.supplierBank.bicSwift && (
+                    <div className="flex gap-2">
+                      <span className="text-[var(--color-muted)] shrink-0">BIC/SWIFT</span>
+                      <code className="font-mono">{invoice.supplierBank.bicSwift}</code>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* Invoice file attachment */}
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-[var(--color-ink)]">Invoice scan</h3>
+                {canManage && invoice.status !== "VOID" && (
+                  <label className="cursor-pointer text-xs text-[var(--color-saffron-dark)] hover:underline">
+                    {invoice.attachment ? "Replace" : "+ Attach PDF / image"}
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setErr(null);
+                        try {
+                          const next = await getPayable(invoice.id);
+                          await uploadPayableAttachment(invoice.id, file);
+                          onChanged({ ...next, attachment: { filename: file.name, filePath: "" } });
+                          const fresh = await getPayable(invoice.id);
+                          onChanged(fresh);
+                        } catch (ex) {
+                          setErr(ex instanceof Error ? ex.message : "Upload failed");
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+              {invoice.attachment ? (
+                <div className="flex items-center gap-3 rounded-lg border border-black/8 bg-[var(--color-cream)]/50 px-3 py-2">
+                  <span className="text-2xl">📄</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--color-ink)] truncate">
+                      {invoice.attachment.filename}
+                    </p>
+                  </div>
+                  <a
+                    href={payableAttachmentUrl(invoice.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-[var(--color-saffron-dark)] hover:underline shrink-0"
+                  >
+                    View
+                  </a>
+                  <a
+                    href={`${payableAttachmentUrl(invoice.id)}?download=true`}
+                    className="text-xs text-[var(--color-muted)] hover:underline shrink-0"
+                  >
+                    Download
+                  </a>
+                  {canManage && invoice.status !== "VOID" && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setErr(null);
+                        try {
+                          await deletePayableAttachment(invoice.id);
+                          const fresh = await getPayable(invoice.id);
+                          onChanged(fresh);
+                        } catch (ex) {
+                          setErr(ex instanceof Error ? ex.message : "Delete failed");
+                        }
+                      }}
+                      className="text-xs text-[var(--color-danger)] hover:underline shrink-0"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--color-muted)]">
+                  No scan attached yet.{canManage && invoice.status !== "VOID" ? " Use the Attach button above to upload a PDF or photo of the invoice." : ""}
+                </p>
               )}
             </section>
 
@@ -1396,6 +1605,9 @@ function SupplierDialog({
   const [email, setEmail] = useState("");
   const [vatId, setVatId] = useState("");
   const [paymentTermsDays, setPaymentTermsDays] = useState("7");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [bankBicSwift, setBankBicSwift] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -1407,6 +1619,9 @@ function SupplierDialog({
     setEmail("");
     setVatId("");
     setPaymentTermsDays("7");
+    setBankAccountNumber("");
+    setBankName("");
+    setBankBicSwift("");
     setErr(null);
   }, [open]);
 
@@ -1425,6 +1640,9 @@ function SupplierDialog({
         email: email.trim() || null,
         vatId: vatId.trim() || null,
         paymentTermsDays: Math.max(0, parseInt(paymentTermsDays || "0", 10)),
+        bankAccountNumber: bankAccountNumber.trim() || null,
+        bankName: bankName.trim() || null,
+        bankBicSwift: bankBicSwift.trim() || null,
       });
       onCreated(created);
     } catch (e) {
@@ -1487,6 +1705,35 @@ function SupplierDialog({
               onChange={(e) => setPaymentTermsDays(e.target.value)}
             />
           </Field>
+        </div>
+
+        <div className="pt-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)] mb-2">
+            Bank account (for payment transfers)
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Account number / IBAN" optional>
+              <Input
+                value={bankAccountNumber}
+                onChange={(e) => setBankAccountNumber(e.target.value)}
+                placeholder="PL 61 1090 1014 0000 0712 1981 2874"
+              />
+            </Field>
+            <Field label="Bank name" optional>
+              <Input
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                placeholder="PKO BP"
+              />
+            </Field>
+            <Field label="BIC / SWIFT" optional>
+              <Input
+                value={bankBicSwift}
+                onChange={(e) => setBankBicSwift(e.target.value)}
+                placeholder="BPKOPLPW"
+              />
+            </Field>
+          </div>
         </div>
       </DialogBody>
       <DialogFooter>

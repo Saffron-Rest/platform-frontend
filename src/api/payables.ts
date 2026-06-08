@@ -26,6 +26,9 @@ export type PayableLine = {
   quantity: number;
   unit: string;
   unitCost: number;
+  discountType?: "PERCENTAGE" | "AMOUNT" | null;
+  discountValue?: number | null;
+  discountAmount?: number | null;
   lineTotal: number;
   vatPct?: number | null;
   vatAmount?: number | null;
@@ -65,6 +68,8 @@ export type PayableDetail = PayableSummary & {
   updatedAt?: string | null;
   lines: PayableLine[];
   payments: PayablePayment[];
+  attachment?: { filename: string; filePath: string } | null;
+  supplierBank?: { accountNumber?: string; bankName?: string; bicSwift?: string } | null;
 };
 
 export type PayableListResponse = {
@@ -103,6 +108,8 @@ export type CreatePayableInput = {
     quantity: number;
     unit?: string;
     unitCost: number;
+    discountType?: "PERCENTAGE" | "AMOUNT" | null;
+    discountValue?: number | null;
     lineTotal?: number;
     vatPct?: number | null;
   }>;
@@ -179,4 +186,25 @@ export async function deletePayablePayment(id: string, paymentId: string): Promi
     `/payables/${encodeURIComponent(id)}/payments/${encodeURIComponent(paymentId)}`,
     { method: "DELETE" },
   );
+}
+
+export async function uploadPayableAttachment(
+  id: string,
+  file: File,
+): Promise<{ filename: string; filePath: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  return api(`/payables/${encodeURIComponent(id)}/attachment`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function deletePayableAttachment(id: string): Promise<void> {
+  await api(`/payables/${encodeURIComponent(id)}/attachment`, { method: "DELETE" });
+}
+
+export function payableAttachmentUrl(id: string): string {
+  const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "/api";
+  return `${base}/payables/${encodeURIComponent(id)}/attachment`;
 }
