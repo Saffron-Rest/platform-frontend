@@ -118,6 +118,7 @@ function fullOperationsGroups(): NavGroup[] {
       id: "reports",
       label: "Reports",
       items: [
+        { kind: "link", to: "/accounting", label: "Accounting Hub", description: "What needs attention today", icon: IconProfitLoss, requires: ["REPORTS_VIEW"] },
         { kind: "link", to: "/reports", label: "Shift reports", description: "All cashier reports", icon: IconClipboard, primary: true, requires: ["REPORTS_VIEW"] },
         { kind: "link", to: "/reports?tab=expenses", label: "Expenses & Income", description: "Add delivery or expense", icon: IconWallet, primary: true, requires: ["EXPENSES_VIEW", "EXPENSES_EDIT", "TREASURY_VIEW", "TREASURY_MANAGE"] },
         { kind: "link", to: "/reports?tab=pl", label: "Profit & loss", description: "P&L statement", icon: IconProfitLoss, requires: ["PROFIT_LOSS_VIEW"] },

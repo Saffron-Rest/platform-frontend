@@ -13,6 +13,7 @@ import { Login } from "./pages/Login";
 import { ChangePassword } from "./pages/ChangePassword";
 import { NoAccess } from "./pages/NoAccess";
 import { Dashboard } from "./pages/Dashboard";
+import { AccountingHub } from "./pages/AccountingHub";
 import { PosApp } from "./pages/PosApp";
 import { PosDisplay } from "./pages/PosDisplay";
 import { PosWaiter } from "./pages/PosWaiter";
@@ -99,6 +100,7 @@ export default function App() {
                   <Route path="/checklists" element={<RouteErrorBoundary><DailyChecklists /></RouteErrorBoundary>} />
                   <Route path="/haccp" element={<RouteErrorBoundary><HaccpLogs /></RouteErrorBoundary>} />
                   <Route element={<OperationsGuard />}>
+                    <Route path="/accounting" element={<RouteErrorBoundary><AccountingHub /></RouteErrorBoundary>} />
                     <Route path="/reports" element={<LazyRoute><ReportsFinance /></LazyRoute>} />
                     <Route path="/analytics" element={<Navigate to="/reports?tab=export" replace />} />
                     <Route path="/profit-loss" element={<Navigate to="/reports?tab=pl" replace />} />
