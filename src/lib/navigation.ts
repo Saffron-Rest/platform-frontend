@@ -127,6 +127,7 @@ function fullOperationsGroups(): NavGroup[] {
         { kind: "link", to: "/reports?tab=pl", label: "Profit & loss", description: "P&L statement", icon: IconProfitLoss, requires: ["PROFIT_LOSS_VIEW"] },
         { kind: "link", to: "/reports?tab=export", label: "Export", description: "Exports & summaries", icon: IconChart, requires: ["REPORTS_VIEW", "REPORTS_EXPORT"] },
         { kind: "link", to: "/menu", label: "Menu analytics", description: "What sold, where the margin is", icon: IconChart, requires: ["MENU_VIEW", "REPORTS_VIEW"] },
+        { kind: "link", to: "/forecast", label: "Sales forecast", description: "Predicted revenue by weekday", icon: IconChart, requires: ["REPORTS_VIEW"] },
         { kind: "link", to: "/reports?tab=payables", label: "Payables", description: "Supplier credit & due dates", icon: IconWallet, requires: ["PAYABLES_VIEW", "PAYABLES_MANAGE"] },
         { kind: "link", to: "/reports?tab=owner-expenses", label: "Owner expenses", description: "Expenses paid by the owner", icon: IconWallet, requires: ["OWNER_EXPENSES_VIEW", "OWNER_EXPENSES_MANAGE", "OWNER_EXPENSES_FILE"] },
         { kind: "link", to: "/reports?tab=treasury", label: "Treasury history", description: "Balance changes", icon: IconWallet, requires: ["TREASURY_VIEW", "TREASURY_MANAGE"] },
