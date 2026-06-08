@@ -26,6 +26,13 @@ type MonthTotals = {
   difference: number;
 };
 
+type SalesForecast = {
+  predictedSales: number;
+  low: number;
+  high: number;
+  sampleSize: number;
+};
+
 type DashboardData = {
   date: string;
   totalSales: number;
@@ -37,6 +44,7 @@ type DashboardData = {
   expenses: number;
   difference: number;
   entries: { id: string; cashierId: string; cashier: string; status: string; difference: number }[];
+  forecast?: SalesForecast;
 };
 
 function monthStartIso() {
@@ -85,6 +93,8 @@ export function Dashboard() {
   }
 
   const greeting = canOperate(user?.role) ? "Restaurant overview" : `Hi, ${user?.name?.split(" ")[0] ?? "there"}`;
+
+  const todayDayName = new Date(data.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long" });
 
   // Task 4: compute action items for managers/operators
   const draftEntries = data.entries.filter((e) => e.status !== "LOCKED");
@@ -257,6 +267,20 @@ export function Dashboard() {
             </Alert>
           )}
         </div>
+      )}
+
+      {canOperate(user?.role) && data.forecast && (
+        <Card className="!p-5">
+          <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-1">
+            Typical {todayDayName}
+          </p>
+          <p className="text-2xl font-bold tabular-nums">
+            ~{fmt(Math.round(data.forecast.predictedSales / 50) * 50)}
+          </p>
+          <p className="text-xs text-[var(--color-muted)] mt-1 tabular-nums">
+            Range {fmt(data.forecast.low)} – {fmt(data.forecast.high)} · based on {data.forecast.sampleSize} weeks
+          </p>
+        </Card>
       )}
 
       {canOperate(user?.role) && monthTotals && (
