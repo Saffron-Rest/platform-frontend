@@ -104,7 +104,8 @@ function formatDate(iso: string): string {
 
 /** Row identity for tracking which line is being reconciled / selected. */
 function rowKey(row: TreasuryLedgerRow): string {
-  return `${row.kind}::${row.refId ?? row.date}`;
+  const base = `${row.kind}::${row.refId ?? row.date}`;
+  return row.platform ? `${base}::${row.platform}` : base;
 }
 
 /** A card-side income row that can have a reconciliation attached.
