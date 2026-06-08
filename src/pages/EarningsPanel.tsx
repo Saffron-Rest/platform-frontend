@@ -5,290 +5,418 @@ import {
   type MyEarnings,
   type PayoutRequest,
 } from "../api/earnings";
-import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
 import { Spinner } from "../components/ui/Spinner";
 import { Money } from "../components/ui/Money";
 
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
 const fmtDate = (iso: string) =>
   new Date(iso + (iso.includes("T") ? "" : "T00:00:00")).toLocaleDateString(undefined, {
     day: "2-digit", month: "short", year: "numeric",
   });
 
-const thisMonthRange = () => {
-  const now = new Date();
-  const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const toStr = `${to.getFullYear()}-${String(to.getMonth() + 1).padStart(2, "0")}-${String(to.getDate()).padStart(2, "0")}`;
-  return { from, to: toStr };
+const monthLabel = (y: number, m: number) =>
+  new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
+
+const isoMonth = (y: number, m: number) => {
+  const from = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const to = `${y}-${String(m + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  return { from, to };
 };
 
-const statusBadge = (s: PayoutRequest["status"]) => {
-  if (s === "PENDING") return "bg-amber-100 text-amber-800 ring-amber-200";
-  if (s === "APPROVED") return "bg-emerald-100 text-emerald-800 ring-emerald-200";
-  return "bg-red-100 text-red-700 ring-red-200";
-};
+const statusConfig = (s: PayoutRequest["status"]) => ({
+  PENDING:  { label: "Waiting for manager approval", color: "bg-amber-100 text-amber-800 border-amber-200" },
+  APPROVED: { label: "Approved — will be paid soon",  color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+  DECLINED: { label: "Not approved",                  color: "bg-red-50 text-red-700 border-red-200" },
+}[s]);
+
+// ─── page ─────────────────────────────────────────────────────────────────────
 
 export function EarningsPanel() {
-  const [range] = useState(thisMonthRange);
-  const [data, setData] = useState<MyEarnings | null>(null);
+  const now = new Date();
+  const [year, setYear]   = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth());
+
+  const { from, to } = useMemo(() => isoMonth(year, month), [year, month]);
+
+  const [data, setData]       = useState<MyEarnings | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError]     = useState("");
+
   const [showShifts, setShowShifts] = useState(false);
 
-  const [requestOpen, setRequestOpen] = useState(false);
-  const [requestAmount, setRequestAmount] = useState("");
-  const [requestNotes, setRequestNotes] = useState("");
-  const [requesting, setRequesting] = useState(false);
-  const [requestErr, setRequestErr] = useState("");
+  // Payout request form
+  const [askOpen,      setAskOpen]      = useState(false);
+  const [askAmount,    setAskAmount]    = useState("");
+  const [askNote,      setAskNote]      = useState("");
+  const [asking,       setAsking]       = useState(false);
+  const [askErr,       setAskErr]       = useState("");
 
   const load = () => {
     setLoading(true);
     setError("");
-    getMyEarnings(range.from, range.to)
+    setData(null);
+    getMyEarnings(from, to)
       .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load your pay data"))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [from, to]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasPending = useMemo(
-    () => data?.requests.some((r) => r.status === "PENDING") ?? false,
+  const pending = useMemo(
+    () => data?.requests.find((r) => r.status === "PENDING") ?? null,
     [data],
   );
 
-  const submitRequest = async () => {
-    const amt = parseFloat(requestAmount);
-    if (!amt || amt <= 0) { setRequestErr("Enter a valid amount"); return; }
-    setRequesting(true);
-    setRequestErr("");
+  const prevMonth = () => {
+    if (month === 0) { setYear((y) => y - 1); setMonth(11); }
+    else setMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+    if (isCurrentMonth) return;
+    if (month === 11) { setYear((y) => y + 1); setMonth(0); }
+    else setMonth((m) => m + 1);
+  };
+
+  const sendRequest = async () => {
+    const amt = parseFloat(askAmount);
+    if (!amt || amt <= 0) { setAskErr("Enter an amount greater than 0"); return; }
+    setAsking(true);
+    setAskErr("");
     try {
-      await createPayoutRequest(amt, requestNotes.trim() || undefined);
-      setRequestOpen(false);
-      setRequestAmount("");
-      setRequestNotes("");
+      await createPayoutRequest(amt, askNote.trim() || undefined);
+      setAskOpen(false);
+      setAskAmount("");
+      setAskNote("");
       load();
     } catch (e) {
-      setRequestErr(e instanceof Error ? e.message : "Request failed");
+      setAskErr(e instanceof Error ? e.message : "Could not send your request");
     } finally {
-      setRequesting(false);
+      setAsking(false);
     }
   };
 
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
-      <PageHeader
-        kicker="Payroll"
-        title="My earnings"
-        subtitle={`${fmtDate(range.from)} – ${fmtDate(range.to)}`}
-      />
+    <div className="space-y-5 max-w-lg mx-auto pb-10">
+
+      {/* ── Month navigation ─────────────────────────────────────────── */}
+      <div className="flex items-center justify-between pt-2">
+        <button
+          type="button"
+          onClick={prevMonth}
+          className="p-2 rounded-lg hover:bg-black/5 text-[var(--color-muted)] transition-colors"
+          aria-label="Previous month"
+        >
+          ←
+        </button>
+        <h1 className="text-lg font-semibold text-[var(--color-ink)]">
+          {monthLabel(year, month)}
+        </h1>
+        <button
+          type="button"
+          onClick={nextMonth}
+          disabled={isCurrentMonth}
+          className="p-2 rounded-lg hover:bg-black/5 text-[var(--color-muted)] transition-colors disabled:opacity-30"
+          aria-label="Next month"
+        >
+          →
+        </button>
+      </div>
 
       {error && <Alert variant="error">{error}</Alert>}
 
       {loading ? (
-        <div className="py-16"><Spinner /></div>
+        <div className="py-20 flex justify-center"><Spinner /></div>
       ) : !data ? null : (
         <>
-          {/* ── Summary tiles ──────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/60 p-4">
-              <p className="text-xs uppercase tracking-wider text-[var(--color-muted)]">Earned to date</p>
-              <p className="text-2xl font-bold text-[var(--color-ink)] mt-1">
-                <Money value={data.earnedToDate} />
-              </p>
-              <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                of <Money value={data.totalPay} /> total this period
-              </p>
-            </div>
-            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/60 p-4">
-              <p className="text-xs uppercase tracking-wider text-[var(--color-muted)]">Already paid</p>
-              <p className="text-2xl font-bold text-emerald-700 mt-1">
-                <Money value={data.paidAmount} />
-              </p>
-              <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                <Money value={data.owedNow} /> owed now
-              </p>
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          <div>
-            <div className="flex justify-between text-xs text-[var(--color-muted)] mb-1">
-              <span>Paid</span>
-              <span>{data.totalPay > 0 ? Math.round((data.paidAmount / data.totalPay) * 100) : 0}%</span>
-            </div>
-            <div className="h-2.5 rounded-full bg-black/8 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-all"
-                style={{ width: `${data.totalPay > 0 ? Math.min(100, (data.paidAmount / data.totalPay) * 100) : 0}%` }}
-              />
-            </div>
-            {data.fullyPaid && (
-              <p className="text-xs text-emerald-700 font-medium mt-1">Fully paid this period ✓</p>
+          {/* ── Hero: what you're owed right now ─────────────────────── */}
+          <div className="rounded-2xl bg-[var(--color-saffron)] text-white px-6 py-6 text-center shadow-sm">
+            <p className="text-sm font-medium opacity-80 mb-1">You are owed right now</p>
+            <p className="text-5xl font-bold tabular-nums">
+              {data.owedNow.toFixed(2)}
+              <span className="text-2xl font-normal ml-1 opacity-80">zł</span>
+            </p>
+            {data.owedNow <= 0 && data.paidAmount > 0 && (
+              <p className="text-sm opacity-80 mt-2">All caught up for this period ✓</p>
+            )}
+            {data.owedNow <= 0 && data.paidAmount <= 0 && data.totalPay <= 0 && (
+              <p className="text-sm opacity-80 mt-2">No shifts recorded this month yet</p>
             )}
           </div>
 
-          {/* ── Request payout ─────────────────────────────────────────── */}
-          {!requestOpen ? (
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={() => { setRequestOpen(true); setRequestAmount(data.owedNow.toFixed(2)); }}
-                disabled={hasPending || data.owedNow <= 0}
-              >
-                Request payout
-              </Button>
-              {hasPending && (
-                <span className="text-sm text-amber-700">
-                  You have a pending request — wait for admin to review it.
+          {/* ── Three numbers ─────────────────────────────────────────── */}
+          <div className="grid grid-cols-3 gap-3">
+            <StatBox
+              label="Earned this month"
+              value={data.totalPay}
+              hint={`${data.totalHours.toFixed(1)}h worked`}
+            />
+            <StatBox
+              label="Already paid"
+              value={data.paidAmount}
+              hint={data.paidAmount > 0 ? "received" : "none yet"}
+              positive
+            />
+            <StatBox
+              label="Still to come"
+              value={Math.max(0, data.totalPay - data.paidAmount)}
+              hint="by end of month"
+            />
+          </div>
+
+          {/* ── Pay period progress bar ───────────────────────────────── */}
+          {data.totalPay > 0 && (
+            <div>
+              <div className="flex justify-between text-xs text-[var(--color-muted)] mb-1.5">
+                <span>Month progress</span>
+                <span>
+                  {Math.round((data.paidAmount / data.totalPay) * 100)}% paid
                 </span>
-              )}
-              {!hasPending && data.owedNow <= 0 && (
-                <span className="text-sm text-[var(--color-muted)]">Nothing owed right now.</span>
-              )}
+              </div>
+              <div className="h-2 rounded-full bg-black/8 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                  style={{ width: `${Math.min(100, (data.paidAmount / data.totalPay) * 100)}%` }}
+                />
+              </div>
             </div>
-          ) : (
+          )}
+
+          {/* ── Pending payout request ───────────────────────────────── */}
+          {pending && (
+            <div className={`rounded-xl border px-4 py-3 ${statusConfig(pending.status).color}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold">
+                    Payout request: {pending.requestedAmount.toFixed(2)} zł
+                  </p>
+                  <p className="text-xs mt-0.5">{statusConfig(pending.status).label}</p>
+                  {pending.notes && (
+                    <p className="text-xs mt-1 opacity-70">Your note: {pending.notes}</p>
+                  )}
+                </div>
+                <span className="text-2xl">⏳</span>
+              </div>
+            </div>
+          )}
+
+          {/* ── Ask for payout CTA ───────────────────────────────────── */}
+          {!pending && !askOpen && (
+            <div className="rounded-2xl border-2 border-dashed border-[var(--color-saffron)]/40 px-5 py-5 text-center space-y-3">
+              <p className="text-sm text-[var(--color-muted)]">
+                {data.owedNow > 0
+                  ? `You have ${data.owedNow.toFixed(2)} zł waiting. Ask your manager to pay it out.`
+                  : "When you are owed money, you can ask your manager to pay it out here."}
+              </p>
+              <Button
+                onClick={() => {
+                  setAskOpen(true);
+                  setAskAmount(data.owedNow > 0 ? data.owedNow.toFixed(2) : "");
+                }}
+                disabled={data.owedNow <= 0}
+              >
+                Ask for payout
+              </Button>
+            </div>
+          )}
+
+          {askOpen && (
             <Card>
-              <h3 className="font-semibold text-sm mb-3">Request a payout</h3>
-              {requestErr && <Alert variant="error" className="mb-3">{requestErr}</Alert>}
+              <h3 className="font-semibold mb-1">Ask for a payout</h3>
+              <p className="text-sm text-[var(--color-muted)] mb-4">
+                Your manager will see this and either approve or decline it. You can
+                request any amount up to what you are owed.
+              </p>
+              {askErr && <Alert variant="error" className="mb-3">{askErr}</Alert>}
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider">
-                    Amount (PLN)
+                  <label className="block text-sm font-medium text-[var(--color-ink)] mb-1">
+                    How much do you need? (zł)
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     min="0.01"
                     max={data.owedNow}
-                    value={requestAmount}
-                    onChange={(e) => setRequestAmount(e.target.value)}
-                    className="field-input mt-1 w-full"
-                    placeholder={`Up to ${data.owedNow.toFixed(2)}`}
+                    value={askAmount}
+                    onChange={(e) => setAskAmount(e.target.value)}
+                    className="field-input w-full"
                     autoFocus
+                    placeholder={data.owedNow > 0 ? `Max ${data.owedNow.toFixed(2)} zł` : ""}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-[var(--color-muted)] uppercase tracking-wider">
-                    Note (optional)
+                  <label className="block text-sm font-medium text-[var(--color-ink)] mb-1">
+                    Reason <span className="text-[var(--color-muted)] font-normal">(optional)</span>
                   </label>
-                  <textarea
-                    rows={2}
-                    value={requestNotes}
-                    onChange={(e) => setRequestNotes(e.target.value)}
-                    className="field-input mt-1 w-full"
-                    placeholder="e.g. rent due this week"
+                  <input
+                    type="text"
+                    value={askNote}
+                    onChange={(e) => setAskNote(e.target.value)}
+                    className="field-input w-full"
+                    placeholder="e.g. rent is due Friday"
                   />
                 </div>
-                <div className="flex gap-2">
-                  <Button onClick={() => void submitRequest()} disabled={requesting}>
-                    {requesting ? "Sending…" : "Send request"}
+                <div className="flex gap-2 pt-1">
+                  <Button onClick={() => void sendRequest()} disabled={asking}>
+                    {asking ? "Sending…" : "Send request"}
                   </Button>
-                  <Button variant="ghost" onClick={() => setRequestOpen(false)}>Cancel</Button>
+                  <Button variant="ghost" onClick={() => { setAskOpen(false); setAskErr(""); }}>
+                    Cancel
+                  </Button>
                 </div>
               </div>
             </Card>
           )}
 
-          {/* ── Payout request history ─────────────────────────────────── */}
-          {data.requests.length > 0 && (
+          {/* ── Past payout requests ─────────────────────────────────── */}
+          {data.requests.filter((r) => r !== pending).length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-[var(--color-ink)] mb-2">Payout requests</h3>
+              <h3 className="text-sm font-semibold text-[var(--color-ink)] mb-2">Past requests</h3>
               <div className="space-y-2">
-                {data.requests.map((r) => (
-                  <div key={r.id} className="rounded-xl border border-black/8 px-4 py-3 flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ring-1 font-medium ${statusBadge(r.status)}`}>
-                          {r.status}
-                        </span>
-                        <span className="text-sm font-semibold text-[var(--color-ink)]">
-                          <Money value={r.requestedAmount} />
-                        </span>
-                        <span className="text-xs text-[var(--color-muted)]">
-                          requested {fmtDate(r.requestedDate)}
-                        </span>
+                {data.requests.filter((r) => r !== pending).map((r) => {
+                  const cfg = statusConfig(r.status);
+                  return (
+                    <div key={r.id} className={`rounded-xl border px-4 py-3 ${cfg.color}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold">{r.requestedAmount.toFixed(2)} zł</p>
+                          <p className="text-xs mt-0.5">{cfg.label}</p>
+                          {r.adminNotes && (
+                            <p className="text-xs mt-1 opacity-70">Manager note: {r.adminNotes}</p>
+                          )}
+                        </div>
+                        <p className="text-xs text-right opacity-60 shrink-0">{fmtDate(r.requestedDate)}</p>
                       </div>
-                      {r.notes && (
-                        <p className="text-xs text-[var(--color-muted)] mt-1">{r.notes}</p>
-                      )}
-                      {r.adminNotes && (
-                        <p className="text-xs text-[var(--color-muted)] mt-1 italic">
-                          Admin: {r.adminNotes}
-                        </p>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* ── Shift breakdown ────────────────────────────────────────── */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowShifts((v) => !v)}
-              className="text-sm text-[var(--color-saffron-dark)] hover:underline"
-            >
-              {showShifts ? "Hide" : "Show"} shift breakdown ({data.shifts.length} shifts, {data.totalHours.toFixed(1)}h)
-            </button>
-            {showShifts && data.shifts.length > 0 && (
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-[var(--color-muted)] uppercase tracking-wide">
-                      <th className="pb-1.5 pr-3">Date</th>
-                      <th className="pb-1.5 pr-3">Hours</th>
-                      <th className="pb-1.5 pr-3 text-right">Pay</th>
-                      <th className="pb-1.5">Note</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-black/5">
-                    {data.shifts.map((s, i) => (
-                      <tr key={i}>
-                        <td className="py-1.5 pr-3 font-medium">{fmtDate(s.date)}</td>
-                        <td className="py-1.5 pr-3 font-mono">
-                          {s.hoursLabel}{s.tillCloseAssumed ? "*" : ""}
-                        </td>
-                        <td className="py-1.5 pr-3 text-right font-mono">
-                          <Money value={s.pay} />
-                        </td>
-                        <td className="py-1.5 text-[var(--color-muted)]">{s.payNote}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {data.shifts.some((s) => s.tillCloseAssumed) && (
-                  <p className="text-[10px] text-[var(--color-muted)] mt-1">
-                    * Hours estimated from restaurant close time
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* ── Payments received ──────────────────────────────────────── */}
+          {/* ── Payments already received ─────────────────────────────── */}
           {data.payments.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-[var(--color-ink)] mb-2">Payments received</h3>
-              <div className="space-y-1.5">
+              <h3 className="text-sm font-semibold text-[var(--color-ink)] mb-2">
+                Payments you received this month
+              </h3>
+              <div className="rounded-xl border border-black/8 divide-y divide-black/5 overflow-hidden">
                 {data.payments.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between text-sm">
-                    <span className="text-[var(--color-muted)]">{fmtDate(p.paidDate)}</span>
-                    <span className="font-medium text-emerald-700"><Money value={p.amount} /></span>
-                    <span className="text-xs text-[var(--color-muted)]">
-                      {p.source.toLowerCase()}{p.notes ? ` · ${p.notes}` : ""}
+                  <div key={p.id} className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-[var(--color-ink)]">
+                        {p.amount.toFixed(2)} zł
+                      </p>
+                      <p className="text-xs text-[var(--color-muted)]">
+                        {fmtDate(p.paidDate)}{p.notes ? ` · ${p.notes}` : ""}
+                      </p>
+                    </div>
+                    <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                      paid
                     </span>
                   </div>
                 ))}
               </div>
             </div>
           )}
+
+          {/* ── Shifts (expandable) ───────────────────────────────────── */}
+          {data.shifts.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowShifts((v) => !v)}
+                className="w-full rounded-xl border border-black/8 px-4 py-3 flex items-center justify-between text-sm hover:bg-black/2 transition-colors"
+              >
+                <span className="font-medium text-[var(--color-ink)]">
+                  {showShifts ? "Hide" : "Show"} my shifts this month
+                </span>
+                <span className="text-[var(--color-muted)]">
+                  {data.shifts.length} shift{data.shifts.length === 1 ? "" : "s"} · {data.totalHours.toFixed(1)}h total
+                  {" "}
+                  {showShifts ? "▲" : "▼"}
+                </span>
+              </button>
+
+              {showShifts && (
+                <div className="rounded-xl border border-black/8 border-t-0 overflow-hidden -mt-px">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[var(--color-cream)]/60">
+                      <tr className="text-left text-xs text-[var(--color-muted)] uppercase tracking-wide">
+                        <th className="px-4 py-2">Date</th>
+                        <th className="px-4 py-2">Hours</th>
+                        <th className="px-4 py-2 text-right">Pay</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/5">
+                      {data.shifts.map((s, i) => (
+                        <tr key={i}>
+                          <td className="px-4 py-2.5">{fmtDate(s.date)}</td>
+                          <td className="px-4 py-2.5 font-mono text-sm">
+                            {s.hoursLabel}{s.tillCloseAssumed ? " *" : ""}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono">
+                            <Money value={s.pay} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-[var(--color-cream)]/60 border-t border-black/8">
+                      <tr>
+                        <td className="px-4 py-2.5 text-sm font-semibold text-[var(--color-ink)]">Total</td>
+                        <td className="px-4 py-2.5 font-mono text-sm">{data.totalHours.toFixed(1)}h</td>
+                        <td className="px-4 py-2.5 text-right font-mono font-semibold">
+                          <Money value={data.totalPay} />
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  {data.shifts.some((s) => s.tillCloseAssumed) && (
+                    <p className="px-4 pb-3 text-[10px] text-[var(--color-muted)]">
+                      * Hours estimated — shift was recorded as "until close"
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {data.shifts.length === 0 && (
+            <div className="rounded-xl border border-black/8 px-4 py-8 text-center text-sm text-[var(--color-muted)]">
+              No shifts scheduled for {monthLabel(year, month)} yet.
+            </div>
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+// ─── small sub-component ─────────────────────────────────────────────────────
+
+function StatBox({ label, value, hint, positive = false }: {
+  label: string;
+  value: number;
+  hint: string;
+  positive?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
+      <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)] leading-tight">{label}</p>
+      <p className={`text-xl font-bold mt-1 tabular-nums ${positive ? "text-emerald-700" : "text-[var(--color-ink)]"}`}>
+        {value.toFixed(2)}
+        <span className="text-xs font-normal ml-0.5 opacity-60">zł</span>
+      </p>
+      <p className="text-[10px] text-[var(--color-muted)] mt-0.5">{hint}</p>
     </div>
   );
 }

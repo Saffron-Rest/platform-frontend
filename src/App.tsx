@@ -43,6 +43,7 @@ const AdminRecipes = lazy(() => import("./pages/admin/AdminRecipes").then((m) =>
 const AdminStock = lazy(() => import("./pages/admin/AdminStock").then((m) => ({ default: m.AdminStock })));
 const AdminIncidents = lazy(() => import("./pages/admin/AdminIncidents").then((m) => ({ default: m.AdminIncidents })));
 const AdminChecklists = lazy(() => import("./pages/admin/AdminChecklists").then((m) => ({ default: m.AdminChecklists })));
+const AdminPayoutRequests = lazy(() => import("./pages/admin/AdminPayoutRequests").then((m) => ({ default: m.AdminPayoutRequests })));
 
 /** Suspense fallback used while a lazy chunk loads. Matches the rest of
  *  the app's spinner styling so the in-flight transition feels native. */
@@ -128,6 +129,7 @@ export default function App() {
                     {/* Unified people & payroll page */}
                     <Route element={<RequirePermission anyOf={["TEAM_VIEW", "TEAM_MANAGE", "SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE", "CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"]} />}>
                       <Route path="people" element={<LazyRoute><AdminPeople /></LazyRoute>} />
+                      <Route path="payout-requests" element={<LazyRoute><AdminPayoutRequests /></LazyRoute>} />
                     </Route>
                     {/* Legacy redirects — preserve old bookmarks/links */}
                     <Route element={<RequirePermission anyOf={["TEAM_VIEW", "TEAM_MANAGE"]} />}>

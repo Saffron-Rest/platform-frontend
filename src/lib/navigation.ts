@@ -66,7 +66,7 @@ export type NavGroup = {
  * gets the People group in their sidebar without us inventing a custom
  * role.</p>
  */
-function cashierGroups(): NavGroup[] {
+function cashierGroups(user?: User | null): NavGroup[] {
   return [
     {
       id: "today",
@@ -77,6 +77,9 @@ function cashierGroups(): NavGroup[] {
         { kind: "link", to: "/schedule", label: "My schedule", description: "When you work", icon: IconCalendar, primary: true },
         { kind: "link", to: "/checklists", label: "Checklists", description: "Opening / closing tasks", icon: IconCheckSquare },
         { kind: "link", to: "/haccp", label: "HACCP", description: "Food-safety logs", icon: IconThermometer },
+        ...(user?.canViewEarnings
+          ? [{ kind: "link" as const, to: "/earnings", label: "My earnings", description: "Pay, shifts & payout requests", icon: IconCash, primary: true }]
+          : []),
       ],
     },
   ];
@@ -135,6 +138,7 @@ function fullOperationsGroups(): NavGroup[] {
       items: [
         { kind: "link", to: "/admin/people", label: "Team", description: "People & roles", icon: IconUsers, requires: ["TEAM_VIEW", "TEAM_MANAGE"] },
         { kind: "link", to: "/admin/people?tab=payroll", label: "Payroll", description: "Calculate pay", icon: IconCash, requires: ["SALARIES_VIEW", "SALARIES_MANAGE", "PAY_RATES_MANAGE"] },
+        { kind: "link", to: "/admin/payout-requests", label: "Payout requests", description: "Cashier pay requests — approve or decline", icon: IconWallet, requires: ["SALARIES_VIEW", "SALARIES_MANAGE"] },
         { kind: "link", to: "/admin/people?tab=payouts", label: "Payouts", description: "Approvals & history", icon: IconCash, requires: ["SALARIES_VIEW", "SALARIES_MANAGE"] },
         { kind: "link", to: "/admin/people?tab=certifications", label: "Certifications", description: "Sanepid, expiry alerts", icon: IconBadge, requires: ["CERTIFICATIONS_VIEW", "CERTIFICATIONS_MANAGE"] },
       ],
@@ -197,7 +201,7 @@ function filterGroups(user: User | null | undefined, groups: NavGroup[]): NavGro
 export function navGroupsForUser(user: User | null | undefined): NavGroup[] {
   if (!user) return [];
   if (isCashier(user.role) && !isAdmin(user.role) && !canOperate(user.role)) {
-    return cashierGroups();
+    return cashierGroups(user);
   }
   return filterGroups(user, fullOperationsGroups());
 }
