@@ -1524,6 +1524,34 @@ function RecordPaymentDialog({
       </DialogTitle>
       <DialogBody className="space-y-3">
         {err && <Alert variant="error">{err}</Alert>}
+
+        {invoice.supplierBank && (invoice.supplierBank.accountNumber || invoice.supplierBank.bankName) && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-3 space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+              Transfer to
+            </p>
+            {invoice.supplierBank.accountNumber && (
+              <div className="flex items-center gap-2">
+                <code className="flex-1 font-mono text-sm text-[var(--color-ink)] break-all">
+                  {invoice.supplierBank.accountNumber}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard?.writeText(invoice.supplierBank!.accountNumber!)}
+                  className="shrink-0 text-xs text-[var(--color-saffron-dark)] hover:underline"
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-[var(--color-muted)]">
+              {invoice.supplierBank.bankName && <span>{invoice.supplierBank.bankName}</span>}
+              {invoice.supplierBank.bicSwift && <span>BIC: {invoice.supplierBank.bicSwift}</span>}
+              <span className="text-[var(--color-ink)] font-medium">{invoice.supplier.name}</span>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Field label="Payment date" required>
             <Input
