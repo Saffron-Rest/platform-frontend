@@ -5,6 +5,7 @@ import {
   createPosIntegration,
   deletePosIntegration,
   getPosActivity,
+  getRawWebhookCalls,
   getWebhookLog,
   listPosIntegrations,
   registerDotyposWebhook,
@@ -15,6 +16,7 @@ import {
   unregisterDotyposWebhook,
   type PosActivity,
   type PosIntegration,
+  type RawWebhookCall,
   type WebhookReceipt,
 } from "../../api/menu";
 import { Card } from "../../components/ui/Card";
@@ -44,9 +46,11 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
   const [activity, setActivity] = useState<Record<string, PosActivity | null>>({});
   /** Webhook log per integration — keyed by id, null = not loaded yet. */
   const [webhookLog, setWebhookLog] = useState<Record<string, WebhookReceipt[] | null>>({});
+  const [rawCalls, setRawCalls] = useState<Record<string, RawWebhookCall[] | null>>({});
   /** Which integration's webhook log panel is open. */
   const [logOpenFor, setLogOpenFor] = useState<string | null>(null);
   const [logLoading, setLogLoading] = useState(false);
+  const [logTab, setLogTab] = useState<"receipts" | "raw">("raw");
   /** Which receipt rows are expanded to show items. */
   const [expandedReceipts, setExpandedReceipts] = useState<Set<string>>(new Set());
   const logRef = useRef<HTMLDivElement | null>(null);
@@ -342,10 +346,12 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
     setExpandedReceipts(new Set());
     setLogLoading(true);
     try {
-      const log = await getWebhookLog(i.id);
+      const [log, calls] = await Promise.all([
+        getWebhookLog(i.id).catch(() => [] as WebhookReceipt[]),
+        getRawWebhookCalls(i.id).catch(() => [] as RawWebhookCall[]),
+      ]);
       setWebhookLog((prev) => ({ ...prev, [i.id]: log }));
-    } catch {
-      setWebhookLog((prev) => ({ ...prev, [i.id]: [] }));
+      setRawCalls((prev) => ({ ...prev, [i.id]: calls }));
     } finally {
       setLogLoading(false);
       setTimeout(() => logRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
@@ -588,9 +594,12 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
                 <WebhookLogPanel
                   loading={logLoading}
                   receipts={webhookLog[i.id] ?? null}
+                  rawCalls={rawCalls[i.id] ?? null}
                   expandedReceipts={expandedReceipts}
                   onToggleReceipt={toggleReceipt}
                   onRefresh={() => void openLog(i)}
+                  tab={logTab}
+                  onTabChange={setLogTab}
                 />
               </div>
             )}
@@ -994,33 +1003,40 @@ function ReceiptDetail({ receipt: r }: { receipt: WebhookReceipt }) {
 }
 
 function WebhookLogPanel({
-  loading,
-  receipts,
-  expandedReceipts,
-  onToggleReceipt,
-  onRefresh,
+  loading, receipts, rawCalls, expandedReceipts,
+  onToggleReceipt, onRefresh, tab, onTabChange,
 }: {
   loading: boolean;
   receipts: WebhookReceipt[] | null;
+  rawCalls: RawWebhookCall[] | null;
   expandedReceipts: Set<string>;
   onToggleReceipt: (id: string) => void;
   onRefresh: () => void;
+  tab: "receipts" | "raw";
+  onTabChange: (t: "receipts" | "raw") => void;
 }) {
   return (
     <Card className="border-t-2 border-t-[var(--color-saffron)]/40">
       <div className="flex items-center justify-between mb-3">
-        <h4 className="font-semibold text-sm text-[var(--color-ink)]">Webhook log</h4>
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="text-xs text-[var(--color-saffron-dark)] hover:underline"
-        >
+        <div className="flex gap-1">
+          {(["raw", "receipts"] as const).map((t) => (
+            <button key={t} type="button" onClick={() => onTabChange(t)}
+              className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                tab === t ? "bg-[var(--color-saffron)] text-white" : "text-[var(--color-muted)] hover:bg-black/5"
+              }`}>
+              {t === "raw" ? "Raw calls" : "Receipts"}
+            </button>
+          ))}
+        </div>
+        <button type="button" onClick={onRefresh} className="text-xs text-[var(--color-saffron-dark)] hover:underline">
           Refresh
         </button>
       </div>
 
       {loading ? (
         <div className="py-6 flex justify-center"><Spinner /></div>
+      ) : tab === "raw" ? (
+        <RawCallsList calls={rawCalls} />
       ) : !receipts || receipts.length === 0 ? (
         <p className="text-sm text-[var(--color-muted)] py-4 text-center">No receipts received yet.</p>
       ) : (
@@ -1029,12 +1045,8 @@ function WebhookLogPanel({
             const isOpen = expandedReceipts.has(r.receiptId);
             return (
               <div key={r.receiptId} className="rounded-lg border border-black/8 overflow-hidden">
-                {/* Receipt header row */}
-                <button
-                  type="button"
-                  onClick={() => onToggleReceipt(r.receiptId)}
-                  className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-black/3 transition-colors"
-                >
+                <button type="button" onClick={() => onToggleReceipt(r.receiptId)}
+                  className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-black/3 transition-colors">
                   <span className="text-[10px] mr-1 text-[var(--color-muted)]">{isOpen ? "▼" : "▶"}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1057,17 +1069,68 @@ function WebhookLogPanel({
                     <div className="text-xs text-[var(--color-muted)]">{r.itemCount} item{r.itemCount === 1 ? "" : "s"}</div>
                   </div>
                 </button>
-
-                {/* Expanded items table + raw payload */}
-                {isOpen && (
-                  <ReceiptDetail receipt={r} />
-                )}
+                {isOpen && <ReceiptDetail receipt={r} />}
               </div>
             );
           })}
         </div>
       )}
     </Card>
+  );
+}
+
+function RawCallsList({ calls }: { calls: RawWebhookCall[] | null }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  if (!calls || calls.length === 0) {
+    return (
+      <p className="text-sm text-[var(--color-muted)] py-4 text-center">
+        No webhook calls captured yet. Send a real receipt from your POS — the full JSON will appear here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {calls.map((call) => {
+        const isOpen = openId === call.id;
+        const prettyJson = (() => {
+          try { return JSON.stringify(JSON.parse(call.rawBody), null, 2); }
+          catch { return call.rawBody; }
+        })();
+
+        return (
+          <div key={call.id} className="rounded-lg border border-black/8 overflow-hidden">
+            <button type="button" onClick={() => setOpenId(isOpen ? null : call.id)}
+              className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-black/3 transition-colors">
+              <span className="text-[10px] text-[var(--color-muted)]">{isOpen ? "▼" : "▶"}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-[var(--color-muted)]">{fmtTs(call.receivedAt)}</span>
+                  {call.unmatched > 0 && (
+                    <span className="text-[10px] bg-amber-100 text-amber-800 ring-1 ring-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                      {call.unmatched} unmatched
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-[var(--color-muted)] mt-0.5 flex gap-3">
+                  <span>{call.inserted} inserted</span>
+                  {call.skipped > 0 && <span>{call.skipped} skipped</span>}
+                </div>
+              </div>
+              <span className="text-xs text-[var(--color-saffron-dark)] shrink-0 font-medium">
+                {isOpen ? "Hide JSON" : "Show JSON"}
+              </span>
+            </button>
+            {isOpen && (
+              <pre className="border-t border-black/8 bg-[var(--color-ink)]/90 text-[var(--color-cream)] text-xs font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-[500px]">
+                {prettyJson}
+              </pre>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -421,6 +421,19 @@ export async function getWebhookLog(id: string, limit = 200) {
   return api<WebhookReceipt[]>(`/pos/integrations/${id}/webhook-log?limit=${limit}`);
 }
 
+export type RawWebhookCall = {
+  id: string;
+  receivedAt: string | null;
+  inserted: number;
+  skipped: number;
+  unmatched: number;
+  rawBody: string;
+};
+
+export async function getRawWebhookCalls(id: string, limit = 50) {
+  return api<RawWebhookCall[]>(`/pos/integrations/${id}/raw-calls?limit=${limit}`);
+}
+
 export async function sendTestReceipt(id: string) {
   return api<{ ok: boolean; inserted?: number; skipped?: number; unmatched?: number; error?: string }>(
     `/pos/integrations/${id}/test-receipt`,
