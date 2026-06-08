@@ -27,6 +27,8 @@ export type PayableLine = {
   unit: string;
   unitCost: number;
   lineTotal: number;
+  vatPct?: number | null;
+  vatAmount?: number | null;
   stockMovementId?: string | null;
 };
 
@@ -102,6 +104,7 @@ export type CreatePayableInput = {
     unit?: string;
     unitCost: number;
     lineTotal?: number;
+    vatPct?: number | null;
   }>;
 };
 

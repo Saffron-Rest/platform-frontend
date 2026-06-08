@@ -47,7 +47,7 @@ import {
   listSuppliers,
   type Supplier,
 } from "../../api/suppliers";
-import { listStock, type StockItem } from "../../api/stock";
+import { createStock, listStock, type StockItem } from "../../api/stock";
 
 type Tab = "OUTSTANDING" | "PAID" | "VOID" | "ALL";
 
@@ -90,12 +90,20 @@ const fmtDate = (iso: string) => {
   return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 };
 
+const VAT_RATES = [
+  { label: "0%", value: "0" },
+  { label: "5%", value: "5" },
+  { label: "8%", value: "8" },
+  { label: "23%", value: "23" },
+];
+
 type LineDraft = {
   stockItemId: string;
   description: string;
   quantity: string;
   unit: string;
   unitCost: string;
+  vatPct: string;
 };
 
 const blankLine = (): LineDraft => ({
@@ -104,6 +112,7 @@ const blankLine = (): LineDraft => ({
   quantity: "1",
   unit: "pcs",
   unitCost: "",
+  vatPct: "",
 });
 
 const num = (s: string): number => {
@@ -506,6 +515,9 @@ function CreateInvoiceDialog({
   const [vat, setVat] = useState("0");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([blankLine()]);
+  // Local copy of stock items — extended immediately when the user quick-creates
+  // a stock item inside a line row, so the picker refreshes without closing.
+  const [localStockItems, setLocalStockItems] = useState<StockItem[]>(stockItems);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [recentSuppliers, setRecentSuppliers] = useState<RecentSupplier[]>([]);
@@ -528,6 +540,7 @@ function CreateInvoiceDialog({
     setVat("0");
     setNotes("");
     setLines([blankLine()]);
+    setLocalStockItems(stockItems);
     setErr(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -548,7 +561,19 @@ function CreateInvoiceDialog({
     () => lines.reduce((acc, l) => acc + num(l.quantity) * num(l.unitCost), 0),
     [lines],
   );
-  const total = useMemo(() => subtotal + num(vat), [subtotal, vat]);
+  const vatFromLines = useMemo(
+    () => lines.reduce((acc, l) => {
+      const pct = num(l.vatPct);
+      if (!pct) return acc;
+      return acc + num(l.quantity) * num(l.unitCost) * pct / 100;
+    }, 0),
+    [lines],
+  );
+  const hasLineVat = lines.some((l) => l.vatPct !== "");
+  const total = useMemo(
+    () => subtotal + (hasLineVat ? vatFromLines : num(vat)),
+    [subtotal, hasLineVat, vatFromLines, vat],
+  );
 
   const setLine = (i: number, patch: Partial<LineDraft>) => {
     setLines((cur) => cur.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -574,7 +599,7 @@ function CreateInvoiceDialog({
       invoiceDate,
       dueDate: dueDate || null,
       category,
-      vat: num(vat),
+      vat: hasLineVat ? vatFromLines : num(vat),
       notes: notes.trim() || null,
       lines: cleaned.map((l) => ({
         stockItemId: l.stockItemId || null,
@@ -582,6 +607,7 @@ function CreateInvoiceDialog({
         quantity: num(l.quantity),
         unit: l.unit || "pcs",
         unitCost: num(l.unitCost),
+        vatPct: l.vatPct !== "" ? num(l.vatPct) : null,
       })),
     };
     setSubmitting(true);
@@ -688,16 +714,18 @@ function CreateInvoiceDialog({
               ))}
             </Select>
           </Field>
-          <Field label="VAT (PLN, added to subtotal)" optional>
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              value={vat}
-              onChange={(e) => setVat(e.target.value)}
-            />
-          </Field>
+          {!hasLineVat && (
+            <Field label="VAT (PLN override)" optional hint="Set per-line VAT rates below instead — this field is ignored when any line has a rate.">
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                value={vat}
+                onChange={(e) => setVat(e.target.value)}
+              />
+            </Field>
+          )}
         </div>
 
         <div>
@@ -712,9 +740,17 @@ function CreateInvoiceDialog({
               <LineRow
                 key={i}
                 line={line}
-                stockItems={stockItems}
+                stockItems={localStockItems}
                 onChange={(patch) => setLine(i, patch)}
                 onRemove={lines.length > 1 ? () => removeLine(i) : undefined}
+                onStockCreated={(newItem) => {
+                  setLine(i, {
+                    stockItemId: newItem.id,
+                    unit: newItem.unit ?? line.unit,
+                    unitCost: newItem.unitCost ? String(newItem.unitCost) : line.unitCost,
+                  });
+                  setLocalStockItems((prev) => [...prev, newItem]);
+                }}
               />
             ))}
           </div>
@@ -722,12 +758,14 @@ function CreateInvoiceDialog({
 
         <div className="rounded-xl bg-[var(--color-cream)] px-4 py-3 text-sm space-y-1">
           <div className="flex justify-between">
-            <span className="text-[var(--color-muted)]">Subtotal</span>
+            <span className="text-[var(--color-muted)]">Subtotal (ex-VAT)</span>
             <Money value={subtotal} />
           </div>
           <div className="flex justify-between">
-            <span className="text-[var(--color-muted)]">VAT</span>
-            <Money value={num(vat)} />
+            <span className="text-[var(--color-muted)]">
+              VAT{hasLineVat ? " (from lines)" : ""}
+            </span>
+            <Money value={hasLineVat ? vatFromLines : num(vat)} />
           </div>
           <div className="flex justify-between pt-1 border-t border-black/10">
             <span className="font-semibold">Total to pay</span>
@@ -761,99 +799,171 @@ function LineRow({
   stockItems,
   onChange,
   onRemove,
+  onStockCreated,
 }: {
   line: LineDraft;
   stockItems: StockItem[];
   onChange: (patch: Partial<LineDraft>) => void;
   onRemove?: () => void;
+  onStockCreated: (item: StockItem) => void;
 }) {
-  const total = num(line.quantity) * num(line.unitCost);
+  const [creating, setCreating] = useState(false);
+
+  const netTotal = num(line.quantity) * num(line.unitCost);
+  const vatAmt = line.vatPct !== "" ? netTotal * num(line.vatPct) / 100 : 0;
+  const lineTotal = netTotal + vatAmt;
+
+  const quickCreate = async () => {
+    const desc = line.description.trim();
+    if (!desc) return;
+    setCreating(true);
+    try {
+      const item = await createStock({
+        name: desc,
+        unit: line.unit || "pcs",
+        unitCost: num(line.unitCost) || null,
+        sku: null,
+        menuItemId: null,
+        category: null,
+        lowStockThreshold: null,
+        parLevel: null,
+        notes: null,
+        active: true,
+        onHand: 0,
+      });
+      onStockCreated(item);
+    } catch {
+      /* non-fatal — user can try again or link manually */
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
-    <div className="grid grid-cols-12 gap-2 items-end p-2 rounded-lg border border-black/[0.06] bg-white">
-      <div className="col-span-12 md:col-span-4">
-        <Field label="Stock item / description">
-          <Select
-            value={line.stockItemId}
-            onChange={(e) => {
-              const id = e.target.value;
-              const it = stockItems.find((s) => s.id === id);
-              onChange({
-                stockItemId: id,
-                description: it?.name ?? line.description,
-                unit: it?.unit ?? line.unit,
-                unitCost: it?.unitCost ? String(it.unitCost) : line.unitCost,
-              });
-            }}
-          >
-            <option value="">— Custom (no stock) —</option>
-            {stockItems
-              .filter((s) => s.active)
-              .map((s) => (
+    <div className="rounded-lg border border-black/[0.06] bg-white p-3 space-y-2">
+      {/* Row 1: stock picker + description + quick-create */}
+      <div className="grid grid-cols-12 gap-2 items-end">
+        <div className="col-span-12 md:col-span-5">
+          <Field label="Stock item">
+            <Select
+              value={line.stockItemId}
+              onChange={(e) => {
+                const id = e.target.value;
+                const it = stockItems.find((s) => s.id === id);
+                onChange({
+                  stockItemId: id,
+                  description: it?.name ?? line.description,
+                  unit: it?.unit ?? line.unit,
+                  unitCost: it?.unitCost ? String(it.unitCost) : line.unitCost,
+                });
+              }}
+            >
+              <option value="">— No stock link —</option>
+              {stockItems.filter((s) => s.active).map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name}
-                  {s.sku ? ` (${s.sku})` : ""}
+                  {s.name}{s.sku ? ` (${s.sku})` : ""}
                 </option>
               ))}
-          </Select>
-        </Field>
-        {!line.stockItemId && (
-          <Input
-            value={line.description}
-            onChange={(e) => onChange({ description: e.target.value })}
-            placeholder="Description (e.g. Cleaning service Jan)"
-            className="mt-2"
-          />
-        )}
+            </Select>
+          </Field>
+        </div>
+        <div className="col-span-12 md:col-span-5">
+          <Field label="Description">
+            <Input
+              value={line.description}
+              onChange={(e) => onChange({ description: e.target.value })}
+              placeholder="e.g. Lamb shoulder, Cleaning Jan"
+              disabled={!!line.stockItemId}
+            />
+          </Field>
+        </div>
+        <div className="col-span-12 md:col-span-2 flex items-end pb-0.5">
+          {!line.stockItemId && line.description.trim() && (
+            <button
+              type="button"
+              onClick={() => void quickCreate()}
+              disabled={creating}
+              className="w-full text-xs rounded-md bg-[var(--color-cream)] border border-black/10 px-2 py-2 text-[var(--color-ink)] hover:bg-[var(--color-saffron)]/10 hover:border-[var(--color-saffron)] transition-colors disabled:opacity-50"
+              title="Create a stock item from this line and link it"
+            >
+              {creating ? "Creating…" : "+ Create stock"}
+            </button>
+          )}
+        </div>
       </div>
-      <div className="col-span-4 md:col-span-2">
-        <Field label="Qty">
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="0.001"
-            min="0"
-            value={line.quantity}
-            onChange={(e) => onChange({ quantity: e.target.value })}
-          />
-        </Field>
-      </div>
-      <div className="col-span-3 md:col-span-2">
-        <Field label="Unit">
-          <Input
-            value={line.unit}
-            onChange={(e) => onChange({ unit: e.target.value })}
-          />
-        </Field>
-      </div>
-      <div className="col-span-5 md:col-span-2">
-        <Field label="Unit cost">
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
-            value={line.unitCost}
-            onChange={(e) => onChange({ unitCost: e.target.value })}
-          />
-        </Field>
-      </div>
-      <div className="col-span-9 md:col-span-1 text-right">
-        <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">Total</p>
-        <p className="font-semibold">
-          <Money value={total} />
-        </p>
-      </div>
-      <div className="col-span-3 md:col-span-1 text-right">
-        {onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="text-[var(--color-danger)] hover:underline text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)] rounded"
-            aria-label="Remove line"
-          >
-            Remove
-          </button>
-        )}
+
+      {/* Row 2: qty / unit / unit cost / VAT rate / totals / remove */}
+      <div className="grid grid-cols-12 gap-2 items-end">
+        <div className="col-span-3 md:col-span-2">
+          <Field label="Qty">
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.001"
+              min="0"
+              value={line.quantity}
+              onChange={(e) => onChange({ quantity: e.target.value })}
+            />
+          </Field>
+        </div>
+        <div className="col-span-3 md:col-span-1">
+          <Field label="Unit">
+            <Input value={line.unit} onChange={(e) => onChange({ unit: e.target.value })} />
+          </Field>
+        </div>
+        <div className="col-span-6 md:col-span-2">
+          <Field label="Unit cost (ex-VAT)">
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={line.unitCost}
+              onChange={(e) => onChange({ unitCost: e.target.value })}
+            />
+          </Field>
+        </div>
+        <div className="col-span-6 md:col-span-2">
+          <Field label="VAT rate">
+            <div className="flex gap-1 flex-wrap">
+              {VAT_RATES.map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => onChange({ vatPct: line.vatPct === r.value ? "" : r.value })}
+                  className={`px-2 py-1 rounded text-xs border transition-colors ${
+                    line.vatPct === r.value
+                      ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                      : "border-black/10 hover:bg-[var(--color-cream)]"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+        </div>
+        <div className="col-span-6 md:col-span-3 text-right">
+          <p className="text-[11px] uppercase tracking-wide text-[var(--color-muted)]">Line total</p>
+          <p className="font-semibold text-[var(--color-ink)]"><Money value={netTotal} /></p>
+          {vatAmt > 0 && (
+            <p className="text-xs text-[var(--color-muted)]">
+              + <Money value={vatAmt} /> VAT = <Money value={lineTotal} />
+            </p>
+          )}
+        </div>
+        <div className="col-span-6 md:col-span-2 text-right flex items-end justify-end pb-0.5">
+          {onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="text-[var(--color-danger)] hover:underline text-sm"
+              aria-label="Remove line"
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
