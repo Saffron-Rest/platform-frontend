@@ -14,6 +14,7 @@ import { ChangePassword } from "./pages/ChangePassword";
 import { NoAccess } from "./pages/NoAccess";
 import { Dashboard } from "./pages/Dashboard";
 import { AccountingHub } from "./pages/AccountingHub";
+import { EarningsPanel } from "./pages/EarningsPanel";
 import { PosApp } from "./pages/PosApp";
 import { PosDisplay } from "./pages/PosDisplay";
 import { PosWaiter } from "./pages/PosWaiter";
@@ -98,6 +99,7 @@ export default function App() {
                   <Route path="/entry/:id" element={<RouteErrorBoundary><EntryDetail /></RouteErrorBoundary>} />
                   <Route path="/schedule" element={<RouteErrorBoundary><Schedule /></RouteErrorBoundary>} />
                   <Route path="/checklists" element={<RouteErrorBoundary><DailyChecklists /></RouteErrorBoundary>} />
+                  <Route path="/earnings" element={<RouteErrorBoundary><EarningsPanel /></RouteErrorBoundary>} />
                   <Route path="/haccp" element={<RouteErrorBoundary><HaccpLogs /></RouteErrorBoundary>} />
                   <Route element={<OperationsGuard />}>
                     <Route path="/accounting" element={<RouteErrorBoundary><AccountingHub /></RouteErrorBoundary>} />

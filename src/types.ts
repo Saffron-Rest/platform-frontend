@@ -58,6 +58,7 @@ export type User = {
   name: string;
   role: Role;
   mustChangePassword?: boolean;
+  canViewEarnings?: boolean;
   active?: boolean;
   /** Employment start date (YYYY-MM-DD). */
   startDate?: string | null;

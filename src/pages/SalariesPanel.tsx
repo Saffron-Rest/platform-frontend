@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { deleteSalaryPayment } from "../api/salaryPayments";
+import {
+  approvePayoutRequest,
+  declinePayoutRequest,
+  listPayoutRequests,
+  setEarningsAccess,
+  type PayoutRequest,
+} from "../api/earnings";
 import type { PaymentSource, PayrollEmployee, PayrollReport } from "../types";
 import { fmt } from "../lib/calc";
 import { Card } from "../components/ui/Card";
@@ -203,6 +210,23 @@ export function SalariesPanel() {
   const [selectedIds, setSelectedIds]           = useState<Set<string>>(new Set());
   const [bulkSource, setBulkSource]             = useState<PaymentSource>("CASH");
   const [bulkPaying, setBulkPaying]             = useState(false);
+
+  const [payoutRequests, setPayoutRequests]     = useState<PayoutRequest[]>([]);
+  const [requestsLoading, setRequestsLoading]   = useState(false);
+  const [reviewingId, setReviewingId]           = useState<string | null>(null);
+  const [reviewNotes, setReviewNotes]           = useState("");
+  const pendingCount = useMemo(
+    () => payoutRequests.filter((r) => r.status === "PENDING").length,
+    [payoutRequests],
+  );
+
+  useEffect(() => {
+    setRequestsLoading(true);
+    listPayoutRequests()
+      .then(setPayoutRequests)
+      .catch(() => {})
+      .finally(() => setRequestsLoading(false));
+  }, [refreshKey]);
 
   // Derive active from/to from either preset or custom inputs
   const { from, to } = useMemo(
@@ -897,6 +921,122 @@ export function SalariesPanel() {
           </ul>
         </>
       ) : null}
+
+      {/* ── Payout requests ───────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="font-semibold text-[var(--color-ink)]">Payout requests</h3>
+          {pendingCount > 0 && (
+            <span className="text-xs bg-amber-100 text-amber-800 ring-1 ring-amber-200 px-2 py-0.5 rounded-full font-medium">
+              {pendingCount} pending
+            </span>
+          )}
+        </div>
+        {requestsLoading ? (
+          <p className="text-sm text-[var(--color-muted)]">Loading…</p>
+        ) : payoutRequests.length === 0 ? (
+          <p className="text-sm text-[var(--color-muted)]">No payout requests yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {payoutRequests.map((r) => (
+              <div key={r.id} className="rounded-xl border border-black/8 px-4 py-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full ring-1 font-medium ${
+                    r.status === "PENDING" ? "bg-amber-100 text-amber-800 ring-amber-200"
+                      : r.status === "APPROVED" ? "bg-emerald-100 text-emerald-800 ring-emerald-200"
+                      : "bg-red-100 text-red-700 ring-red-200"
+                  }`}>{r.status}</span>
+                  <span className="font-semibold text-sm">{r.userName ?? r.userId}</span>
+                  <span className="text-sm font-mono">{r.requestedAmount.toFixed(2)} zł</span>
+                  <span className="text-xs text-[var(--color-muted)]">{r.requestedDate}</span>
+                  {r.notes && <span className="text-xs text-[var(--color-muted)]">"{r.notes}"</span>}
+                </div>
+                {r.adminNotes && (
+                  <p className="text-xs text-[var(--color-muted)] italic">Admin: {r.adminNotes}</p>
+                )}
+                {r.status === "PENDING" && (
+                  reviewingId === r.id ? (
+                    <div className="space-y-2 pt-1">
+                      <input
+                        type="text"
+                        value={reviewNotes}
+                        onChange={(e) => setReviewNotes(e.target.value)}
+                        placeholder="Optional note for the cashier"
+                        className="field-input w-full text-sm"
+                      />
+                      <div className="flex gap-2 flex-wrap">
+                        {(["CASH", "CARD"] as const).map((src) => (
+                          <Button
+                            key={src}
+                            size="sm"
+                            onClick={async () => {
+                              await approvePayoutRequest(r.id, src, reviewNotes.trim() || undefined);
+                              setReviewingId(null);
+                              setReviewNotes("");
+                              setRefreshKey((k) => k + 1);
+                            }}
+                          >
+                            Approve ({src.toLowerCase()})
+                          </Button>
+                        ))}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={async () => {
+                            await declinePayoutRequest(r.id, reviewNotes.trim() || undefined);
+                            setReviewingId(null);
+                            setReviewNotes("");
+                            setRefreshKey((k) => k + 1);
+                          }}
+                          className="text-red-700"
+                        >
+                          Decline
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setReviewingId(null); setReviewNotes(""); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="secondary" onClick={() => { setReviewingId(r.id); setReviewNotes(""); }}>
+                      Review
+                    </Button>
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Earnings access per employee ──────────────────────────────── */}
+      {report && report.employees.length > 0 && (
+        <div>
+          <h3 className="font-semibold text-[var(--color-ink)] mb-1">Earnings access</h3>
+          <p className="text-xs text-[var(--color-muted)] mb-3">
+            Toggle who can see their own earnings page and submit payout requests.
+          </p>
+          <div className="space-y-1">
+            {report.employees.map((e) => {
+              const canView = (e as unknown as Record<string, unknown>).canViewEarnings as boolean | undefined;
+              return (
+                <label key={e.userId} className="flex items-center gap-3 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!canView}
+                    onChange={async (ev) => {
+                      await setEarningsAccess(e.userId, ev.target.checked);
+                      setRefreshKey((k) => k + 1);
+                    }}
+                    className="accent-[var(--color-saffron)]"
+                  />
+                  <span>{e.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
