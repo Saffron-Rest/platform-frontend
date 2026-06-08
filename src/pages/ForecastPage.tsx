@@ -36,7 +36,7 @@ export function ForecastPage() {
       <PageHeader
         kicker="Analytics"
         title="Sales forecast"
-        subtitle="Predicted revenue based on the same weekday over the last 8 weeks"
+        subtitle="Predicted revenue per weekday based on the last 8 weeks of locked reports"
         action={
           <div className="flex gap-1 rounded-lg border border-black/10 p-0.5 bg-white">
             {DAY_OPTIONS.map((o) => (
@@ -72,89 +72,157 @@ export function ForecastPage() {
       )}
 
       {!loading && !error && hasSomeData && forecast && (
-        <Card className="!p-0 overflow-hidden divide-y divide-black/[0.06]">
-          {/* Header row */}
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 px-5 py-2.5 text-xs font-semibold uppercase text-[var(--color-muted)]">
-            <span>Day</span>
-            <span className="text-right w-24">Predicted</span>
-            <span className="text-right w-32 hidden sm:block">Range</span>
-            <span className="text-right w-12">Trend</span>
-          </div>
+        <>
+          <BarChart days={forecast} />
 
-          {forecast.map((day) => (
-            <div
-              key={day.date}
-              className={`grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-5 py-4${day.isToday ? " bg-amber-50/60" : ""}`}
-            >
-              <div>
-                <p className={`font-semibold${day.isToday ? " text-[var(--color-saffron)]" : ""}`}>
-                  {day.dayName}
-                  {day.isToday && (
-                    <span className="ml-2 text-xs font-normal text-[var(--color-muted)]">today</span>
-                  )}
-                </p>
-                <p className="text-xs text-[var(--color-muted)]">{day.date}</p>
-              </div>
-
-              {day.predictedSales != null ? (
-                <>
-                  <div className="text-right w-24">
-                    <p className="font-bold tabular-nums">
-                      ~{fmt(Math.round(day.predictedSales / 50) * 50)}
-                    </p>
-                    <p className="text-xs text-[var(--color-muted)] tabular-nums">
-                      {day.sampleSize}w avg
-                    </p>
-                  </div>
-                  <div className="text-right w-32 hidden sm:block">
-                    <p className="text-sm tabular-nums text-[var(--color-muted)]">
-                      {fmt(day.low!)} – {fmt(day.high!)}
-                    </p>
-                    <p className="text-xs text-[var(--color-muted)]">
-                      spread {fmt(day.high! - day.low!)}
-                    </p>
-                  </div>
-                  <div className="text-right w-12">
-                    <TrendBadge trend={day.trend} />
-                  </div>
-                </>
-              ) : (
-                <span className="col-span-3 text-sm text-[var(--color-muted)]">
-                  Not enough data ({day.sampleSize}/3 weeks)
-                </span>
-              )}
+          <Card className="!p-0 overflow-hidden divide-y divide-black/[0.06]">
+            <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 px-5 py-2.5 text-xs font-semibold uppercase text-[var(--color-muted)]">
+              <span>Day</span>
+              <span className="text-right w-28">Predicted</span>
+              <span className="text-right w-36 hidden sm:block">Channels</span>
+              <span className="text-right w-20">Signal</span>
             </div>
-          ))}
-        </Card>
-      )}
 
-      {!loading && hasSomeData && (
-        <p className="text-xs text-[var(--color-muted)] text-center">
-          Predictions use locked shift reports only · Trend ↑/↓ compares the most recent half of weeks to the older half · Rounded to nearest 50 PLN
-        </p>
+            {forecast.map((day) => (
+              <div
+                key={day.date}
+                className={`grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-5 py-4${day.isToday ? " bg-amber-50/60" : ""}`}
+              >
+                <div>
+                  <p className={`font-semibold${day.isToday ? " text-[var(--color-saffron)]" : ""}`}>
+                    {day.dayName}
+                    {day.isToday && (
+                      <span className="ml-2 text-xs font-normal text-[var(--color-muted)]">today</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-[var(--color-muted)]">{day.date}</p>
+                </div>
+
+                {day.predictedSales != null ? (
+                  <>
+                    <div className="text-right w-28">
+                      <p className="font-bold tabular-nums">
+                        ~{fmt(Math.round(day.predictedSales / 50) * 50)}
+                      </p>
+                      <p className="text-xs text-[var(--color-muted)] tabular-nums">
+                        {fmt(day.low!)} – {fmt(day.high!)}
+                      </p>
+                    </div>
+
+                    <div className="w-36 hidden sm:block">
+                      {day.cashPct != null && (
+                        <ChannelBar cashPct={day.cashPct} cardPct={day.cardPct!} deliveryPct={day.deliveryPct!} />
+                      )}
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1 w-20">
+                      <TrendBadge trend={day.trend} />
+                      <ConfidenceBadge confidence={day.confidence} />
+                    </div>
+                  </>
+                ) : (
+                  <span className="col-span-3 text-sm text-[var(--color-muted)]">
+                    Not enough data ({day.sampleSize}/3 weeks)
+                  </span>
+                )}
+              </div>
+            ))}
+          </Card>
+
+          <div className="flex flex-wrap gap-x-6 gap-y-1 justify-center">
+            <ChannelLegend />
+            <p className="text-xs text-[var(--color-muted)] text-center">
+              Weighted average (recent weeks count more) · Confidence based on data consistency · Trend compares newest vs older weeks
+            </p>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function TrendBadge({ trend }: { trend?: "UP" | "DOWN" | "FLAT" }) {
-  if (trend === "UP") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 rounded-full px-2 py-0.5">
-        ↑ Up
-      </span>
-    );
-  }
-  if (trend === "DOWN") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-50 rounded-full px-2 py-0.5">
-        ↓ Down
-      </span>
-    );
-  }
+function BarChart({ days }: { days: ForecastDay[] }) {
+  const maxVal = Math.max(...days.filter((d) => d.predictedSales != null).map((d) => d.predictedSales!), 1);
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--color-muted)] bg-black/5 rounded-full px-2 py-0.5">
-      → Flat
-    </span>
+    <Card className="!p-5">
+      <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-4">Revenue outlook</p>
+      <div className="space-y-2.5">
+        {days.map((day) => (
+          <div key={day.date} className="flex items-center gap-3">
+            <span className="text-xs w-7 text-right text-[var(--color-muted)] shrink-0 font-medium">
+              {day.dayName.slice(0, 3)}
+            </span>
+            <div className="flex-1 bg-black/5 rounded-full h-5 overflow-hidden">
+              {day.predictedSales != null && (
+                <div
+                  className={`h-full rounded-full ${day.isToday ? "bg-[var(--color-saffron)]" : "bg-[var(--color-ink)]/25"}`}
+                  style={{ width: `${(day.predictedSales / maxVal) * 100}%` }}
+                />
+              )}
+            </div>
+            <span className="text-xs font-semibold tabular-nums w-20 text-right shrink-0">
+              {day.predictedSales != null
+                ? `~${fmt(Math.round(day.predictedSales / 50) * 50)}`
+                : "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function ChannelBar({ cashPct, cardPct, deliveryPct }: { cashPct: number; cardPct: number; deliveryPct: number }) {
+  return (
+    <div>
+      <div className="flex h-2 rounded-full overflow-hidden gap-px">
+        {cashPct > 0 && (
+          <div className="bg-emerald-400" style={{ width: `${cashPct}%` }} />
+        )}
+        {cardPct > 0 && (
+          <div className="bg-blue-400" style={{ width: `${cardPct}%` }} />
+        )}
+        {deliveryPct > 0 && (
+          <div className="bg-amber-400" style={{ width: `${deliveryPct}%` }} />
+        )}
+      </div>
+      <p className="text-xs text-[var(--color-muted)] mt-0.5 tabular-nums">
+        {cashPct}% · {cardPct}% · {deliveryPct}%
+      </p>
+    </div>
+  );
+}
+
+function ChannelLegend() {
+  return (
+    <div className="flex items-center gap-4 text-xs text-[var(--color-muted)]">
+      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" /> Cash</span>
+      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" /> Card</span>
+      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block" /> Delivery</span>
+    </div>
+  );
+}
+
+function TrendBadge({ trend }: { trend?: "UP" | "DOWN" | "FLAT" }) {
+  if (trend === "UP") return (
+    <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-700 bg-green-50 rounded-full px-2 py-0.5">↑ Up</span>
+  );
+  if (trend === "DOWN") return (
+    <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-red-700 bg-red-50 rounded-full px-2 py-0.5">↓ Down</span>
+  );
+  return (
+    <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-[var(--color-muted)] bg-black/5 rounded-full px-2 py-0.5">→ Flat</span>
+  );
+}
+
+function ConfidenceBadge({ confidence }: { confidence?: "HIGH" | "MEDIUM" | "LOW" }) {
+  if (confidence === "HIGH") return (
+    <span className="text-xs text-green-700 bg-green-50 rounded-full px-2 py-0.5 font-medium">● Reliable</span>
+  );
+  if (confidence === "LOW") return (
+    <span className="text-xs text-amber-700 bg-amber-50 rounded-full px-2 py-0.5 font-medium">● Variable</span>
+  );
+  return (
+    <span className="text-xs text-[var(--color-muted)] bg-black/5 rounded-full px-2 py-0.5 font-medium">● Moderate</span>
   );
 }

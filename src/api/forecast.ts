@@ -9,6 +9,10 @@ export type ForecastDay = {
   low?: number;
   high?: number;
   trend?: "UP" | "DOWN" | "FLAT";
+  confidence?: "HIGH" | "MEDIUM" | "LOW";
+  cashPct?: number;
+  cardPct?: number;
+  deliveryPct?: number;
 };
 
 export async function getWeekForecast(days = 7): Promise<ForecastDay[]> {
