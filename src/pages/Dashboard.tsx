@@ -20,6 +20,7 @@ import { Alert } from "../components/ui/Alert";
 import { Stat, StatGroup } from "../components/ui/Stat";
 import type { WorkSchedule } from "../types";
 import { getWeekForecast, type ForecastDay } from "../api/forecast";
+type ForecastDayLocal = ForecastDay;
 
 type MonthTotals = {
   totalSales: number;
@@ -50,7 +51,7 @@ export function Dashboard() {
   const { openQuickGuide } = useOnboarding();
   const [data, setData] = useState<DashboardData | null>(null);
   const [monthTotals, setMonthTotals] = useState<MonthTotals | null>(null);
-  const [weekForecast, setWeekForecast] = useState<ForecastDay[] | null>(null);
+  const [weekForecast, setWeekForecast] = useState<ForecastDayLocal[] | null>(null);
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
   const [error, setError] = useState(false);
 
@@ -76,7 +77,7 @@ export function Dashboard() {
         .then((r) => setMonthTotals(r?.totals ?? null))
         .catch(() => setMonthTotals(null));
       getWeekForecast(7)
-        .then(setWeekForecast)
+        .then((r) => setWeekForecast(r.days))
         .catch(() => setWeekForecast(null));
     }
   }, [user?.role]);

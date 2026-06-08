@@ -5,9 +5,14 @@ export type ForecastDay = {
   dayName: string;
   isToday: boolean;
   sampleSize: number;
+  history: number[];
   predictedSales?: number;
+  median?: number;
+  p25?: number;
+  p75?: number;
   low?: number;
   high?: number;
+  errorPct?: number;
   trend?: "UP" | "DOWN" | "FLAT";
   confidence?: "HIGH" | "MEDIUM" | "LOW";
   cashPct?: number;
@@ -15,7 +20,20 @@ export type ForecastDay = {
   deliveryPct?: number;
 };
 
-export async function getWeekForecast(days = 7): Promise<ForecastDay[]> {
-  const res = await api<{ days: ForecastDay[] }>(`/analytics/forecast?days=${days}`);
-  return res.days;
+export type WeekSummary = {
+  total: number;
+  cash: number;
+  card: number;
+  delivery: number;
+  daysWithData: number;
+  avgPerDay: number;
+};
+
+export type ForecastResponse = {
+  days: ForecastDay[];
+  weekSummary: WeekSummary;
+};
+
+export async function getWeekForecast(days = 7): Promise<ForecastResponse> {
+  return api<ForecastResponse>(`/analytics/forecast?days=${days}`);
 }
