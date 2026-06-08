@@ -19,18 +19,12 @@ import { Skeleton, SkeletonText } from "../components/ui/Skeleton";
 import { Alert } from "../components/ui/Alert";
 import { Stat, StatGroup } from "../components/ui/Stat";
 import type { WorkSchedule } from "../types";
+import { getWeekForecast, type ForecastDay } from "../api/forecast";
 
 type MonthTotals = {
   totalSales: number;
   cardBalance: number;
   difference: number;
-};
-
-type SalesForecast = {
-  predictedSales: number;
-  low: number;
-  high: number;
-  sampleSize: number;
 };
 
 type DashboardData = {
@@ -44,7 +38,6 @@ type DashboardData = {
   expenses: number;
   difference: number;
   entries: { id: string; cashierId: string; cashier: string; status: string; difference: number }[];
-  forecast?: SalesForecast;
 };
 
 function monthStartIso() {
@@ -57,6 +50,7 @@ export function Dashboard() {
   const { openQuickGuide } = useOnboarding();
   const [data, setData] = useState<DashboardData | null>(null);
   const [monthTotals, setMonthTotals] = useState<MonthTotals | null>(null);
+  const [weekForecast, setWeekForecast] = useState<ForecastDay[] | null>(null);
   const [schedule, setSchedule] = useState<WorkSchedule | null>(null);
   const [error, setError] = useState(false);
 
@@ -81,6 +75,9 @@ export function Dashboard() {
       api<{ totals: MonthTotals }>(`/analytics/cashflow?from=${monthStartIso()}&to=${to}`)
         .then((r) => setMonthTotals(r?.totals ?? null))
         .catch(() => setMonthTotals(null));
+      getWeekForecast(7)
+        .then(setWeekForecast)
+        .catch(() => setWeekForecast(null));
     }
   }, [user?.role]);
 
@@ -93,8 +90,6 @@ export function Dashboard() {
   }
 
   const greeting = canOperate(user?.role) ? "Restaurant overview" : `Hi, ${user?.name?.split(" ")[0] ?? "there"}`;
-
-  const todayDayName = new Date(data.date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long" });
 
   // Task 4: compute action items for managers/operators
   const draftEntries = data.entries.filter((e) => e.status !== "LOCKED");
@@ -269,17 +264,35 @@ export function Dashboard() {
         </div>
       )}
 
-      {canOperate(user?.role) && data.forecast && (
+      {canOperate(user?.role) && weekForecast && weekForecast.some((d) => d.predictedSales != null) && (
         <Card className="!p-5">
-          <p className="text-xs font-semibold uppercase text-[var(--color-muted)] mb-1">
-            Typical {todayDayName}
-          </p>
-          <p className="text-2xl font-bold tabular-nums">
-            ~{fmt(Math.round(data.forecast.predictedSales / 50) * 50)}
-          </p>
-          <p className="text-xs text-[var(--color-muted)] mt-1 tabular-nums">
-            Range {fmt(data.forecast.low)} – {fmt(data.forecast.high)} · based on {data.forecast.sampleSize} weeks
-          </p>
+          <h3 className="font-bold mb-3">Week ahead</h3>
+          <div className="divide-y divide-black/[0.06]">
+            {weekForecast.map((day) => (
+              <div key={day.date} className="flex items-center justify-between gap-3 py-2.5">
+                <div>
+                  <span className={`text-sm font-semibold${day.isToday ? " text-[var(--color-saffron)]" : ""}`}>
+                    {day.dayName}
+                    {day.isToday && <span className="ml-1.5 text-xs font-normal text-[var(--color-muted)]">today</span>}
+                  </span>
+                  <p className="text-xs text-[var(--color-muted)]">{day.date}</p>
+                </div>
+                {day.predictedSales != null ? (
+                  <div className="flex items-center gap-2 text-right">
+                    <div>
+                      <p className="font-bold tabular-nums">~{fmt(Math.round(day.predictedSales / 50) * 50)}</p>
+                      <p className="text-xs text-[var(--color-muted)] tabular-nums">
+                        {fmt(day.low!)} – {fmt(day.high!)}
+                      </p>
+                    </div>
+                    <ForecastTrend trend={day.trend} />
+                  </div>
+                ) : (
+                  <span className="text-xs text-[var(--color-muted)]">Not enough data</span>
+                )}
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 
@@ -369,6 +382,12 @@ export function Dashboard() {
       )}
     </div>
   );
+}
+
+function ForecastTrend({ trend }: { trend?: "UP" | "DOWN" | "FLAT" }) {
+  if (trend === "UP") return <span className="text-base font-bold text-green-600">↑</span>;
+  if (trend === "DOWN") return <span className="text-base font-bold text-[var(--color-danger)]">↓</span>;
+  return <span className="text-base font-bold text-[var(--color-muted)]">→</span>;
 }
 
 /**
