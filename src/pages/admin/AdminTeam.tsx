@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { setPosPin } from "../../api/pos";
+import { setEarningsAccess } from "../../api/earnings";
 import { addPayRate, deletePayRate, listPayRates } from "../../api/payRates";
 import {
   getUserPermissions,
@@ -718,6 +719,28 @@ export function AdminTeam({ asTab }: { asTab?: boolean } = {}) {
                     title="Set or clear this cashier's 4-digit POS PIN"
                   >
                     {u.hasPin ? "Change PIN" : "Set PIN"}
+                  </button>
+                )}
+                {u.active !== false && u.role === "CASHIER" && (
+                  <button
+                    type="button"
+                    title={u.canViewEarnings
+                      ? "Cashier can see their earnings page — click to turn off"
+                      : "Allow this cashier to see their own pay and request payouts"}
+                    onClick={async () => {
+                      const next = !u.canViewEarnings;
+                      await setEarningsAccess(u.id, next);
+                      setUsers((prev) =>
+                        prev.map((x) => x.id === u.id ? { ...x, canViewEarnings: next } : x)
+                      );
+                    }}
+                    className={`flex-1 text-sm font-medium py-2 transition-colors ${
+                      u.canViewEarnings
+                        ? "text-emerald-700"
+                        : "text-[var(--color-muted)]"
+                    }`}
+                  >
+                    {u.canViewEarnings ? "Earnings: on" : "Earnings: off"}
                   </button>
                 )}
                 {u.active !== false && (

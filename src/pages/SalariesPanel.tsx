@@ -6,7 +6,6 @@ import {
   approvePayoutRequest,
   declinePayoutRequest,
   listPayoutRequests,
-  setEarningsAccess,
   type PayoutRequest,
 } from "../api/earnings";
 import type { PaymentSource, PayrollEmployee, PayrollReport } from "../types";
@@ -1009,34 +1008,6 @@ export function SalariesPanel() {
         )}
       </div>
 
-      {/* ── Earnings access per employee ──────────────────────────────── */}
-      {report && report.employees.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-[var(--color-ink)] mb-1">Earnings access</h3>
-          <p className="text-xs text-[var(--color-muted)] mb-3">
-            Toggle who can see their own earnings page and submit payout requests.
-          </p>
-          <div className="space-y-1">
-            {report.employees.map((e) => {
-              const canView = (e as unknown as Record<string, unknown>).canViewEarnings as boolean | undefined;
-              return (
-                <label key={e.userId} className="flex items-center gap-3 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!canView}
-                    onChange={async (ev) => {
-                      await setEarningsAccess(e.userId, ev.target.checked);
-                      setRefreshKey((k) => k + 1);
-                    }}
-                    className="accent-[var(--color-saffron)]"
-                  />
-                  <span>{e.name}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

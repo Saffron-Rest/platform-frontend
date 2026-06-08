@@ -127,6 +127,7 @@ export type PayrollEmployee = {
   name: string;
   email: string;
   active: boolean;
+  canViewEarnings: boolean;
   payType: PayType;
   payTypeLabel: string;
   payAmount: number;
