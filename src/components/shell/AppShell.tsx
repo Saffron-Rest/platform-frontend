@@ -45,10 +45,17 @@ function AppShellInner({
 
   const groups = useMemo(() => navGroupsForUser(user), [user]);
   const primary = useMemo(() => primaryNavLinks(groups), [groups]);
-  const primaryPaths = useMemo(() => new Set(primary.map((p) => p.to)), [primary]);
 
   const showMoreButton = allNavLinks(groups).length > primary.length;
+  // Slice to 3 when a More button is needed so there's room for it.
+  // primaryPaths must match what's actually in the bar so that any
+  // overflow items (e.g. the 4th primary) land in the More drawer
+  // instead of silently disappearing.
   const mobilePrimary = showMoreButton ? primary.slice(0, 3) : primary;
+  const primaryPaths = useMemo(
+    () => new Set(mobilePrimary.map((p) => p.to)),
+    [mobilePrimary],
+  );
 
   const moreActive =
     moreOpen ||
