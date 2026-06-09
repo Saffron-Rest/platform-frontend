@@ -503,13 +503,36 @@ export function SalariesPanel() {
               <p className="text-2xl font-bold tabular-nums">{fmt(grandRemaining)}</p>
             </div>
           </div>
-          <p className="text-xs text-center text-[var(--color-muted)]">
-            {report.grandTotalHours.toFixed(1)} <strong>scheduled</strong> hours · {from} → {to}
-            {" · "}
-            <Link to="/schedule" className="text-[var(--color-saffron)] font-medium">
-              View schedule
-            </Link>
-          </p>
+          {/* ── Team activity summary ─────────────────────────────── */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-4 py-3 text-center">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Active staff</p>
+              <p className="text-2xl font-bold text-[var(--color-ink)] mt-1">
+                {visibleEmployees.filter((e) => e.shiftCount > 0).length}
+                <span className="text-sm font-normal text-[var(--color-muted)] ml-1">
+                  / {visibleEmployees.length}
+                </span>
+              </p>
+              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">worked this period</p>
+            </div>
+            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-4 py-3 text-center">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Total shifts</p>
+              <p className="text-2xl font-bold text-[var(--color-ink)] mt-1">
+                {visibleEmployees.reduce((s, e) => s + e.shiftCount, 0)}
+              </p>
+              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">
+                <Link to="/schedule" className="text-[var(--color-saffron)] font-medium">View schedule →</Link>
+              </p>
+            </div>
+            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-4 py-3 text-center">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Total hours</p>
+              <p className="text-2xl font-bold text-[var(--color-ink)] mt-1">
+                {report.grandTotalHours.toFixed(1)}
+                <span className="text-sm font-normal text-[var(--color-muted)] ml-1">h</span>
+              </p>
+              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">scheduled</p>
+            </div>
+          </div>
 
           {/* ── Summary table ─────────────────────────────────────── */}
           <Card className="!p-0 overflow-hidden">

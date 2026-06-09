@@ -172,6 +172,30 @@ export function EarningsPanel() {
             />
           </div>
 
+          {/* ── Activity summary ──────────────────────────────────────── */}
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Shifts</p>
+              <p className="text-xl font-bold text-[var(--color-ink)] mt-1">{data.shifts.length}</p>
+              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">this month</p>
+            </div>
+            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Hours</p>
+              <p className="text-xl font-bold text-[var(--color-ink)] mt-1">
+                {data.totalHours.toFixed(1)}
+                <span className="text-xs font-normal text-[var(--color-muted)] ml-0.5">h</span>
+              </p>
+              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">scheduled</p>
+            </div>
+            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
+              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Payouts</p>
+              <p className="text-xl font-bold text-[var(--color-ink)] mt-1">{data.payments.length}</p>
+              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">
+                {data.payments.length === 1 ? "payment" : "payments"} received
+              </p>
+            </div>
+          </div>
+
           {/* ── Pay period progress bar ───────────────────────────────── */}
           {data.totalPay > 0 && (
             <div>
