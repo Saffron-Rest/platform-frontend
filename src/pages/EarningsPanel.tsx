@@ -9,7 +9,6 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
 import { Spinner } from "../components/ui/Spinner";
-import { Money } from "../components/ui/Money";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -46,8 +45,6 @@ export function EarningsPanel() {
   const [data, setData]       = useState<MyEarnings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
-
-  const [showShifts, setShowShifts] = useState(false);
 
   // Payout request form
   const [askOpen,      setAskOpen]      = useState(false);
@@ -172,29 +169,6 @@ export function EarningsPanel() {
             />
           </div>
 
-          {/* ── Activity summary ──────────────────────────────────────── */}
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
-              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Shifts</p>
-              <p className="text-xl font-bold text-[var(--color-ink)] mt-1">{data.shifts.length}</p>
-              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">this month</p>
-            </div>
-            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
-              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Hours</p>
-              <p className="text-xl font-bold text-[var(--color-ink)] mt-1">
-                {data.totalHours.toFixed(1)}
-                <span className="text-xs font-normal text-[var(--color-muted)] ml-0.5">h</span>
-              </p>
-              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">scheduled</p>
-            </div>
-            <div className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
-              <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Payouts</p>
-              <p className="text-xl font-bold text-[var(--color-ink)] mt-1">{data.payments.length}</p>
-              <p className="text-[10px] text-[var(--color-muted)] mt-0.5">
-                {data.payments.length === 1 ? "payment" : "payments"} received
-              </p>
-            </div>
-          </div>
 
           {/* ── Pay period progress bar ───────────────────────────────── */}
           {data.totalPay > 0 && (
@@ -353,72 +327,6 @@ export function EarningsPanel() {
             </div>
           )}
 
-          {/* ── Shifts (expandable) ───────────────────────────────────── */}
-          {data.shifts.length > 0 && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowShifts((v) => !v)}
-                className="w-full rounded-xl border border-black/8 px-4 py-3 flex items-center justify-between text-sm hover:bg-black/2 transition-colors"
-              >
-                <span className="font-medium text-[var(--color-ink)]">
-                  {showShifts ? "Hide" : "Show"} my shifts this month
-                </span>
-                <span className="text-[var(--color-muted)]">
-                  {data.shifts.length} shift{data.shifts.length === 1 ? "" : "s"} · {data.totalHours.toFixed(1)}h total
-                  {" "}
-                  {showShifts ? "▲" : "▼"}
-                </span>
-              </button>
-
-              {showShifts && (
-                <div className="rounded-xl border border-black/8 border-t-0 overflow-hidden -mt-px">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[var(--color-cream)]/60">
-                      <tr className="text-left text-xs text-[var(--color-muted)] uppercase tracking-wide">
-                        <th className="px-4 py-2">Date</th>
-                        <th className="px-4 py-2">Hours</th>
-                        <th className="px-4 py-2 text-right">Pay</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-black/5">
-                      {data.shifts.map((s, i) => (
-                        <tr key={i}>
-                          <td className="px-4 py-2.5">{fmtDate(s.date)}</td>
-                          <td className="px-4 py-2.5 font-mono text-sm">
-                            {s.hoursLabel}{s.tillCloseAssumed ? " *" : ""}
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-mono">
-                            <Money value={s.pay} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-[var(--color-cream)]/60 border-t border-black/8">
-                      <tr>
-                        <td className="px-4 py-2.5 text-sm font-semibold text-[var(--color-ink)]">Total</td>
-                        <td className="px-4 py-2.5 font-mono text-sm">{data.totalHours.toFixed(1)}h</td>
-                        <td className="px-4 py-2.5 text-right font-mono font-semibold">
-                          <Money value={data.totalPay} />
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                  {data.shifts.some((s) => s.tillCloseAssumed) && (
-                    <p className="px-4 pb-3 text-[10px] text-[var(--color-muted)]">
-                      * Hours estimated — shift was recorded as "until close"
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {data.shifts.length === 0 && (
-            <div className="rounded-xl border border-black/8 px-4 py-8 text-center text-sm text-[var(--color-muted)]">
-              No shifts scheduled for {monthLabel(year, month)} yet.
-            </div>
-          )}
         </>
       )}
     </div>
