@@ -14,127 +14,6 @@ import { Alert } from "../components/ui/Alert";
 import { Spinner } from "../components/ui/Spinner";
 import { EmptyState } from "../components/ui/EmptyState";
 
-// ─── Price advice types & computation ────────────────────────────────────────
-
-type PriceReason =
-  | "RAISE_PRICE"
-  | "FIX_FOOD_COST"
-  | "REVIEW_FOOD_COST"
-  | "KEEP_PRICE"
-  | "PROMOTE"
-  | "TEST_PRICE"
-  | "REMOVE_OR_REWORK";
-
-type PriceAdviceItem = {
-  itemId: string | null;
-  name: string;
-  categoryName: string | null;
-  class: string;
-  currentPrice: number;
-  suggestedPrice: number;
-  changeAmt: number;
-  changePct: number;
-  currentMarginPct: number;
-  projectedMarginPct: number;
-  currentRevenue: number;
-  revenueImpact: number;
-  quantity: number;
-  reason: PriceReason;
-  rationale: string;
-  confidence: "HIGH" | "MEDIUM" | "LOW";
-};
-
-function computePriceAdvice(items: MenuAnalyticsItemRow[]): PriceAdviceItem[] {
-  const classified = items.filter(
-    (i) =>
-      i.class &&
-      ["STAR", "PLOWHORSE", "PUZZLE", "DOG"].includes(i.class) &&
-      i.sellPrice > 0
-  );
-
-  return classified
-    .map((item): PriceAdviceItem => {
-      const cls = item.class!;
-      const { sellPrice, unitFoodCost, quantity, marginPct, foodCostPct, revenue } = item;
-
-      let bumpPct = 0;
-      let reason: PriceReason = "KEEP_PRICE";
-      let rationale = "";
-      let confidence: PriceAdviceItem["confidence"] = "MEDIUM";
-
-      if (cls === "PLOWHORSE") {
-        if (foodCostPct <= 42) {
-          bumpPct = 5;
-          reason = "RAISE_PRICE";
-          rationale = `Bestseller with only ${marginPct.toFixed(0)}% margin — a 5% bump across ${quantity} sales adds revenue with minimal demand risk.`;
-          confidence = "HIGH";
-        } else {
-          reason = "FIX_FOOD_COST";
-          rationale = `Food cost is ${foodCostPct.toFixed(0)}% — fix ingredients or portion size before raising price.`;
-          confidence = "LOW";
-        }
-      } else if (cls === "STAR") {
-        if (foodCostPct > 38) {
-          reason = "REVIEW_FOOD_COST";
-          rationale = `Star item with food cost ${foodCostPct.toFixed(0)}% above target — price is fine; cut food cost to unlock margin.`;
-          confidence = "HIGH";
-        } else if (marginPct >= 70) {
-          bumpPct = 3;
-          reason = "RAISE_PRICE";
-          rationale = `${marginPct.toFixed(0)}% margin star — loyal demand supports a cautious 3% increase to widen margin further.`;
-          confidence = "MEDIUM";
-        } else {
-          reason = "KEEP_PRICE";
-          rationale = "Healthy star — margin and volume are both strong. Protect demand by holding price.";
-          confidence = "HIGH";
-        }
-      } else if (cls === "PUZZLE") {
-        reason = "PROMOTE";
-        rationale = `Margin is strong at ${marginPct.toFixed(0)}% but volume is low — push visibility, not price.`;
-        confidence = "MEDIUM";
-      } else if (cls === "DOG") {
-        if (foodCostPct < 35 && sellPrice > 10) {
-          bumpPct = 10;
-          reason = "TEST_PRICE";
-          rationale = `Food cost is manageable at ${foodCostPct.toFixed(0)}% — the item may be underpriced. Try a 10% price test.`;
-          confidence = "LOW";
-        } else {
-          reason = "REMOVE_OR_REWORK";
-          rationale = `Both margin (${marginPct.toFixed(0)}%) and volume are low. Consider removing or redesigning this dish.`;
-          confidence = "LOW";
-        }
-      }
-
-      const suggestedPrice = parseFloat((sellPrice * (1 + bumpPct / 100)).toFixed(2));
-      const changeAmt = parseFloat((suggestedPrice - sellPrice).toFixed(2));
-      const projectedMarginPct =
-        unitFoodCost > 0 && suggestedPrice > 0
-          ? parseFloat(((suggestedPrice - unitFoodCost) / suggestedPrice * 100).toFixed(1))
-          : marginPct;
-      const revenueImpact = parseFloat((changeAmt * quantity).toFixed(2));
-
-      return {
-        itemId: item.itemId,
-        name: item.name,
-        categoryName: item.categoryName,
-        class: cls,
-        currentPrice: sellPrice,
-        suggestedPrice,
-        changeAmt,
-        changePct: bumpPct,
-        currentMarginPct: marginPct,
-        projectedMarginPct,
-        currentRevenue: revenue,
-        revenueImpact,
-        quantity,
-        reason,
-        rationale,
-        confidence,
-      };
-    })
-    .sort((a, b) => Math.abs(b.revenueImpact) - Math.abs(a.revenueImpact));
-}
-
 function monthStart() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
@@ -210,9 +89,14 @@ export function MenuEngineering() {
         title="Menu engineering"
         subtitle="Classifies every dish on margin × popularity and surfaces actions worth taking this week."
         action={
-          <Link to="/menu">
-            <Button variant="secondary">← Menu analytics</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link to="/menu/price-advisor">
+              <Button variant="secondary">Price advisor →</Button>
+            </Link>
+            <Link to="/menu">
+              <Button variant="secondary">← Menu analytics</Button>
+            </Link>
+          </div>
         }
       />
 
@@ -255,7 +139,6 @@ export function MenuEngineering() {
         />
       ) : (
         <>
-          <PriceAdvisorPanel items={data.items} />
           <SuggestionsPanel suggestions={data.suggestions} />
           <MatrixView data={data} />
           <QuadrantLists data={data} />
@@ -449,189 +332,6 @@ function QuadrantLists({ data }: { data: MenuEngineeringData }) {
         );
       })}
     </div>
-  );
-}
-
-// ─── Price advisor panel ─────────────────────────────────────────────────────
-
-const REASON_META: Record<
-  PriceReason,
-  { label: string; action: boolean; color: string; bg: string }
-> = {
-  RAISE_PRICE:       { label: "Raise price",      action: true,  color: "text-emerald-700", bg: "bg-emerald-50" },
-  TEST_PRICE:        { label: "Test price +10%",   action: true,  color: "text-amber-700",   bg: "bg-amber-50"   },
-  FIX_FOOD_COST:     { label: "Fix food cost",     action: false, color: "text-red-700",     bg: "bg-red-50"     },
-  REVIEW_FOOD_COST:  { label: "Review food cost",  action: false, color: "text-red-700",     bg: "bg-red-50"     },
-  KEEP_PRICE:        { label: "Hold price",         action: false, color: "text-[var(--color-muted)]", bg: "bg-black/5" },
-  PROMOTE:           { label: "Promote",            action: false, color: "text-blue-700",    bg: "bg-blue-50"    },
-  REMOVE_OR_REWORK:  { label: "Remove / rework",   action: false, color: "text-[var(--color-muted)]", bg: "bg-black/5" },
-};
-
-const CLASS_BADGE: Record<string, string> = {
-  STAR:       "text-emerald-700 bg-emerald-50",
-  PLOWHORSE:  "text-amber-700   bg-amber-50",
-  PUZZLE:     "text-blue-700    bg-blue-50",
-  DOG:        "text-red-700     bg-red-50",
-};
-
-function PriceAdvisorPanel({ items }: { items: MenuAnalyticsItemRow[] }) {
-  const advice = useMemo(() => computePriceAdvice(items), [items]);
-  const [showAll, setShowAll] = useState(false);
-
-  const actionable = advice.filter((a) => REASON_META[a.reason].action);
-  const totalImpact = actionable.reduce((s, a) => s + a.revenueImpact, 0);
-
-  if (advice.length === 0) return null;
-
-  const visible = showAll ? advice : advice.filter((a) => REASON_META[a.reason].action);
-
-  return (
-    <Card>
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-        <div>
-          <h3 className="font-semibold text-base">Retail price advisor</h3>
-          <p className="text-sm text-[var(--color-muted)] mt-0.5">
-            Per-item recommendations based on class, margin, and sales volume.
-          </p>
-        </div>
-        {actionable.length > 0 && (
-          <div className="rounded-xl bg-[var(--color-saffron)]/10 border border-[var(--color-saffron)]/20 px-4 py-2.5 text-right">
-            <p className="text-xs font-semibold text-[var(--color-saffron)] uppercase tracking-wide">
-              Potential uplift
-            </p>
-            <p className="text-2xl font-bold tabular-nums text-[var(--color-saffron)]">
-              +{fmt(Math.round(totalImpact / 50) * 50)}
-            </p>
-            <p className="text-xs text-[var(--color-muted)]">
-              {actionable.length} price change{actionable.length !== 1 ? "s" : ""} · same volume assumed
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Items */}
-      {visible.length === 0 ? (
-        <p className="text-sm text-[var(--color-muted)]">
-          No price increases recommended for this period.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {/* Column headers */}
-          <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-4 px-4 text-xs font-semibold uppercase text-[var(--color-muted)]">
-            <span>Item</span>
-            <span className="w-36 text-right">Price change</span>
-            <span className="w-28 text-right">Margin impact</span>
-            <span className="w-24 text-right">Revenue +/-</span>
-          </div>
-
-          {visible.map((a) => {
-            const meta = REASON_META[a.reason];
-            const classBadge = CLASS_BADGE[a.class] ?? "text-[var(--color-muted)] bg-black/5";
-            return (
-              <div
-                key={a.itemId ?? a.name}
-                className="rounded-xl border border-black/[0.07] bg-white px-4 py-3 grid sm:grid-cols-[1fr_auto_auto_auto] gap-3 sm:gap-4 items-start"
-              >
-                {/* Name + badges + rationale */}
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                    <span className="font-semibold text-sm truncate">{a.name}</span>
-                    <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${classBadge}`}>
-                      {a.class.charAt(0) + a.class.slice(1).toLowerCase()}
-                    </span>
-                    <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${meta.bg} ${meta.color}`}>
-                      {meta.label}
-                    </span>
-                    {a.confidence === "HIGH" && (
-                      <span className="text-xs text-green-700 bg-green-50 rounded-full px-2 py-0.5">● Reliable</span>
-                    )}
-                    {a.confidence === "LOW" && (
-                      <span className="text-xs text-[var(--color-muted)] bg-black/5 rounded-full px-2 py-0.5">● Low signal</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[var(--color-muted)] leading-snug">{a.rationale}</p>
-                  {a.categoryName && (
-                    <p className="text-xs text-[var(--color-muted)] mt-1 opacity-60">{a.categoryName}</p>
-                  )}
-                </div>
-
-                {/* Price change */}
-                <div className="w-36 text-right shrink-0">
-                  {a.changePct > 0 ? (
-                    <>
-                      <p className="font-bold text-sm tabular-nums">
-                        {fmt(a.currentPrice)} → {fmt(a.suggestedPrice)}
-                      </p>
-                      <p className="text-xs text-emerald-600 font-medium">
-                        +{fmt(a.changeAmt)} (+{a.changePct}%)
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm font-semibold tabular-nums text-[var(--color-muted)]">
-                      {fmt(a.currentPrice)}
-                    </p>
-                  )}
-                  <p className="text-xs text-[var(--color-muted)] mt-0.5">{a.quantity}× sold</p>
-                </div>
-
-                {/* Margin */}
-                <div className="w-28 text-right shrink-0">
-                  {a.changePct > 0 && a.projectedMarginPct !== a.currentMarginPct ? (
-                    <>
-                      <p className="font-semibold text-sm tabular-nums">
-                        {a.currentMarginPct.toFixed(0)}% → {a.projectedMarginPct.toFixed(0)}%
-                      </p>
-                      <p className="text-xs text-emerald-600">
-                        +{(a.projectedMarginPct - a.currentMarginPct).toFixed(1)} pp
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm font-semibold tabular-nums text-[var(--color-muted)]">
-                      {a.currentMarginPct.toFixed(0)}%
-                    </p>
-                  )}
-                </div>
-
-                {/* Revenue impact */}
-                <div className="w-24 text-right shrink-0">
-                  {a.revenueImpact !== 0 ? (
-                    <p
-                      className={`font-bold text-sm tabular-nums ${
-                        a.revenueImpact > 0 ? "text-emerald-600" : "text-red-600"
-                      }`}
-                    >
-                      {a.revenueImpact > 0 ? "+" : ""}
-                      {fmt(Math.round(a.revenueImpact / 10) * 10)}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-[var(--color-muted)]">—</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Toggle */}
-      <div className="mt-4 flex items-center justify-between">
-        <p className="text-xs text-[var(--color-muted)]">
-          * Revenue impact assumes the same sales volume continues at the new price.
-          Always monitor demand for 2 weeks after any price change.
-        </p>
-        {advice.length > actionable.length && (
-          <button
-            onClick={() => setShowAll((v) => !v)}
-            className="text-xs text-[var(--color-saffron)] font-medium hover:underline shrink-0 ml-4"
-          >
-            {showAll
-              ? "Show price changes only"
-              : `Show all ${advice.length} items`}
-          </button>
-        )}
-      </div>
-    </Card>
   );
 }
 
