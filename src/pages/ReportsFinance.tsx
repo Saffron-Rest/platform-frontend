@@ -8,13 +8,15 @@ import { ProfitLoss } from "./ProfitLoss";
 import { Reports } from "./Reports";
 import { AdminPayables } from "./admin/AdminPayables";
 import { AdminOwnerExpenses } from "./admin/AdminOwnerExpenses";
+import { SuppliersPanel } from "./SuppliersPanel";
 
-type ReportsTab = "shift-reports" | "expenses" | "treasury" | "payables" | "owner-expenses" | "pl" | "export";
+type ReportsTab = "shift-reports" | "expenses" | "treasury" | "payables" | "suppliers" | "owner-expenses" | "pl" | "export";
 
 const TABS = [
   { value: "shift-reports"  as ReportsTab, label: "Shift reports" },
   { value: "expenses"       as ReportsTab, label: "Expenses & Income" },
   { value: "payables"       as ReportsTab, label: "Payables" },
+  { value: "suppliers"      as ReportsTab, label: "Suppliers" },
   { value: "owner-expenses" as ReportsTab, label: "Owner expenses" },
   { value: "treasury"       as ReportsTab, label: "Treasury" },
   { value: "pl"             as ReportsTab, label: "Profit & Loss" },
@@ -54,6 +56,7 @@ export function ReportsFinance() {
         {tab === "expenses"       && <FinanceLedger asTab />}
         {tab === "treasury"       && <TreasuryHistory asTab />}
         {tab === "payables"       && <AdminPayables asTab />}
+        {tab === "suppliers"      && <SuppliersPanel asTab />}
         {tab === "owner-expenses" && <AdminOwnerExpenses asTab />}
         {tab === "pl"             && <ProfitLoss asTab />}
         {tab === "export"         && <Reports asTab />}

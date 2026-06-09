@@ -133,6 +133,7 @@ function fullOperationsGroups(): NavGroup[] {
         { kind: "link", to: "/forecast", label: "Sales forecast", description: "Predicted revenue by weekday", icon: IconChart, requires: ["REPORTS_VIEW"] },
         { kind: "link", to: "/advisor", label: "AI Advisor", description: "Gemini-powered business advisor", icon: IconSparkle, requires: ["REPORTS_VIEW"] },
         { kind: "link", to: "/reports?tab=payables", label: "Payables", description: "Supplier credit & due dates", icon: IconWallet, requires: ["PAYABLES_VIEW", "PAYABLES_MANAGE"] },
+        { kind: "link", to: "/reports?tab=suppliers", label: "Suppliers", description: "Supplier directory & details", icon: IconUsers, requires: ["PAYABLES_VIEW", "PAYABLES_MANAGE"] },
         { kind: "link", to: "/reports?tab=owner-expenses", label: "Owner expenses", description: "Expenses paid by the owner", icon: IconWallet, requires: ["OWNER_EXPENSES_VIEW", "OWNER_EXPENSES_MANAGE", "OWNER_EXPENSES_FILE"] },
         { kind: "link", to: "/reports?tab=treasury", label: "Treasury history", description: "Balance changes", icon: IconWallet, requires: ["TREASURY_VIEW", "TREASURY_MANAGE"] },
       ],
