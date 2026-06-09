@@ -4,11 +4,11 @@ import { getPayableAging, listPayables } from "../api/payables";
 import { listItems } from "../api/menu";
 import { getTreasuryLedger } from "../api/treasury";
 import { getWeekForecast } from "../api/forecast";
+import { getAiSettings } from "../api/aiSettings";
 import { Spinner } from "../components/ui/Spinner";
 import { Alert } from "../components/ui/Alert";
 import { Button } from "../components/ui/Button";
 import { IconRefresh, IconSparkle } from "../components/icons";
-import { getStoredGeminiKey } from "../components/admin/AiAdvisorSettingsCard";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -138,8 +138,7 @@ const QUICK_PROMPTS = [
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export function AiAdvisor() {
-  const apiKey = getStoredGeminiKey() || undefined;
-
+  const [apiKey,        setApiKey]        = useState<string | undefined>(undefined);
   const [contextStatus, setContextStatus] = useState<ContextStatus>("loading");
   const [contextText,   setContextText]   = useState("");
   const [contextError,  setContextError]  = useState("");
@@ -154,7 +153,10 @@ export function AiAdvisor() {
     setContextStatus("loading");
     setContextError("");
     try {
-      const ctx = await buildContext();
+      const [aiSettings, ctx] = await Promise.all([getAiSettings(), buildContext()]);
+      const key = aiSettings.geminiApiKey ||
+        (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) || "";
+      setApiKey(key || undefined);
       setContextText(ctx);
       setContextStatus("ready");
     } catch (e) {

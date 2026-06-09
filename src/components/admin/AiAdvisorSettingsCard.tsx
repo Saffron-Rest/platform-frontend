@@ -1,42 +1,46 @@
 import { useEffect, useState } from "react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getAiSettings, saveAiSettings } from "../../api/aiSettings";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Alert } from "../ui/Alert";
+import { Spinner } from "../ui/Spinner";
 import { IconSparkle } from "../icons";
-
-export const GEMINI_KEY_STORAGE = "saffron:gemini_api_key";
-
-export function getStoredGeminiKey(): string {
-  return (
-    localStorage.getItem(GEMINI_KEY_STORAGE) ||
-    (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) ||
-    ""
-  );
-}
 
 export function AiAdvisorSettingsCard() {
   const [key,      setKey]      = useState("");
   const [show,     setShow]     = useState(false);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
   const [saved,    setSaved]    = useState(false);
+  const [saveErr,  setSaveErr]  = useState("");
   const [testing,  setTesting]  = useState(false);
   const [testOk,   setTestOk]   = useState<boolean | null>(null);
   const [testMsg,  setTestMsg]  = useState("");
+  const [configured, setConfigured] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
-    setKey(stored);
+    getAiSettings()
+      .then((s) => { setKey(s.geminiApiKey); setConfigured(s.configured); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const save = () => {
-    if (key.trim()) {
-      localStorage.setItem(GEMINI_KEY_STORAGE, key.trim());
-    } else {
-      localStorage.removeItem(GEMINI_KEY_STORAGE);
-    }
-    setSaved(true);
+  const save = async () => {
+    setSaving(true);
+    setSaveErr("");
+    setSaved(false);
     setTestOk(null);
-    setTimeout(() => setSaved(false), 2500);
+    try {
+      const s = await saveAiSettings(key.trim());
+      setConfigured(s.configured);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const test = async () => {
@@ -60,7 +64,19 @@ export function AiAdvisorSettingsCard() {
     }
   };
 
-  const hasSaved = !!localStorage.getItem(GEMINI_KEY_STORAGE);
+  const remove = async () => {
+    setSaving(true);
+    try {
+      await saveAiSettings("");
+      setKey("");
+      setConfigured(false);
+      setTestOk(null);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "Remove failed");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Card>
@@ -71,68 +87,71 @@ export function AiAdvisorSettingsCard() {
         <div>
           <h3 className="font-semibold text-[var(--color-ink)]">AI Advisor (Gemini)</h3>
           <p className="text-xs text-[var(--color-muted)]">
-            Powers the AI Advisor page — business advice based on your live data.
+            Powers the AI Advisor — business advice based on your live data. Stored securely in the database.
           </p>
         </div>
-        {hasSaved && (
+        {configured && (
           <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium shrink-0">
             Active
           </span>
         )}
       </div>
 
-      <div className="space-y-3">
-        <div>
-          <label className="block text-sm font-medium text-[var(--color-ink)] mb-1">
-            Gemini API Key
-          </label>
-          <div className="flex gap-2">
-            <input
-              type={show ? "text" : "password"}
-              value={key}
-              onChange={(e) => { setKey(e.target.value); setTestOk(null); }}
-              placeholder="Paste your Gemini API key…"
-              className="field-input flex-1 font-mono text-sm"
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <button
-              type="button"
-              onClick={() => setShow((s) => !s)}
-              className="px-3 rounded-lg border border-black/12 text-xs text-[var(--color-muted)] hover:bg-black/5 transition-colors"
-            >
-              {show ? "Hide" : "Show"}
-            </button>
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
+          <Spinner className="w-4 h-4" /> Loading…
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-ink)] mb-1">
+              Gemini API Key
+            </label>
+            <div className="flex gap-2">
+              <input
+                type={show ? "text" : "password"}
+                value={key}
+                onChange={(e) => { setKey(e.target.value); setTestOk(null); }}
+                placeholder="Paste your Gemini API key…"
+                className="field-input flex-1 font-mono text-sm"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                onClick={() => setShow((s) => !s)}
+                className="px-3 rounded-lg border border-black/12 text-xs text-[var(--color-muted)] hover:bg-black/5 transition-colors"
+              >
+                {show ? "Hide" : "Show"}
+              </button>
+            </div>
+            <p className="text-xs text-[var(--color-muted)] mt-1.5">
+              Get a free key at{" "}
+              <span className="font-medium text-[var(--color-ink)]">aistudio.google.com</span>
+              {" "}→ Get API key. Saved to the database — works across all devices.
+            </p>
           </div>
-          <p className="text-xs text-[var(--color-muted)] mt-1.5">
-            Get a free key at{" "}
-            <span className="font-medium text-[var(--color-ink)]">aistudio.google.com</span>
-            {" "}→ Get API key. The key is stored only in this browser.
-          </p>
-        </div>
 
-        {testOk === true  && <Alert variant="success">{testMsg}</Alert>}
-        {testOk === false && <Alert variant="error">{testMsg}</Alert>}
-        {saved            && <Alert variant="success">Key saved.</Alert>}
+          {testOk === true  && <Alert variant="success">{testMsg}</Alert>}
+          {testOk === false && <Alert variant="error">{testMsg}</Alert>}
+          {saved            && <Alert variant="success">Key saved to database.</Alert>}
+          {saveErr          && <Alert variant="error">{saveErr}</Alert>}
 
-        <div className="flex gap-2">
-          <Button onClick={save} disabled={testing}>
-            Save key
-          </Button>
-          <Button variant="secondary" onClick={() => void test()} disabled={testing || !key.trim()}>
-            {testing ? "Testing…" : "Test connection"}
-          </Button>
-          {hasSaved && (
-            <Button
-              variant="ghost"
-              onClick={() => { localStorage.removeItem(GEMINI_KEY_STORAGE); setKey(""); setTestOk(null); }}
-              disabled={testing}
-            >
-              Remove
+          <div className="flex gap-2 flex-wrap">
+            <Button onClick={() => void save()} disabled={saving || testing}>
+              {saving ? "Saving…" : "Save key"}
             </Button>
-          )}
+            <Button variant="secondary" onClick={() => void test()} disabled={testing || saving || !key.trim()}>
+              {testing ? "Testing…" : "Test connection"}
+            </Button>
+            {configured && (
+              <Button variant="ghost" onClick={() => void remove()} disabled={saving || testing}>
+                Remove
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </Card>
   );
 }
