@@ -30,8 +30,6 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-type Deduction = { id: number; amount: string; reason: string };
-
 function PaySalaryForm({
   employee,
   periodFrom,
@@ -47,6 +45,7 @@ function PaySalaryForm({
   const owedNow = employee.owedNow ?? remaining;
   const defaultAmount = owedNow > 0.005 ? owedNow : remaining > 0 ? remaining : employee.totalPay;
 
+  const [amount, setAmount] = useState(String(defaultAmount));
   const [source, setSource] = useState<PaymentSource>("CASH");
   const [paidDate, setPaidDate] = useState(todayIso());
   const [notes, setNotes] = useState("");
@@ -54,40 +53,10 @@ function PaySalaryForm({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  // Deductions (penalties)
-  const [deductions, setDeductions] = useState<Deduction[]>([]);
-  const [showDeductionForm, setShowDeductionForm] = useState(false);
-  const [deductAmount, setDeductAmount] = useState("");
-  const [deductReason, setDeductReason] = useState("");
-  const nextId = useCallback(() => Date.now(), []);
-
   useEffect(() => {
-    setDeductions([]);
+    setAmount(String(defaultAmount));
     setNotes("");
-    setManualAmount("");
-  }, [employee.userId]);
-
-  const totalDeductions = deductions.reduce((s, d) => s + (Number(d.amount) || 0), 0);
-  const baseAfterDeductions = Math.max(0, defaultAmount - totalDeductions);
-  const [manualAmount, setManualAmount] = useState("");
-  const payAmount = manualAmount !== "" ? Number(manualAmount) : baseAfterDeductions;
-
-  const addDeduction = () => {
-    const amt = Number(deductAmount);
-    if (!amt || amt <= 0 || !deductReason.trim()) return;
-    setDeductions((prev) => [...prev, { id: nextId(), amount: deductAmount, reason: deductReason.trim() }]);
-    setDeductAmount("");
-    setDeductReason("");
-    setShowDeductionForm(false);
-  };
-
-  const removeDeduction = (id: number) => setDeductions((prev) => prev.filter((d) => d.id !== id));
-
-  // Auto-compose notes from deductions + any manual note
-  const composedNotes = [
-    ...deductions.map((d) => `Deduction: ${d.reason} (-${Number(d.amount).toFixed(2)} PLN)`),
-    notes.trim(),
-  ].filter(Boolean).join(" | ");
+  }, [employee.userId, defaultAmount]);
 
   const submit = async () => {
     setErr("");
@@ -97,12 +66,12 @@ function PaySalaryForm({
         method: "POST",
         body: JSON.stringify({
           userId: employee.userId,
-          amount: payAmount,
+          amount: Number(amount),
           paidDate,
           source,
           periodFrom,
           periodTo,
-          notes: composedNotes || null,
+          notes: notes.trim() || null,
           excludeFromTreasury,
         }),
       });
@@ -141,115 +110,15 @@ function PaySalaryForm({
         </p>
       )}
 
-      {/* ── Deductions / penalties ── */}
-      <div className="rounded-lg border border-black/10 bg-red-50/40 p-2.5 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-[var(--color-ink)]">Deductions / penalties</p>
-          {!showDeductionForm && (
-            <button
-              type="button"
-              onClick={() => setShowDeductionForm(true)}
-              className="text-xs text-[var(--color-saffron)] font-medium hover:underline"
-            >
-              + Add
-            </button>
-          )}
-        </div>
-
-        {deductions.length > 0 && (
-          <ul className="space-y-1">
-            {deductions.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-2 text-xs bg-white rounded-lg px-2.5 py-1.5 border border-red-100">
-                <span className="text-red-700 font-semibold tabular-nums shrink-0">
-                  -{fmt(Number(d.amount))}
-                </span>
-                <span className="flex-1 text-[var(--color-ink)] truncate">{d.reason}</span>
-                <button
-                  type="button"
-                  onClick={() => removeDeduction(d.id)}
-                  className="text-[var(--color-muted)] hover:text-red-600 shrink-0 px-1"
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {showDeductionForm && (
-          <div className="space-y-2 pt-1">
-            <div className="grid grid-cols-[auto_1fr] gap-2 items-end">
-              <label className="field-label !mb-0">
-                <span className="text-xs">Amount (PLN)</span>
-                <input
-                  type="number"
-                  min={0.01}
-                  step={0.01}
-                  placeholder="50"
-                  value={deductAmount}
-                  onChange={(e) => setDeductAmount(e.target.value)}
-                  className="field-input !text-sm"
-                  autoFocus
-                />
-              </label>
-              <label className="field-label !mb-0">
-                <span className="text-xs">Reason</span>
-                <input
-                  type="text"
-                  placeholder="e.g. Late arrival, shortage…"
-                  value={deductReason}
-                  onChange={(e) => setDeductReason(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addDeduction()}
-                  className="field-input !text-sm"
-                />
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={addDeduction} disabled={!deductAmount || !deductReason.trim()}>
-                Add deduction
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => { setShowDeductionForm(false); setDeductAmount(""); setDeductReason(""); }}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {deductions.length === 0 && !showDeductionForm && (
-          <p className="text-xs text-[var(--color-muted)]">No deductions — click "+ Add" to dock pay for lateness, shortages, etc.</p>
-        )}
-      </div>
-
-      {/* ── Pay breakdown ── */}
-      {deductions.length > 0 && (
-        <div className="rounded-lg bg-[var(--color-cream)] border border-black/8 px-3 py-2 text-sm space-y-0.5">
-          <div className="flex justify-between text-[var(--color-muted)]">
-            <span>Base pay</span>
-            <span className="tabular-nums">{fmt(defaultAmount)}</span>
-          </div>
-          {deductions.map((d) => (
-            <div key={d.id} className="flex justify-between text-red-600 text-xs">
-              <span className="truncate mr-2">{d.reason}</span>
-              <span className="tabular-nums shrink-0">-{fmt(Number(d.amount))}</span>
-            </div>
-          ))}
-          <div className="flex justify-between font-semibold border-t border-black/10 pt-1 mt-1">
-            <span>Total to pay</span>
-            <span className="tabular-nums text-[var(--color-saffron-dark)]">{fmt(payAmount)}</span>
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         <label className="field-label">
           Amount (PLN)
           <input
             type="number"
             min={0.01}
             step={0.01}
-            placeholder={String(baseAfterDeductions.toFixed(2))}
-            value={manualAmount}
-            onChange={(e) => setManualAmount(e.target.value)}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
             className="field-input"
           />
         </label>
@@ -262,17 +131,18 @@ function PaySalaryForm({
             className="field-input"
           />
         </label>
-        <label className="field-label">
-          Extra note (optional)
-          <input
-            type="text"
-            placeholder="Any additional comment…"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="field-input"
-          />
-        </label>
       </div>
+
+      <label className="field-label">
+        Note (optional)
+        <input
+          type="text"
+          placeholder="e.g. late arrival penalty, advance, bonus…"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className="field-input"
+        />
+      </label>
 
       <div className="flex gap-2">
         {(["CASH", "CARD"] as PaymentSource[]).map((s) => (
@@ -307,12 +177,12 @@ function PaySalaryForm({
       </label>
 
       {err && <Alert variant="error">{err}</Alert>}
-      <Button type="button" fullWidth disabled={saving || payAmount <= 0} onClick={submit}>
+      <Button type="button" fullWidth disabled={saving || !Number(amount)} onClick={submit}>
         {saving
           ? "Recording…"
           : excludeFromTreasury
-            ? `Record ${fmt(payAmount)} (no balance impact)`
-            : `Pay ${fmt(payAmount)} from ${source.toLowerCase()}`}
+            ? `Record ${fmt(Number(amount))} (no balance impact)`
+            : `Pay ${fmt(Number(amount))} from ${source.toLowerCase()}`}
       </Button>
     </div>
   );
@@ -970,9 +840,7 @@ export function SalariesPanel() {
                                     </span>
                                   )}
                                   {p.notes && (
-                                    <span className={p.notes.startsWith("Deduction:") ? "text-red-600" : "text-[var(--color-muted)]"}>
-                                      {" · "}{p.notes}
-                                    </span>
+                                    <span className="text-[var(--color-muted)]"> · {p.notes}</span>
                                   )}
                                 </span>
                                 <span className="font-medium tabular-nums shrink-0">{fmt(p.amount)}</span>
