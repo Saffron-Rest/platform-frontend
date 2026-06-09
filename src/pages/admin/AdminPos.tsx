@@ -50,9 +50,7 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
   /** Which integration's webhook log panel is open. */
   const [logOpenFor, setLogOpenFor] = useState<string | null>(null);
   const [logLoading, setLogLoading] = useState(false);
-  const [logTab, setLogTab] = useState<"receipts" | "raw">("raw");
-  /** Which receipt rows are expanded to show items. */
-  const [expandedReceipts, setExpandedReceipts] = useState<Set<string>>(new Set());
+  const [logTab, setLogTab] = useState<"receipts" | "raw">("receipts");
   const logRef = useRef<HTMLDivElement | null>(null);
   /** Per-integration Dotykačka form state. */
   const [dotyForm, setDotyForm] = useState<
@@ -343,7 +341,6 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
   const openLog = async (i: PosIntegration) => {
     if (logOpenFor === i.id) { setLogOpenFor(null); return; }
     setLogOpenFor(i.id);
-    setExpandedReceipts(new Set());
     setLogLoading(true);
     try {
       const [log, calls] = await Promise.all([
@@ -357,13 +354,6 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
       setTimeout(() => logRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
     }
   };
-
-  const toggleReceipt = (receiptId: string) =>
-    setExpandedReceipts((prev) => {
-      const next = new Set(prev);
-      next.has(receiptId) ? next.delete(receiptId) : next.add(receiptId);
-      return next;
-    });
 
   const toggleDotyForm = (i: PosIntegration) => {
     setDotyForm((f) => {
@@ -595,8 +585,6 @@ export function AdminPos({ asTab = false }: { asTab?: boolean } = {}) {
                   loading={logLoading}
                   receipts={webhookLog[i.id] ?? null}
                   rawCalls={rawCalls[i.id] ?? null}
-                  expandedReceipts={expandedReceipts}
-                  onToggleReceipt={toggleReceipt}
                   onRefresh={() => void openLog(i)}
                   tab={logTab}
                   onTabChange={setLogTab}
@@ -916,101 +904,13 @@ const fmtTs = (iso: string | null) => {
   });
 };
 
-function ReceiptDetail({ receipt: r }: { receipt: WebhookReceipt }) {
-  const [showRaw, setShowRaw] = useState(false);
-  const prettyJson = (() => {
-    if (!r.rawBody) return null;
-    try { return JSON.stringify(JSON.parse(r.rawBody), null, 2); }
-    catch { return r.rawBody; }
-  })();
-
-  return (
-    <div className="border-t border-black/8 bg-[var(--color-cream)]/40 px-4 py-3 space-y-3">
-      {/* Parsed items table */}
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-left text-[var(--color-muted)] uppercase tracking-wide">
-            <th className="pb-1.5 pr-3">Item</th>
-            <th className="pb-1.5 pr-3">SKU</th>
-            <th className="pb-1.5 pr-3 text-right">Qty</th>
-            <th className="pb-1.5 pr-3 text-right">Unit price</th>
-            <th className="pb-1.5 pr-3 text-right">Discount</th>
-            <th className="pb-1.5 text-right">Line total</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-black/5">
-          {r.items.map((item, idx) => (
-            <tr key={idx}>
-              <td className="py-1.5 pr-3">
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${item.matched ? "bg-emerald-500" : "bg-amber-400"}`}
-                    title={item.matched ? "Matched to menu item" : "No menu match"}
-                  />
-                  <span className={item.matched ? "text-[var(--color-ink)]" : "text-amber-800"}>
-                    {item.name ?? "—"}
-                  </span>
-                </div>
-              </td>
-              <td className="py-1.5 pr-3 font-mono text-[var(--color-muted)]">{item.sku ?? "—"}</td>
-              <td className="py-1.5 pr-3 text-right font-mono">{item.quantity}</td>
-              <td className="py-1.5 pr-3 text-right font-mono">{item.unitPrice?.toFixed(2) ?? "—"}</td>
-              <td className="py-1.5 pr-3 text-right font-mono text-red-600">
-                {item.discount ? `-${item.discount.toFixed(2)}` : "—"}
-              </td>
-              <td className="py-1.5 text-right font-mono font-medium">{item.lineTotal.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t border-black/10">
-            <td colSpan={5} className="pt-1.5 text-[var(--color-muted)] text-right pr-3 font-medium">Total</td>
-            <td className="pt-1.5 text-right font-mono font-semibold">{r.total.toFixed(2)}</td>
-          </tr>
-        </tfoot>
-      </table>
-
-      <p className="text-[10px] text-[var(--color-muted)]">
-        occurred {fmtTs(r.occurredAt)}
-        {" · "}
-        <span className="text-emerald-700">● matched</span>
-        {" "}
-        <span className="text-amber-700">● unmatched</span>
-      </p>
-
-      {/* Raw payload toggle */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setShowRaw((v) => !v)}
-          className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
-        >
-          {showRaw ? "Hide raw payload" : "Show raw payload"}
-        </button>
-        {prettyJson === null && !showRaw && (
-          <span className="text-xs text-[var(--color-muted)] ml-2">
-            (not available — only captured for webhooks received after this feature was enabled)
-          </span>
-        )}
-        {showRaw && (
-          <pre className="mt-2 rounded-lg bg-[var(--color-ink)]/90 text-[var(--color-cream)] text-xs font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-96">
-            {prettyJson ?? "Raw payload was not captured for this receipt."}
-          </pre>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function WebhookLogPanel({
-  loading, receipts, rawCalls, expandedReceipts,
-  onToggleReceipt, onRefresh, tab, onTabChange,
+  loading, receipts, rawCalls, onRefresh, tab, onTabChange,
 }: {
   loading: boolean;
   receipts: WebhookReceipt[] | null;
   rawCalls: RawWebhookCall[] | null;
-  expandedReceipts: Set<string>;
-  onToggleReceipt: (id: string) => void;
   onRefresh: () => void;
   tab: "receipts" | "raw";
   onTabChange: (t: "receipts" | "raw") => void;
@@ -1019,7 +919,7 @@ function WebhookLogPanel({
     <Card className="border-t-2 border-t-[var(--color-saffron)]/40">
       <div className="flex items-center justify-between mb-3">
         <div className="flex gap-1">
-          {(["raw", "receipts"] as const).map((t) => (
+          {(["receipts", "raw"] as const).map((t) => (
             <button key={t} type="button" onClick={() => onTabChange(t)}
               className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
                 tab === t ? "bg-[var(--color-saffron)] text-white" : "text-[var(--color-muted)] hover:bg-black/5"
@@ -1040,69 +940,155 @@ function WebhookLogPanel({
       ) : !receipts || receipts.length === 0 ? (
         <p className="text-sm text-[var(--color-muted)] py-4 text-center">No receipts received yet.</p>
       ) : (
-        <div className="space-y-2">
-          {receipts.map((r) => {
-            const isOpen = expandedReceipts.has(r.receiptId);
-            return (
-              <div key={r.receiptId} className="rounded-lg border border-black/8 overflow-hidden">
-                <button type="button" onClick={() => onToggleReceipt(r.receiptId)}
-                  className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-black/3 transition-colors">
-                  <span className="text-[10px] mr-1 text-[var(--color-muted)]">{isOpen ? "▼" : "▶"}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-mono text-[var(--color-muted)] truncate max-w-[220px]" title={r.receiptId}>
-                        {r.receiptId}
-                      </span>
-                      {r.hasUnmatched && (
-                        <span className="text-[10px] bg-amber-100 text-amber-800 ring-1 ring-amber-200 px-1.5 py-0.5 rounded-full font-medium">
-                          unmatched items
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-[var(--color-muted)] mt-0.5 flex gap-3 flex-wrap">
-                      <span>received {fmtTs(r.receivedAt)}</span>
-                      {r.paymentMethod && <span>{r.paymentMethod}</span>}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-sm font-semibold text-[var(--color-ink)]">{r.total.toFixed(2)} zł</div>
-                    <div className="text-xs text-[var(--color-muted)]">{r.itemCount} item{r.itemCount === 1 ? "" : "s"}</div>
-                  </div>
-                </button>
-                {isOpen && <ReceiptDetail receipt={r} />}
-              </div>
-            );
-          })}
+        <div className="space-y-3">
+          {receipts.map((r) => (
+            <ReceiptCard key={r.receiptId} receipt={r} />
+          ))}
         </div>
       )}
     </Card>
   );
 }
 
-/** Parse items out of a raw Dotypos / generic webhook JSON body. */
+function ReceiptCard({ receipt: r }: { receipt: WebhookReceipt }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const prettyJson = (() => {
+    if (!r.rawBody) return null;
+    try { return JSON.stringify(JSON.parse(r.rawBody), null, 2); }
+    catch { return r.rawBody; }
+  })();
+
+  return (
+    <div className="rounded-lg border border-black/8 overflow-hidden">
+      {/* Invoice header */}
+      <div className="px-4 py-2.5 flex items-center gap-3 bg-[var(--color-cream)]/60 border-b border-black/8">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-mono font-medium text-[var(--color-ink)] truncate max-w-[220px]" title={r.receiptId}>
+              #{r.receiptId}
+            </span>
+            {r.hasUnmatched && (
+              <span className="text-[10px] bg-amber-100 text-amber-800 ring-1 ring-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                unmatched items
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-[var(--color-muted)] mt-0.5 flex gap-3 flex-wrap">
+            <span>{fmtTs(r.occurredAt ?? r.receivedAt)}</span>
+            {r.paymentMethod && <span className="uppercase tracking-wide">{r.paymentMethod}</span>}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-sm font-semibold text-[var(--color-ink)]">{r.total.toFixed(2)} zł</div>
+          <div className="text-xs text-[var(--color-muted)]">{r.itemCount} item{r.itemCount === 1 ? "" : "s"}</div>
+        </div>
+      </div>
+
+      {/* Items table — always visible */}
+      <div className="px-4 py-3 space-y-3">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-[var(--color-muted)] uppercase tracking-wide">
+              <th className="pb-1.5 pr-3">Item</th>
+              <th className="pb-1.5 pr-3">SKU</th>
+              <th className="pb-1.5 pr-3 text-right">Qty</th>
+              <th className="pb-1.5 pr-3 text-right">Unit price</th>
+              <th className="pb-1.5 pr-3 text-right">Discount</th>
+              <th className="pb-1.5 text-right">Line total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-black/5">
+            {r.items.map((item, idx) => (
+              <tr key={idx}>
+                <td className="py-1.5 pr-3">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${item.matched ? "bg-emerald-500" : "bg-amber-400"}`}
+                      title={item.matched ? "Matched to menu item" : "No menu match"}
+                    />
+                    <span className={item.matched ? "text-[var(--color-ink)]" : "text-amber-800"}>
+                      {item.name ?? "—"}
+                    </span>
+                  </div>
+                </td>
+                <td className="py-1.5 pr-3 font-mono text-[var(--color-muted)]">{item.sku ?? "—"}</td>
+                <td className="py-1.5 pr-3 text-right font-mono">{item.quantity}</td>
+                <td className="py-1.5 pr-3 text-right font-mono">{item.unitPrice?.toFixed(2) ?? "—"}</td>
+                <td className="py-1.5 pr-3 text-right font-mono text-red-600">
+                  {item.discount ? `-${item.discount.toFixed(2)}` : "—"}
+                </td>
+                <td className="py-1.5 text-right font-mono font-medium">{item.lineTotal.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-black/10">
+              <td colSpan={5} className="pt-1.5 text-[var(--color-muted)] text-right pr-3 font-medium">Total</td>
+              <td className="pt-1.5 text-right font-mono font-semibold">{r.total.toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div className="flex items-center gap-3 text-[10px] text-[var(--color-muted)]">
+          <span><span className="text-emerald-600">●</span> matched to menu</span>
+          <span><span className="text-amber-500">●</span> unmatched</span>
+          {r.rawBody && (
+            <button
+              type="button"
+              onClick={() => setShowRaw((v) => !v)}
+              className="ml-auto text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
+            >
+              {showRaw ? "Hide raw payload" : "Show raw payload"}
+            </button>
+          )}
+        </div>
+        {showRaw && prettyJson && (
+          <pre className="rounded-lg bg-[var(--color-ink)]/90 text-[var(--color-cream)] text-xs font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-96">
+            {prettyJson}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Parse items out of a raw Dotypos / Dotykačka / generic webhook JSON body. */
 function parseItemsFromRaw(rawBody: string): Array<{
   name: string; sku: string | null; quantity: number; unitPrice: number; discount: number; lineTotal: number;
 }> {
   try {
     const parsed = JSON.parse(rawBody);
-    // Dotypos sends an array of orders; generic sends a single object.
     const orders: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
     const rows: ReturnType<typeof parseItemsFromRaw> = [];
     for (const order of orders) {
       if (!order || typeof order !== "object") continue;
       const o = order as Record<string, unknown>;
-      const items = (o["items"] ?? o["orderItems"] ?? o["lines"]) as unknown[];
+      const items = (o["orderItems"] ?? o["items"] ?? o["lines"]) as unknown[];
       if (!Array.isArray(items)) continue;
       for (const it of items) {
         if (!it || typeof it !== "object") continue;
         const item = it as Record<string, unknown>;
-        const name = String(item["name"] ?? item["productName"] ?? item["itemName"] ?? "—");
-        const sku = item["sku"] != null ? String(item["sku"]) : item["productid"] != null ? String(item["productid"]) : null;
+        const name = String(item["name"] ?? item["alternativeName"] ?? item["productName"] ?? item["itemName"] ?? "—");
+        // SKU: Dotykačka uses externalId or _productId; generic uses sku / productid
+        const sku =
+          item["externalId"] != null ? String(item["externalId"]) :
+          item["_productId"] != null ? String(item["_productId"]) :
+          item["sku"] != null ? String(item["sku"]) :
+          item["productid"] != null ? String(item["productid"]) : null;
         const qty = parseFloat(String(item["quantity"] ?? item["qty"] ?? 1));
-        const unitPrice = parseFloat(String(item["pricewithvat"] ?? item["unitPrice"] ?? item["unit_price"] ?? item["price"] ?? 0));
-        const discount = parseFloat(String(item["discount"] ?? 0));
-        const lineTotal = qty * unitPrice - discount;
-        rows.push({ name, sku, quantity: isNaN(qty) ? 1 : qty, unitPrice: isNaN(unitPrice) ? 0 : unitPrice, discount: isNaN(discount) ? 0 : discount, lineTotal });
+        // Price: Dotykačka uses unitPriceWithVat / billedUnitPriceWithVat; generic uses pricewithvat / unitPrice / price
+        const unitPrice = parseFloat(String(
+          item["unitPriceWithVat"] ?? item["billedUnitPriceWithVat"] ??
+          item["pricewithvat"] ?? item["unitPrice"] ?? item["unit_price"] ?? item["price"] ?? 0
+        ));
+        // Discount: Dotykačka uses discountPercent (a percentage of unitPrice); generic uses discount (absolute)
+        const discountPct = item["discountPercent"] != null ? parseFloat(String(item["discountPercent"])) : 0;
+        const discountAbs = item["discount"] != null ? parseFloat(String(item["discount"])) : 0;
+        const discount = discountPct > 0
+          ? (isNaN(unitPrice) ? 0 : unitPrice) * discountPct / 100
+          : (isNaN(discountAbs) ? 0 : discountAbs);
+        const lineTotal = (isNaN(qty) ? 1 : qty) * (isNaN(unitPrice) ? 0 : unitPrice) - discount;
+        rows.push({ name, sku, quantity: isNaN(qty) ? 1 : qty, unitPrice: isNaN(unitPrice) ? 0 : unitPrice, discount, lineTotal });
       }
     }
     return rows;
@@ -1166,8 +1152,19 @@ function RawCallsList({ calls }: { calls: RawWebhookCall[] | null }) {
           try { return JSON.stringify(JSON.parse(call.rawBody), null, 2); }
           catch { return call.rawBody; }
         })();
-        const items = isOpen ? parseItemsFromRaw(call.rawBody) : [];
+        // Parse items eagerly for the header total + item count
+        const items = parseItemsFromRaw(call.rawBody);
         const callTotal = items.reduce((s, it) => s + it.lineTotal, 0);
+        // Extract receipt date / order ID from the raw body for the header
+        const orderMeta = (() => {
+          try {
+            const o = JSON.parse(call.rawBody) as Record<string, unknown>;
+            const obj = Array.isArray(o) ? (o[0] as Record<string, unknown>) : o;
+            const closeDate = (obj["closeDate"] ?? obj["issueDate"] ?? obj["completed"]) as string | undefined;
+            const orderId = obj["id"] != null ? String(obj["id"]) : call.externalId ?? null;
+            return { closeDate: closeDate ?? null, orderId };
+          } catch { return { closeDate: null, orderId: call.externalId ?? null }; }
+        })();
 
         return (
           <div key={call.id} className="rounded-lg border border-black/8 overflow-hidden">
@@ -1177,7 +1174,14 @@ function RawCallsList({ calls }: { calls: RawWebhookCall[] | null }) {
               <span className="text-[10px] text-[var(--color-muted)]">{isOpen ? "▼" : "▶"}</span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-[var(--color-muted)]">{fmtTs(call.receivedAt)}</span>
+                  {orderMeta.orderId && (
+                    <span className="text-xs font-mono font-medium text-[var(--color-ink)]">
+                      #{orderMeta.orderId}
+                    </span>
+                  )}
+                  <span className="text-xs text-[var(--color-muted)]">
+                    {fmtTs(orderMeta.closeDate ?? call.receivedAt)}
+                  </span>
                   {call.unmatched > 0 && (
                     <span className="text-[10px] bg-amber-100 text-amber-800 ring-1 ring-amber-200 px-1.5 py-0.5 rounded-full font-medium">
                       {call.unmatched} unmatched
@@ -1185,7 +1189,8 @@ function RawCallsList({ calls }: { calls: RawWebhookCall[] | null }) {
                   )}
                 </div>
                 <div className="text-xs text-[var(--color-muted)] mt-0.5 flex gap-3">
-                  <span>{call.inserted} inserted</span>
+                  <span>{items.length} item{items.length === 1 ? "" : "s"}</span>
+                  {call.inserted > 0 && <span className="text-emerald-700">{call.inserted} new</span>}
                   {call.skipped > 0 && <span>{call.skipped} skipped</span>}
                 </div>
               </div>

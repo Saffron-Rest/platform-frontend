@@ -423,6 +423,7 @@ export async function getWebhookLog(id: string, limit = 200) {
 
 export type RawWebhookCall = {
   id: string;
+  externalId: string | null;
   receivedAt: string | null;
   inserted: number;
   skipped: number;
