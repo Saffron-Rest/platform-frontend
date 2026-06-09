@@ -12,6 +12,8 @@ import {
 } from "../api/suppliers";
 import {
   listPayables,
+  getPayable,
+  type PayableDetail,
   type PayableSummary,
 } from "../api/payables";
 import { payableStatus } from "../lib/statusBadges";
@@ -347,9 +349,10 @@ function SupplierInvoiceDrawer({
   onClose: () => void;
   onEdit?: (s: Supplier) => void;
 }) {
-  const [invoices, setInvoices] = useState<PayableSummary[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState("");
+  const [invoices,         setInvoices]         = useState<PayableSummary[]>([]);
+  const [loading,          setLoading]          = useState(true);
+  const [error,            setError]            = useState("");
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -442,7 +445,11 @@ function SupplierInvoiceDrawer({
               {invoices.map((inv) => {
                 const badge = payableStatus({ status: inv.status, daysOverdue: inv.daysPastDue });
                 return (
-                  <div key={inv.id} className="px-4 py-3 flex items-center gap-3">
+                  <div
+                    key={inv.id}
+                    onClick={() => setSelectedInvoiceId(inv.id)}
+                    className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[var(--color-saffron)]/5 transition-colors"
+                  >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm text-[var(--color-ink)]">
@@ -470,12 +477,185 @@ function SupplierInvoiceDrawer({
                         <p className="text-xs text-emerald-700 mt-0.5">Fully paid</p>
                       )}
                     </div>
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-[var(--color-muted)] shrink-0">
+                      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                    </svg>
                   </div>
                 );
               })}
             </div>
           )}
         </div>
+      </div>
+
+      {selectedInvoiceId && (
+        <InvoiceDetailDrawer
+          invoiceId={selectedInvoiceId}
+          onClose={() => setSelectedInvoiceId(null)}
+        />
+      )}
+    </Drawer>
+  );
+}
+
+// ─── invoice detail drawer ────────────────────────────────────────────────────
+
+function InvoiceDetailDrawer({
+  invoiceId,
+  onClose,
+}: {
+  invoiceId: string;
+  onClose: () => void;
+}) {
+  const [invoice, setInvoice] = useState<PayableDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    getPayable(invoiceId)
+      .then(setInvoice)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load invoice"))
+      .finally(() => setLoading(false));
+  }, [invoiceId]);
+
+  const badge = invoice
+    ? payableStatus({ status: invoice.status, daysOverdue: invoice.daysPastDue })
+    : null;
+
+  const METHOD_LABEL: Record<string, string> = {
+    BANK_TRANSFER: "Bank transfer", CASH: "Cash",
+    CARD: "Card", CHEQUE: "Cheque", OTHER: "Other",
+  };
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      width="lg"
+      title={invoice ? (invoice.invoiceNumber ?? "Invoice") : "Invoice"}
+      subtitle={invoice ? `${invoice.supplier.name} · ${fmtDate(invoice.invoiceDate)}` : undefined}
+    >
+      <div className="px-5 py-5 space-y-5">
+        {error && <Alert variant="error">{error}</Alert>}
+
+        {loading ? (
+          <div className="flex justify-center py-16"><Spinner /></div>
+        ) : !invoice ? null : (
+          <>
+            {/* ── Status + dates ────────────────────────────────────── */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {badge && <Badge variant={badge.tone}>{badge.label}</Badge>}
+              <span className="text-sm text-[var(--color-muted)]">
+                Issued {fmtDate(invoice.invoiceDate)}
+                {invoice.dueDate ? ` · Due ${fmtDate(invoice.dueDate)}` : ""}
+              </span>
+            </div>
+
+            {/* ── Financial summary ─────────────────────────────────── */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Netto",       value: invoice.subtotal,   warn: false },
+                { label: "VAT",         value: invoice.vat,        warn: false },
+                { label: "Brutto",      value: invoice.total,      bold: true  },
+              ].map(({ label, value, bold }) => (
+                <div key={label} className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+                  <p className={`text-base mt-1 tabular-nums ${bold ? "font-bold text-[var(--color-ink)]" : "font-medium text-[var(--color-ink)]"}`}>
+                    <Money value={value} />
+                  </p>
+                </div>
+              ))}
+              {[
+                { label: "Paid",        value: invoice.amountPaid,    pos: invoice.amountPaid > 0 },
+                { label: "Outstanding", value: invoice.outstanding,   warn: invoice.outstanding > 0 },
+              ].map(({ label, value, pos, warn }) => (
+                <div key={label} className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+                  <p className={`text-base font-semibold mt-1 tabular-nums ${warn ? "text-amber-700" : pos ? "text-emerald-700" : "text-[var(--color-ink)]"}`}>
+                    <Money value={value} />
+                  </p>
+                </div>
+              ))}
+              {invoice.notes && (
+                <div className="col-span-1 rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">Notes</p>
+                  <p className="text-xs text-[var(--color-ink)] mt-1">{invoice.notes}</p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Line items ────────────────────────────────────────── */}
+            {invoice.lines.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)] mb-2">Line items</p>
+                <div className="rounded-xl border border-black/8 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-black/[0.03] border-b border-black/8 text-[var(--color-muted)] text-xs">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Description</th>
+                        <th className="px-3 py-2 text-right font-medium">Qty</th>
+                        <th className="px-3 py-2 text-right font-medium">Unit cost</th>
+                        <th className="px-3 py-2 text-right font-medium">VAT</th>
+                        <th className="px-3 py-2 text-right font-medium">Netto</th>
+                        <th className="px-3 py-2 text-right font-medium">Brutto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/[0.05]">
+                      {invoice.lines.map((l, i) => {
+                        const vatAmt = l.vatAmount ?? (l.vatPct != null ? l.lineTotal * l.vatPct / 100 : 0);
+                        return (
+                          <tr key={l.id ?? i}>
+                            <td className="px-3 py-2 text-[var(--color-ink)]">
+                              {l.description}
+                              {l.stockItemId && <span className="ml-1 text-xs text-[var(--color-muted)]">(stock)</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">{l.quantity} {l.unit}</td>
+                            <td className="px-3 py-2 text-right tabular-nums"><Money value={l.unitCost} /></td>
+                            <td className="px-3 py-2 text-right text-[var(--color-muted)]">
+                              {l.vatPct != null ? `${l.vatPct}%` : "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums"><Money value={l.lineTotal} /></td>
+                            <td className="px-3 py-2 text-right tabular-nums font-medium"><Money value={l.lineTotal + vatAmt} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ── Payment history ───────────────────────────────────── */}
+            {invoice.payments.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)] mb-2">
+                  Payment history
+                </p>
+                <div className="rounded-xl border border-black/8 divide-y divide-black/[0.05] overflow-hidden">
+                  {invoice.payments.map((p) => (
+                    <div key={p.id} className="px-4 py-3 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[var(--color-ink)]">
+                          {METHOD_LABEL[p.method] ?? p.method}
+                        </p>
+                        <p className="text-xs text-[var(--color-muted)]">
+                          {fmtDate(p.paymentDate)}
+                          {p.reference ? ` · Ref: ${p.reference}` : ""}
+                          {p.notes ? ` · ${p.notes}` : ""}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums text-emerald-700">
+                        <Money value={p.amount} />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </Drawer>
   );
