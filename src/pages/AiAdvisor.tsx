@@ -8,6 +8,7 @@ import { Spinner } from "../components/ui/Spinner";
 import { Alert } from "../components/ui/Alert";
 import { Button } from "../components/ui/Button";
 import { IconRefresh, IconSparkle } from "../components/icons";
+import { getStoredGeminiKey } from "../components/admin/AiAdvisorSettingsCard";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -137,7 +138,7 @@ const QUICK_PROMPTS = [
 // ─── page ─────────────────────────────────────────────────────────────────────
 
 export function AiAdvisor() {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+  const apiKey = getStoredGeminiKey() || undefined;
 
   const [contextStatus, setContextStatus] = useState<ContextStatus>("loading");
   const [contextText,   setContextText]   = useState("");
@@ -225,25 +226,24 @@ export function AiAdvisor() {
   // ── no API key configured ─────────────────────────────────────────────────
   if (!apiKey) {
     return (
-      <div className="max-w-xl mx-auto py-16 px-4 text-center space-y-4">
+      <div className="max-w-md mx-auto py-16 px-4 text-center space-y-4">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[var(--color-saffron)]/10 text-[var(--color-saffron)] mb-2">
           <IconSparkle className="w-7 h-7" />
         </div>
         <h1 className="text-xl font-bold text-[var(--color-ink)]">AI Advisor not configured</h1>
         <p className="text-sm text-[var(--color-muted)]">
-          Add your Gemini API key to enable the AI advisor.
+          An admin needs to add a Gemini API key before the advisor can be used.
         </p>
-        <div className="rounded-xl bg-black/5 px-4 py-3 text-left text-sm font-mono text-[var(--color-ink)] space-y-1">
-          <p className="text-xs text-[var(--color-muted)] font-sans mb-2">
-            Create a <code className="bg-black/8 px-1 rounded">.env</code> file in{" "}
-            <code className="bg-black/8 px-1 rounded">platform-frontend/</code>:
-          </p>
-          <p>VITE_GEMINI_API_KEY=your_key_here</p>
-        </div>
+        <a
+          href="/admin/settings?tab=ai"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-saffron)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+        >
+          Go to Settings → AI Advisor
+        </a>
         <p className="text-xs text-[var(--color-muted)]">
           Get a free key at{" "}
           <span className="font-medium text-[var(--color-ink)]">aistudio.google.com</span>
-          {" "}→ "Get API key"
+          {" "}→ Get API key
         </p>
       </div>
     );

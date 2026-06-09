@@ -8,16 +8,18 @@ import { AdminTagLibrary } from "./AdminTagLibrary";
 import { AdminPos } from "./AdminPos";
 import { AdminSecurity } from "./AdminSecurity";
 import { AdminAudit } from "./AdminAudit";
+import { AiAdvisorSettingsCard } from "../../components/admin/AiAdvisorSettingsCard";
 import { useAuth } from "../../context/AuthContext";
 import { isAdmin } from "../../lib/roles";
 
-type SettingsTab = "treasury" | "hours" | "tags" | "pos" | "audit" | "security";
+type SettingsTab = "treasury" | "hours" | "tags" | "pos" | "audit" | "security" | "ai";
 
 const ALL_TABS = [
   { value: "treasury", label: "Treasury" },
   { value: "hours",    label: "Hours" },
   { value: "tags",     label: "Tags" },
   { value: "pos",      label: "POS & Integrations" },
+  { value: "ai",       label: "AI Advisor" },
   { value: "audit",    label: "Audit log" },
   { value: "security", label: "Security" },
 ] satisfies { value: SettingsTab; label: string }[];
@@ -48,8 +50,8 @@ export function AdminSettingsHub() {
     hasPermission("POS_INTEGRATION_MANAGE");
 
   const canSeeSecurity = isAdmin(user?.role);
-  const canSeeAudit =
-    isAdmin(user?.role) || hasPermission("AUDIT_VIEW");
+  const canSeeAudit    = isAdmin(user?.role) || hasPermission("AUDIT_VIEW");
+  const canSeeAi       = isAdmin(user?.role);
 
   const visibleTabs = useMemo(() => {
     const tabs: Array<{ value: SettingsTab; label: string }> = [];
@@ -58,11 +60,12 @@ export function AdminSettingsHub() {
       if (t.value === "hours"     && canSeeHours)      tabs.push(t);
       if (t.value === "tags"      && canSeeTags)       tabs.push(t);
       if (t.value === "pos"       && canSeePos)        tabs.push(t);
+      if (t.value === "ai"        && canSeeAi)         tabs.push(t);
       if (t.value === "audit"     && canSeeAudit)      tabs.push(t);
       if (t.value === "security"  && canSeeSecurity)   tabs.push(t);
     });
     return tabs;
-  }, [canSeeTreasury, canSeeHours, canSeeTags, canSeePos, canSeeAudit, canSeeSecurity]);
+  }, [canSeeTreasury, canSeeHours, canSeeTags, canSeePos, canSeeAi, canSeeAudit, canSeeSecurity]);
 
   const requestedTab = (searchParams.get("tab") as SettingsTab | null) ?? "treasury";
 
@@ -98,6 +101,7 @@ export function AdminSettingsHub() {
       {activeTab === "hours"    && <AdminRestaurantHours asTab />}
       {activeTab === "tags"     && <AdminTagLibrary asTab />}
       {activeTab === "pos"      && <AdminPos asTab />}
+      {activeTab === "ai"       && <AiAdvisorSettingsCard />}
       {activeTab === "audit"    && <AdminAudit asTab />}
       {activeTab === "security" && <AdminSecurity asTab />}
     </div>
