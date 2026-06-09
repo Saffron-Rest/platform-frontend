@@ -30,6 +30,7 @@ import {
 import {
   createPayable,
   updatePayable,
+  updatePayableLines,
   deletePayableAttachment,
   deletePayablePayment,
   getPayable,
@@ -1095,6 +1096,7 @@ function DetailDrawer({
   const confirm = useConfirm();
   const [recordOpen, setRecordOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [editLinesOpen, setEditLinesOpen] = useState(false);
   const [voidPending, setVoidPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -1103,6 +1105,7 @@ function DetailDrawer({
     if (!invoice) {
       setRecordOpen(false);
       setEditOpen(false);
+      setEditLinesOpen(false);
       setVoidPending(false);
       setErr(null);
     }
@@ -1462,6 +1465,11 @@ function DetailDrawer({
                 </Button>
               )}
               {canManage && invoice.status !== "VOID" && invoice.amountPaid <= 0 && (
+                <Button variant="secondary" onClick={() => setEditLinesOpen(true)}>
+                  Edit lines
+                </Button>
+              )}
+              {canManage && invoice.status !== "VOID" && invoice.amountPaid <= 0 && (
                 <Button variant="danger" onClick={() => void onVoid()} loading={voidPending}>
                   Void invoice
                 </Button>
@@ -1493,6 +1501,18 @@ function DetailDrawer({
           onClose={() => setEditOpen(false)}
           onSaved={(next) => {
             setEditOpen(false);
+            onChanged(next);
+          }}
+        />
+      )}
+
+      {invoice && (
+        <EditLinesDialog
+          open={editLinesOpen}
+          invoice={invoice}
+          onClose={() => setEditLinesOpen(false)}
+          onSaved={(next) => {
+            setEditLinesOpen(false);
             onChanged(next);
           }}
         />
@@ -1599,7 +1619,7 @@ function EditInvoiceDialog({
         </Field>
 
         <p className="text-xs text-[var(--color-muted)]">
-          To change line items or the invoice date, void this invoice and create a new one.
+          To edit line items use the "Edit lines" button. To change the invoice date, void and recreate.
         </p>
       </DialogBody>
       <DialogFooter>
@@ -2121,6 +2141,191 @@ function downloadTemplate() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Invoices");
   XLSX.writeFile(wb, "payables-import-template.xlsx");
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Edit lines dialog
+// ───────────────────────────────────────────────────────────────────────────
+
+function EditLinesDialog({
+  open,
+  invoice,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  invoice: PayableDetail;
+  onClose: () => void;
+  onSaved: (next: PayableDetail) => void;
+}) {
+  const [lines, setLines] = useState<LineDraft[]>([blankLine()]);
+  const [vat, setVat] = useState("0");
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Seed from existing invoice lines when dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    setErr(null);
+    setLines(
+      invoice.lines.length > 0
+        ? invoice.lines.map((l) => ({
+            stockItemId: l.stockItemId ?? "",
+            description: l.description,
+            quantity: String(l.quantity),
+            unit: l.unit,
+            unitCost: String(l.unitCost),
+            discountType: (l.discountType as LineDraft["discountType"]) ?? "",
+            discountValue: l.discountValue != null ? String(l.discountValue) : "",
+            vatPct: l.vatPct != null ? String(l.vatPct) : "",
+          }))
+        : [blankLine()],
+    );
+    setVat(String(invoice.vat ?? 0));
+    // Load stock items lazily
+    listStock().then(setStockItems).catch(() => {/* non-fatal */});
+  }, [open, invoice]);
+
+  const lineCalc = useMemo(() => lines.map((l) => {
+    const qty = num(l.quantity);
+    const uc = num(l.unitCost);
+    const gross = qty * uc;
+    let discAmt = 0;
+    if (l.discountType === "PERCENTAGE" && num(l.discountValue) > 0) {
+      discAmt = gross * num(l.discountValue) / 100;
+    } else if (l.discountType === "AMOUNT" && num(l.discountValue) > 0) {
+      discAmt = Math.min(num(l.discountValue), gross);
+    }
+    const net = Math.max(0, gross - discAmt);
+    const vatAmt = l.vatPct !== "" ? net * num(l.vatPct) / 100 : 0;
+    return { gross, discAmt, net, vatAmt };
+  }), [lines]);
+
+  const subtotal = useMemo(() => lineCalc.reduce((s, l) => s + l.net, 0), [lineCalc]);
+  const hasLineVat = lines.some((l) => l.vatPct !== "");
+  const vatFromLines = useMemo(() => lineCalc.reduce((s, l) => s + l.vatAmt, 0), [lineCalc]);
+  const total = useMemo(() => subtotal + (hasLineVat ? vatFromLines : num(vat)), [subtotal, hasLineVat, vatFromLines, vat]);
+
+  const setLine = (i: number, patch: Partial<LineDraft>) =>
+    setLines((cur) => cur.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+
+  const addLine = () => setLines((cur) => [...cur, blankLine()]);
+  const removeLine = (i: number) => setLines((cur) => cur.filter((_, idx) => idx !== i));
+
+  const submit = async () => {
+    setErr(null);
+    const cleaned = lines.filter((l) => l.description.trim() || l.stockItemId);
+    if (cleaned.length === 0) {
+      setErr("At least one line is required.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const next = await updatePayableLines(
+        invoice.id,
+        cleaned.map((l) => ({
+          stockItemId: l.stockItemId || null,
+          description: l.description || null,
+          quantity: num(l.quantity) || 1,
+          unit: l.unit || "pcs",
+          unitCost: num(l.unitCost),
+          discountType: (l.discountType || null) as "PERCENTAGE" | "AMOUNT" | null,
+          discountValue: l.discountValue ? num(l.discountValue) : null,
+          vatPct: l.vatPct !== "" ? num(l.vatPct) : null,
+        })),
+        hasLineVat ? undefined : num(vat),
+      );
+      onSaved(next);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save lines");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="xl"
+      ariaLabel="Edit invoice lines"
+    >
+      <DialogTitle description={`${invoice.supplier.name} · ${invoice.invoiceNumber ?? invoice.invoiceDate}`}>
+        Edit invoice lines
+      </DialogTitle>
+      <DialogBody className="space-y-4">
+        {err && <Alert variant="error">{err}</Alert>}
+
+        {invoice.amountPaid > 0 && (
+          <Alert variant="warning">
+            This invoice has payments recorded. Reverse them first to edit lines.
+          </Alert>
+        )}
+
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[var(--color-ink)]">Lines</h3>
+          <Button type="button" variant="ghost" size="sm" onClick={addLine}>
+            + Add line
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          {lines.map((line, i) => (
+            <LineRow
+              key={i}
+              line={line}
+              calc={lineCalc[i]}
+              stockItems={stockItems}
+              onChange={(patch) => setLine(i, patch)}
+              onRemove={lines.length > 1 ? () => removeLine(i) : undefined}
+              onStockCreated={(item) => {
+                setStockItems((cur) => [...cur, item]);
+                setLine(i, {
+                  stockItemId: item.id,
+                  unit: item.unit ?? line.unit,
+                  unitCost: item.unitCost ? String(item.unitCost) : line.unitCost,
+                });
+              }}
+            />
+          ))}
+        </div>
+
+        {!hasLineVat && (
+          <Field label="VAT (PLN override)" optional hint="Set per-line VAT rates above instead — this field is ignored when any line has a rate.">
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={vat}
+              onChange={(e) => setVat(e.target.value)}
+            />
+          </Field>
+        )}
+
+        <div className="rounded-xl bg-[var(--color-cream)]/60 border border-black/8 px-4 py-3 text-sm space-y-1">
+          <div className="flex justify-between">
+            <span className="text-[var(--color-muted)]">Subtotal (netto)</span>
+            <Money value={subtotal} />
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--color-muted)]">VAT{hasLineVat ? " (from lines)" : ""}</span>
+            <Money value={hasLineVat ? vatFromLines : num(vat)} />
+          </div>
+          <div className="flex justify-between font-semibold border-t border-black/8 pt-1 mt-1">
+            <span>Total (brutto)</span>
+            <Money value={total} />
+          </div>
+        </div>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Button>
+        <Button type="submit" loading={submitting}>Save lines</Button>
+      </DialogFooter>
+    </DialogForm>
+  );
 }
 
 function ImportExcelDialog({

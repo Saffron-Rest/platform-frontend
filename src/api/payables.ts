@@ -164,6 +164,17 @@ export async function updatePayable(
   });
 }
 
+export async function updatePayableLines(
+  id: string,
+  lines: CreatePayableInput["lines"],
+  vat?: number | null,
+): Promise<PayableDetail> {
+  return api<PayableDetail>(`/payables/${encodeURIComponent(id)}/lines`, {
+    method: "PUT",
+    body: JSON.stringify({ lines, ...(vat != null ? { vat } : {}) }),
+  });
+}
+
 export async function voidPayable(id: string, reason?: string): Promise<PayableDetail> {
   return api<PayableDetail>(`/payables/${encodeURIComponent(id)}/void`, {
     method: "POST",
