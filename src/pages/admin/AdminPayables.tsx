@@ -1811,6 +1811,19 @@ type ImportRow = {
   unitCost: number;
   vatPct: number | null;
   notes: string;
+  lineError?: string;
+};
+
+type InvoiceGroup = {
+  key: string;
+  supplier: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  category: string;
+  notes: string;
+  lines: ImportRow[];
+  total: number;
   error?: string;
 };
 
@@ -1857,7 +1870,6 @@ function parseRows(wb: XLSX.WorkBook): ImportRow[] {
   const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
   if (raw.length < 2) return [];
 
-  // Build column index map from header row
   const headers = (raw[0] as unknown[]).map((h) => normaliseKey(String(h ?? "")));
   const colIdx: Partial<Record<keyof ImportRow, number>> = {};
   headers.forEach((h, i) => {
@@ -1880,16 +1892,16 @@ function parseRows(wb: XLSX.WorkBook): ImportRow[] {
 
     const supplier = get(row, "supplier");
     const invoiceDate = get(row, "invoiceDate");
-    const description = get(row, "description") || get(row, "invoiceNumber") || "Invoice";
+    const description = get(row, "description") || "Item";
     const unitCostRaw = parseFloat(get(row, "unitCost").replace(",", ".")) || 0;
     const quantityRaw = parseFloat(get(row, "quantity").replace(",", ".")) || 1;
     const vatRaw = get(row, "vatPct");
     const vatPct = vatRaw !== "" ? parseFloat(vatRaw.replace(",", ".").replace("%", "")) : null;
 
-    let error: string | undefined;
-    if (!supplier) error = "Supplier is required";
-    else if (!invoiceDate) error = "Invoice date is required or unrecognised format";
-    else if (unitCostRaw <= 0) error = "Unit cost must be > 0";
+    let lineError: string | undefined;
+    if (!supplier) lineError = "Supplier is required";
+    else if (!invoiceDate) lineError = "Invoice date missing or unrecognised format";
+    else if (unitCostRaw <= 0) lineError = "Unit cost must be > 0";
 
     rows.push({
       rowNum: r + 1,
@@ -1904,19 +1916,63 @@ function parseRows(wb: XLSX.WorkBook): ImportRow[] {
       unitCost: unitCostRaw,
       vatPct: isNaN(vatPct as number) ? null : vatPct,
       notes: get(row, "notes"),
-      error,
+      lineError,
     });
   }
   return rows;
 }
 
+/** Group line rows into invoices.
+ *  Rows sharing the same supplier + invoice# + date → one invoice, multiple lines.
+ *  Rows without an invoice# each become their own invoice. */
+function groupInvoices(rows: ImportRow[]): InvoiceGroup[] {
+  const map = new Map<string, InvoiceGroup>();
+  let ungroupedIdx = 0;
+
+  for (const row of rows) {
+    // Rows with no invoice# get a unique key so they don't merge with each other
+    const key = row.invoiceNumber
+      ? `${row.supplier.toLowerCase()}||${row.invoiceNumber.toLowerCase()}||${row.invoiceDate}`
+      : `__ungrouped__${ungroupedIdx++}`;
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        supplier: row.supplier,
+        invoiceNumber: row.invoiceNumber,
+        invoiceDate: row.invoiceDate,
+        dueDate: row.dueDate,
+        category: row.category,
+        notes: row.notes,
+        lines: [],
+        total: 0,
+        error: row.lineError,
+      });
+    }
+
+    const g = map.get(key)!;
+    g.lines.push(row);
+    if (!row.lineError) {
+      g.total += row.quantity * row.unitCost;
+    }
+    if (row.lineError && !g.error) g.error = row.lineError;
+  }
+
+  return Array.from(map.values());
+}
+
 function downloadTemplate() {
   const ws = XLSX.utils.aoa_to_sheet([
     ["Supplier", "Invoice #", "Invoice Date", "Due Date", "Category", "Description", "Qty", "Unit", "Unit Cost", "VAT %", "Notes"],
-    ["Fresh Foods Ltd", "INV-001", "2026-06-01", "2026-06-15", "SUPPLIER", "Weekly vegetable delivery", 1, "pcs", 450.00, 8, ""],
-    ["Clean Masters", "INV-002", "2026-06-03", "2026-06-17", "CLEANING", "Monthly cleaning supplies", 1, "pcs", 120.00, 23, ""],
+    // INV-001: 3 line items → becomes 1 invoice
+    ["Fresh Foods Ltd", "INV-001", "2026-06-01", "2026-06-15", "SUPPLIER", "Tomatoes", 5, "kg", 4.50, 8, ""],
+    ["Fresh Foods Ltd", "INV-001", "2026-06-01", "2026-06-15", "SUPPLIER", "Onions", 3, "kg", 2.80, 8, ""],
+    ["Fresh Foods Ltd", "INV-001", "2026-06-01", "2026-06-15", "SUPPLIER", "Potatoes", 10, "kg", 1.90, 8, ""],
+    // INV-002: 2 line items → becomes 1 invoice
+    ["Clean Masters", "INV-002", "2026-06-03", "2026-06-17", "CLEANING", "Cleaning liquid", 2, "pcs", 35.00, 23, ""],
+    ["Clean Masters", "INV-002", "2026-06-03", "2026-06-17", "CLEANING", "Mop heads", 4, "pcs", 12.00, 23, ""],
   ]);
-  ws["!cols"] = [14, 12, 14, 14, 12, 28, 6, 6, 10, 8, 20].map((w) => ({ wch: w }));
+  ws["!cols"] = [16, 10, 14, 14, 12, 22, 6, 6, 10, 8, 20].map((w) => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Invoices");
   XLSX.writeFile(wb, "payables-import-template.xlsx");
@@ -1934,19 +1990,19 @@ function ImportExcelDialog({
   onImported: (newSuppliers: Supplier[]) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [groups, setGroups] = useState<InvoiceGroup[]>([]);
   const [fileName, setFileName] = useState("");
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<{ ok: number; failed: string[] } | null>(null);
   const [parseError, setParseError] = useState("");
 
-  const validRows = rows.filter((r) => !r.error);
-  const invalidRows = rows.filter((r) => r.error);
+  const validGroups = groups.filter((g) => !g.error);
+  const invalidGroups = groups.filter((g) => g.error);
 
   useEffect(() => {
     if (!open) {
-      setRows([]);
+      setGroups([]);
       setFileName("");
       setProgress(null);
       setResults(null);
@@ -1956,18 +2012,18 @@ function ImportExcelDialog({
 
   const handleFile = (file: File) => {
     setParseError("");
-    setRows([]);
+    setGroups([]);
     setFileName(file.name);
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const wb = XLSX.read(e.target!.result, { type: "array", cellDates: false });
-        const parsed = parseRows(wb);
-        if (parsed.length === 0) {
+        const rows = parseRows(wb);
+        if (rows.length === 0) {
           setParseError("No data rows found. Make sure the first row contains column headers.");
-        } else {
-          setRows(parsed);
+          return;
         }
+        setGroups(groupInvoices(rows));
       } catch {
         setParseError("Could not parse the file. Please use .xlsx or .xls format.");
       }
@@ -1976,51 +2032,50 @@ function ImportExcelDialog({
   };
 
   const doImport = async () => {
-    if (validRows.length === 0) return;
+    if (validGroups.length === 0) return;
     setImporting(true);
-    setProgress({ done: 0, total: validRows.length });
+    setProgress({ done: 0, total: validGroups.length });
 
     const supplierCache = new Map(suppliers.map((s) => [s.name.toLowerCase(), s]));
     const newSuppliers: Supplier[] = [];
     const failed: string[] = [];
     let done = 0;
 
-    for (const row of validRows) {
+    for (const g of validGroups) {
       try {
-        // Resolve or create supplier
-        let supplier = supplierCache.get(row.supplier.toLowerCase());
+        let supplier = supplierCache.get(g.supplier.toLowerCase());
         if (!supplier) {
-          supplier = await createSupplier({ name: row.supplier, paymentTermsDays: 14 });
+          supplier = await createSupplier({ name: g.supplier, paymentTermsDays: 14 });
           supplierCache.set(supplier.name.toLowerCase(), supplier);
           newSuppliers.push(supplier);
         }
 
-        // Resolve category
         const categoryVal = CATEGORY_OPTIONS.find(
-          (c) => c.label.toLowerCase().includes(row.category.toLowerCase()) ||
-                 c.value.toLowerCase() === row.category.toLowerCase()
+          (c) => c.label.toLowerCase().includes(g.category.toLowerCase()) ||
+                 c.value.toLowerCase() === g.category.toLowerCase()
         )?.value as PayableCategory | undefined;
 
         await createPayable({
           supplierId: supplier.id,
-          invoiceNumber: row.invoiceNumber || null,
-          invoiceDate: row.invoiceDate,
-          dueDate: row.dueDate || null,
+          invoiceNumber: g.invoiceNumber || null,
+          invoiceDate: g.invoiceDate,
+          dueDate: g.dueDate || null,
           category: categoryVal,
-          notes: row.notes || null,
-          lines: [{
-            description: row.description,
-            quantity: row.quantity,
-            unit: row.unit,
-            unitCost: row.unitCost,
-            vatPct: row.vatPct,
-          }],
+          notes: g.notes || null,
+          lines: g.lines.map((l) => ({
+            description: l.description,
+            quantity: l.quantity,
+            unit: l.unit,
+            unitCost: l.unitCost,
+            vatPct: l.vatPct,
+          })),
         });
 
         done++;
-        setProgress({ done, total: validRows.length });
+        setProgress({ done, total: validGroups.length });
       } catch (e) {
-        failed.push(`Row ${row.rowNum} (${row.supplier}): ${e instanceof Error ? e.message : "Failed"}`);
+        const label = g.invoiceNumber ? `${g.supplier} / ${g.invoiceNumber}` : g.supplier;
+        failed.push(`${label}: ${e instanceof Error ? e.message : "Failed"}`);
       }
     }
 
@@ -2036,13 +2091,12 @@ function ImportExcelDialog({
   return (
     <Dialog open={open} onClose={onClose} size="lg" ariaLabel="Import invoices from Excel">
       <DialogTitle
-        description="Upload an .xlsx file — each row becomes one invoice. Download the template to see the expected columns."
+        description="Rows sharing the same Invoice # are grouped into one invoice with multiple line items. Download the template to see the format."
       >
         Import invoices from Excel
       </DialogTitle>
       <DialogBody className="space-y-4">
 
-        {/* Template download + file pick */}
         {!results && (
           <>
             <div className="flex flex-wrap gap-2">
@@ -2068,58 +2122,54 @@ function ImportExcelDialog({
 
             {parseError && <Alert variant="error">{parseError}</Alert>}
 
-            {rows.length > 0 && (
+            {groups.length > 0 && (
               <>
                 <div className="flex gap-3 text-sm">
-                  <span className="text-emerald-700 font-medium">{validRows.length} ready to import</span>
-                  {invalidRows.length > 0 && (
-                    <span className="text-red-600 font-medium">{invalidRows.length} have errors (will be skipped)</span>
+                  <span className="text-emerald-700 font-medium">
+                    {validGroups.length} invoice{validGroups.length !== 1 ? "s" : ""} ready
+                    {" · "}
+                    {validGroups.reduce((s, g) => s + g.lines.length, 0)} line items
+                  </span>
+                  {invalidGroups.length > 0 && (
+                    <span className="text-red-600 font-medium">{invalidGroups.length} have errors (skipped)</span>
                   )}
                 </div>
 
-                {/* Preview table */}
-                <div className="overflow-x-auto rounded-xl border border-black/10 max-h-72">
-                  <table className="w-full text-xs">
-                    <thead className="bg-black/5 text-[var(--color-muted)] uppercase tracking-wide sticky top-0">
-                      <tr>
-                        <th className="px-3 py-2 text-left">#</th>
-                        <th className="px-3 py-2 text-left">Supplier</th>
-                        <th className="px-3 py-2 text-left">Invoice #</th>
-                        <th className="px-3 py-2 text-left">Date</th>
-                        <th className="px-3 py-2 text-left">Description</th>
-                        <th className="px-3 py-2 text-right">Qty</th>
-                        <th className="px-3 py-2 text-right">Unit cost</th>
-                        <th className="px-3 py-2 text-right">VAT</th>
-                        <th className="px-3 py-2 text-left">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-black/5">
-                      {rows.map((r) => (
-                        <tr
-                          key={r.rowNum}
-                          className={r.error ? "bg-red-50" : "bg-white hover:bg-[var(--color-cream)]/40"}
-                        >
-                          <td className="px-3 py-2 text-[var(--color-muted)]">{r.rowNum}</td>
-                          <td className="px-3 py-2 font-medium truncate max-w-[120px]">{r.supplier || "—"}</td>
-                          <td className="px-3 py-2 text-[var(--color-muted)]">{r.invoiceNumber || "—"}</td>
-                          <td className="px-3 py-2 tabular-nums">{r.invoiceDate || "—"}</td>
-                          <td className="px-3 py-2 truncate max-w-[160px]">{r.description}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{r.quantity}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{r.unitCost.toFixed(2)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{r.vatPct != null ? `${r.vatPct}%` : "—"}</td>
-                          <td className="px-3 py-2">
-                            {r.error
-                              ? <span className="text-red-600 text-[10px]">{r.error}</span>
-                              : <span className="text-emerald-600 text-[10px]">✓ OK</span>}
-                          </td>
-                        </tr>
+                {/* Preview: grouped by invoice */}
+                <div className="overflow-y-auto rounded-xl border border-black/10 max-h-72 space-y-px">
+                  {groups.map((g) => (
+                    <div key={g.key} className={g.error ? "bg-red-50" : "bg-white"}>
+                      {/* Invoice header row */}
+                      <div className="flex items-center gap-3 px-3 py-2 border-b border-black/5">
+                        <span className="font-semibold text-xs text-[var(--color-ink)] truncate flex-1">
+                          {g.supplier}
+                          {g.invoiceNumber && <span className="text-[var(--color-muted)] font-normal ml-1">· {g.invoiceNumber}</span>}
+                        </span>
+                        <span className="text-xs text-[var(--color-muted)] tabular-nums shrink-0">{g.invoiceDate}</span>
+                        <span className="text-xs font-semibold tabular-nums shrink-0">
+                          {g.total.toFixed(2)} PLN
+                        </span>
+                        <span className="text-[10px] shrink-0">
+                          {g.error
+                            ? <span className="text-red-600">{g.error}</span>
+                            : <span className="text-emerald-600">✓ {g.lines.length} item{g.lines.length !== 1 ? "s" : ""}</span>}
+                        </span>
+                      </div>
+                      {/* Line items */}
+                      {!g.error && g.lines.map((l) => (
+                        <div key={l.rowNum} className="flex items-center gap-3 px-4 py-1.5 text-xs text-[var(--color-muted)]">
+                          <span className="flex-1 truncate">{l.description}</span>
+                          <span className="tabular-nums shrink-0">{l.quantity} {l.unit}</span>
+                          <span className="tabular-nums shrink-0">{l.unitCost.toFixed(2)}</span>
+                          {l.vatPct != null && <span className="shrink-0">{l.vatPct}% VAT</span>}
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  ))}
                 </div>
 
                 <p className="text-xs text-[var(--color-muted)]">
-                  Suppliers not found by name will be created automatically.
+                  Rows with the same Invoice # → one invoice with multiple lines. Suppliers not found will be created automatically.
                 </p>
               </>
             )}
@@ -2168,10 +2218,10 @@ function ImportExcelDialog({
         {!results && (
           <Button
             onClick={() => void doImport()}
-            disabled={validRows.length === 0 || importing}
+            disabled={validGroups.length === 0 || importing}
             loading={importing}
           >
-            Import {validRows.length > 0 ? `${validRows.length} invoices` : ""}
+            Import {validGroups.length > 0 ? `${validGroups.length} invoice${validGroups.length !== 1 ? "s" : ""}` : ""}
           </Button>
         )}
       </DialogFooter>
