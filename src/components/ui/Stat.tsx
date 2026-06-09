@@ -127,7 +127,7 @@ export function Stat({
 type StatGroupProps = {
   /** Number of columns at each breakpoint. Defaults to 2 / 3 / 4
    *  (mobile / tablet / desktop) which fits most dashboards. */
-  cols?: { base?: 1 | 2; md?: 2 | 3 | 4; lg?: 2 | 3 | 4 | 5 };
+  cols?: { base?: 1 | 2; md?: 2 | 3 | 4 | 5; lg?: 2 | 3 | 4 | 5 };
   className?: string;
   children: ReactNode;
 };
@@ -142,6 +142,8 @@ export function StatGroup({ cols, className = "", children }: StatGroupProps) {
       ? "md:grid-cols-2"
       : cols?.md === 4
       ? "md:grid-cols-4"
+      : cols?.md === 5
+      ? "md:grid-cols-5"
       : "md:grid-cols-3";
   const lg =
     cols?.lg === 2

@@ -35,6 +35,7 @@ const MenuAnalytics = lazy(() => import("./pages/MenuAnalytics").then((m) => ({ 
 const MenuEngineering = lazy(() => import("./pages/MenuEngineering").then((m) => ({ default: m.MenuEngineering })));
 const MenuPriceAdvisor = lazy(() => import("./pages/MenuPriceAdvisor").then((m) => ({ default: m.MenuPriceAdvisor })));
 const ForecastPage = lazy(() => import("./pages/ForecastPage").then((m) => ({ default: m.ForecastPage })));
+const AiAdvisor = lazy(() => import("./pages/AiAdvisor").then((m) => ({ default: m.AiAdvisor })));
 
 /* ── Admin pages — heaviest in the codebase, always lazy. ── */
 const AdminPeople = lazy(() => import("./pages/admin/AdminPeople").then((m) => ({ default: m.AdminPeople })));
@@ -117,6 +118,7 @@ export default function App() {
                     <Route path="/menu/engineering" element={<LazyRoute><MenuEngineering /></LazyRoute>} />
                     <Route path="/menu/price-advisor" element={<LazyRoute><MenuPriceAdvisor /></LazyRoute>} />
                     <Route path="/forecast" element={<LazyRoute><ForecastPage /></LazyRoute>} />
+                    <Route path="/advisor" element={<LazyRoute><AiAdvisor /></LazyRoute>} />
                   </Route>
                   {/*
                       Admin routes are no longer blanket-gated by role —

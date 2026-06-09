@@ -286,3 +286,11 @@ export function IconPlus({ className = "w-5 h-5" }: IconProps) {
     </svg>
   );
 }
+
+export function IconSparkle({ className = "w-5 h-5" }: IconProps) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" />
+    </svg>
+  );
+}
