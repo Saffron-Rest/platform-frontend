@@ -6,7 +6,7 @@ import {
   updateSalaryPayment,
   type UpdateSalaryPaymentInput,
 } from "../../api/salaryPayments";
-import type { PaymentSource, SalaryPaymentRecord, User } from "../../types";
+import type { PaymentSource, PayrollReport, SalaryPaymentRecord, User } from "../../types";
 import { fmt } from "../../lib/calc";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Card } from "../../components/ui/Card";
@@ -52,6 +52,7 @@ export function AdminPayouts({ asTab }: { asTab?: boolean } = {}) {
   const [matchMode, setMatchMode] = useState<MatchMode>("paidDate");
   const [cashiers, setCashiers] = useState<User[]>([]);
   const [payments, setPayments] = useState<SalaryPaymentRecord[]>([]);
+  const [payroll, setPayroll] = useState<PayrollReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -76,8 +77,12 @@ export function AdminPayouts({ asTab }: { asTab?: boolean } = {}) {
       if (userId) params.set("userId", userId);
       if (source) params.set("source", source);
       if (matchMode === "payroll") params.set("matchPeriod", "payroll");
-      const rows = await api<SalaryPaymentRecord[]>(`/treasury/salary-payments?${params}`);
+      const [rows, report] = await Promise.all([
+        api<SalaryPaymentRecord[]>(`/treasury/salary-payments?${params}`),
+        api<PayrollReport>(`/salaries?from=${from}&to=${to}`).catch(() => null),
+      ]);
       setPayments(rows);
+      setPayroll(report);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load payouts");
       setPayments([]);
@@ -295,6 +300,124 @@ export function AdminPayouts({ asTab }: { asTab?: boolean } = {}) {
 
       {error && <Alert variant="error">{error}</Alert>}
       {message && <Alert variant="success">{message}</Alert>}
+
+      {/* ── Earnings summary for the selected date range ───────────────── */}
+      {payroll && (() => {
+        const employees = payroll.employees.filter(
+          (e) => !userId || e.userId === userId
+        );
+        if (employees.length === 0) return null;
+
+        // Single cashier selected → 3 large stat chips
+        if (userId && employees.length === 1) {
+          const e = employees[0];
+          const paid = e.paidAmount ?? 0;
+          const remaining = e.remainingPay ?? Math.max(0, e.totalPay - paid);
+          return (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-2xl bg-[var(--color-ink)] text-white p-4">
+                <p className="text-white/70 text-xs uppercase tracking-wide">Earned</p>
+                <p className="text-2xl font-bold tabular-nums mt-1">{fmt(e.totalPay)}</p>
+                <p className="text-xs text-white/50 mt-1">{from} → {to}</p>
+              </div>
+              <div className="rounded-2xl bg-emerald-700 text-white p-4">
+                <p className="text-white/80 text-xs uppercase tracking-wide">Paid</p>
+                <p className="text-2xl font-bold tabular-nums mt-1">{fmt(paid)}</p>
+                <p className="text-xs text-white/50 mt-1">
+                  {paid > 0 ? `${payments.filter(p => p.userId === userId).length} payout${payments.filter(p => p.userId === userId).length === 1 ? "" : "s"}` : "No payouts yet"}
+                </p>
+              </div>
+              <div className={`rounded-2xl text-white p-4 ${remaining > 0.005 ? "bg-amber-600" : "bg-emerald-800"}`}>
+                <p className="text-white/80 text-xs uppercase tracking-wide">Remaining</p>
+                <p className="text-2xl font-bold tabular-nums mt-1">{fmt(remaining)}</p>
+                <p className="text-xs text-white/50 mt-1">
+                  {remaining <= 0.005 ? "Fully paid" : "Still owed"}
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        // All cashiers → compact summary table
+        const active = employees.filter(
+          (e) => e.totalPay > 0 || (e.paidAmount ?? 0) > 0
+        );
+        if (active.length === 0) return null;
+        return (
+          <Card className="!p-0 overflow-hidden">
+            <div className="px-4 pt-3 pb-2 flex items-baseline justify-between">
+              <p className="font-semibold text-sm">Earnings summary</p>
+              <p className="text-xs text-[var(--color-muted)]">{from} → {to}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-black/5 text-[var(--color-muted)] text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="text-left px-4 py-2">Cashier</th>
+                    <th className="text-right px-4 py-2">Earned</th>
+                    <th className="text-right px-4 py-2">Paid</th>
+                    <th className="text-right px-4 py-2">Remaining</th>
+                    <th className="text-right px-4 py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/5">
+                  {active.map((e) => {
+                    const paid = e.paidAmount ?? 0;
+                    const remaining = e.remainingPay ?? Math.max(0, e.totalPay - paid);
+                    return (
+                      <tr key={e.userId} className="hover:bg-[var(--color-cream)]/40">
+                        <td className="px-4 py-2.5 font-medium">
+                          {e.name}
+                          {!e.active && (
+                            <span className="ml-1.5 text-[10px] text-[var(--color-muted)] bg-black/6 rounded px-1">
+                              inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[var(--color-saffron-dark)]">
+                          {fmt(e.totalPay)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-emerald-700">
+                          {paid > 0 ? fmt(paid) : <span className="text-[var(--color-muted)] font-normal">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold">
+                          {remaining > 0.005 ? (
+                            <span className="text-amber-700">{fmt(remaining)}</span>
+                          ) : e.totalPay > 0 ? (
+                            <span className="text-emerald-700 text-xs">✓ Paid</span>
+                          ) : (
+                            <span className="text-[var(--color-muted)] font-normal">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {e.fullyPaid && e.totalPay > 0 ? (
+                            <Badge variant="locked">Paid</Badge>
+                          ) : paid > 0 && remaining > 0.01 ? (
+                            <Badge variant="neutral">Partial</Badge>
+                          ) : e.totalPay > 0 ? (
+                            <Badge variant="inactive">Unpaid</Badge>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-[var(--color-ink)] text-white text-sm font-semibold">
+                    <td className="px-4 py-2.5">Total ({active.length})</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{fmt(active.reduce((s, e) => s + e.totalPay, 0))}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-emerald-300">{fmt(active.reduce((s, e) => s + (e.paidAmount ?? 0), 0))}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-amber-300">
+                      {fmt(active.reduce((s, e) => s + (e.remainingPay ?? Math.max(0, e.totalPay - (e.paidAmount ?? 0))), 0))}
+                    </td>
+                    <td className="px-4 py-2.5" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
+        );
+      })()}
 
       <Card>
         <div className="flex justify-between items-baseline gap-2 mb-4">
