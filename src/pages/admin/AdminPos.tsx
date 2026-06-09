@@ -1079,14 +1079,81 @@ function WebhookLogPanel({
   );
 }
 
+/** Parse items out of a raw Dotypos / generic webhook JSON body. */
+function parseItemsFromRaw(rawBody: string): Array<{
+  name: string; sku: string | null; quantity: number; unitPrice: number; discount: number; lineTotal: number;
+}> {
+  try {
+    const parsed = JSON.parse(rawBody);
+    // Dotypos sends an array of orders; generic sends a single object.
+    const orders: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+    const rows: ReturnType<typeof parseItemsFromRaw> = [];
+    for (const order of orders) {
+      if (!order || typeof order !== "object") continue;
+      const o = order as Record<string, unknown>;
+      const items = (o["items"] ?? o["orderItems"] ?? o["lines"]) as unknown[];
+      if (!Array.isArray(items)) continue;
+      for (const it of items) {
+        if (!it || typeof it !== "object") continue;
+        const item = it as Record<string, unknown>;
+        const name = String(item["name"] ?? item["productName"] ?? item["itemName"] ?? "—");
+        const sku = item["sku"] != null ? String(item["sku"]) : item["productid"] != null ? String(item["productid"]) : null;
+        const qty = parseFloat(String(item["quantity"] ?? item["qty"] ?? 1));
+        const unitPrice = parseFloat(String(item["pricewithvat"] ?? item["unitPrice"] ?? item["unit_price"] ?? item["price"] ?? 0));
+        const discount = parseFloat(String(item["discount"] ?? 0));
+        const lineTotal = qty * unitPrice - discount;
+        rows.push({ name, sku, quantity: isNaN(qty) ? 1 : qty, unitPrice: isNaN(unitPrice) ? 0 : unitPrice, discount: isNaN(discount) ? 0 : discount, lineTotal });
+      }
+    }
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
 function RawCallsList({ calls }: { calls: RawWebhookCall[] | null }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [showRawId, setShowRawId] = useState<string | null>(null);
 
   if (!calls || calls.length === 0) {
     return (
-      <p className="text-sm text-[var(--color-muted)] py-4 text-center">
-        No webhook calls captured yet. Send a real receipt from your POS — the full JSON will appear here.
-      </p>
+      <div className="py-6 space-y-3 text-center">
+        <p className="text-sm text-[var(--color-muted)]">
+          No webhook calls captured yet.
+        </p>
+        <p className="text-xs text-[var(--color-muted)]">
+          Click <strong>Send test receipt</strong> on the integration card above — the full invoice JSON with items will appear here.
+          Real POS receipts are also logged automatically when they arrive via webhook.
+        </p>
+        <details className="text-left max-w-xl mx-auto mt-4">
+          <summary className="text-xs cursor-pointer text-[var(--color-saffron-dark)] font-medium hover:underline">
+            Show expected invoice JSON format
+          </summary>
+          <pre className="mt-2 rounded-lg bg-[var(--color-ink)]/90 text-[var(--color-cream)] text-xs font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed">
+{`[{
+  "orderid": "receipt-abc-123",
+  "completed": "2026-06-01T12:34:56Z",
+  "paymentType": "CASH",
+  "items": [
+    {
+      "name": "Żurek",
+      "sku": "ZUREK-01",
+      "quantity": "2",
+      "pricewithvat": "18.00",
+      "discount": "0.00"
+    },
+    {
+      "name": "Pierogi ruskie",
+      "sku": "PIEROGI-R",
+      "quantity": "1",
+      "pricewithvat": "24.00",
+      "discount": "2.00"
+    }
+  ]
+}]`}
+          </pre>
+        </details>
+      </div>
     );
   }
 
@@ -1094,15 +1161,19 @@ function RawCallsList({ calls }: { calls: RawWebhookCall[] | null }) {
     <div className="space-y-2">
       {calls.map((call) => {
         const isOpen = openId === call.id;
+        const showingRaw = showRawId === call.id;
         const prettyJson = (() => {
           try { return JSON.stringify(JSON.parse(call.rawBody), null, 2); }
           catch { return call.rawBody; }
         })();
+        const items = isOpen ? parseItemsFromRaw(call.rawBody) : [];
+        const callTotal = items.reduce((s, it) => s + it.lineTotal, 0);
 
         return (
           <div key={call.id} className="rounded-lg border border-black/8 overflow-hidden">
+            {/* ── Row header ── */}
             <button type="button" onClick={() => setOpenId(isOpen ? null : call.id)}
-              className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-black/3 transition-colors">
+              className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-black/[0.03] transition-colors">
               <span className="text-[10px] text-[var(--color-muted)]">{isOpen ? "▼" : "▶"}</span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1118,14 +1189,70 @@ function RawCallsList({ calls }: { calls: RawWebhookCall[] | null }) {
                   {call.skipped > 0 && <span>{call.skipped} skipped</span>}
                 </div>
               </div>
-              <span className="text-xs text-[var(--color-saffron-dark)] shrink-0 font-medium">
-                {isOpen ? "Hide JSON" : "Show JSON"}
-              </span>
+              {callTotal > 0 && (
+                <span className="text-sm font-semibold tabular-nums text-[var(--color-ink)] shrink-0">
+                  {callTotal.toFixed(2)} zł
+                </span>
+              )}
             </button>
+
+            {/* ── Expanded detail ── */}
             {isOpen && (
-              <pre className="border-t border-black/8 bg-[var(--color-ink)]/90 text-[var(--color-cream)] text-xs font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-[500px]">
-                {prettyJson}
-              </pre>
+              <div className="border-t border-black/8 bg-[var(--color-cream)]/40 px-4 py-3 space-y-3">
+                {/* Items table */}
+                {items.length > 0 ? (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[var(--color-muted)] uppercase tracking-wide">
+                        <th className="pb-1.5 pr-3">Item</th>
+                        <th className="pb-1.5 pr-3 font-mono">SKU</th>
+                        <th className="pb-1.5 pr-3 text-right">Qty</th>
+                        <th className="pb-1.5 pr-3 text-right">Unit price</th>
+                        <th className="pb-1.5 pr-3 text-right">Discount</th>
+                        <th className="pb-1.5 text-right">Line total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/5">
+                      {items.map((item, idx) => (
+                        <tr key={idx}>
+                          <td className="py-1.5 pr-3 font-medium text-[var(--color-ink)]">{item.name}</td>
+                          <td className="py-1.5 pr-3 font-mono text-[var(--color-muted)]">{item.sku ?? "—"}</td>
+                          <td className="py-1.5 pr-3 text-right font-mono">{item.quantity}</td>
+                          <td className="py-1.5 pr-3 text-right font-mono">{item.unitPrice.toFixed(2)}</td>
+                          <td className="py-1.5 pr-3 text-right font-mono text-red-600">
+                            {item.discount > 0 ? `-${item.discount.toFixed(2)}` : "—"}
+                          </td>
+                          <td className="py-1.5 text-right font-mono font-semibold">{item.lineTotal.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-black/10">
+                        <td colSpan={5} className="pt-1.5 text-right pr-3 text-[var(--color-muted)] font-medium">Total</td>
+                        <td className="pt-1.5 text-right font-mono font-semibold">{callTotal.toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                ) : (
+                  <p className="text-xs text-[var(--color-muted)]">No items could be parsed from this payload.</p>
+                )}
+
+                {/* Raw JSON toggle */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowRawId(showingRaw ? null : call.id)}
+                    className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
+                  >
+                    {showingRaw ? "Hide raw JSON" : "Show raw JSON"}
+                  </button>
+                  {showingRaw && (
+                    <pre className="mt-2 rounded-lg bg-[var(--color-ink)]/90 text-[var(--color-cream)] text-xs font-mono p-4 overflow-x-auto whitespace-pre leading-relaxed max-h-[400px]">
+                      {prettyJson}
+                    </pre>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         );
