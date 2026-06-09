@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { todayLocalIso } from "../../lib/dates";
 import { useAuth } from "../../context/AuthContext";
 import { useConfirm } from "../../context/ConfirmContext";
@@ -140,6 +141,7 @@ export function AdminPayables({ asTab }: { asTab?: boolean } = {}) {
   const [error, setError] = useState<string | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const [openSupplier, setOpenSupplier] = useState(false);
+  const [openImport, setOpenImport] = useState(false);
   const [detail, setDetail] = useState<PayableDetail | null>(null);
 
   const reload = async () => {
@@ -190,21 +192,16 @@ export function AdminPayables({ asTab }: { asTab?: boolean } = {}) {
           action={
             canManage && (
               <>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    ensurePickerData();
-                    setOpenSupplier(true);
-                  }}
-                >
+                <Button variant="secondary" onClick={() => { ensurePickerData(); setOpenSupplier(true); }}>
                   + Supplier
                 </Button>
-                <Button
-                  onClick={() => {
-                    ensurePickerData();
-                    setOpenCreate(true);
-                  }}
-                >
+                <Button variant="secondary" onClick={downloadTemplate}>
+                  ↓ Template
+                </Button>
+                <Button variant="secondary" onClick={() => { ensurePickerData(); setOpenImport(true); }}>
+                  Import Excel
+                </Button>
+                <Button onClick={() => { ensurePickerData(); setOpenCreate(true); }}>
                   + Record credit invoice
                 </Button>
               </>
@@ -246,6 +243,12 @@ export function AdminPayables({ asTab }: { asTab?: boolean } = {}) {
             <div className="flex gap-2">
               <Button variant="secondary" size="sm" onClick={() => { ensurePickerData(); setOpenSupplier(true); }}>
                 + Supplier
+              </Button>
+              <Button variant="secondary" size="sm" onClick={downloadTemplate}>
+                ↓ Template
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => { ensurePickerData(); setOpenImport(true); }}>
+                Import Excel
               </Button>
               <Button size="sm" onClick={() => { ensurePickerData(); setOpenCreate(true); }}>
                 + Record credit invoice
@@ -320,6 +323,21 @@ export function AdminPayables({ asTab }: { asTab?: boolean } = {}) {
         onClose={() => setDetail(null)}
         onChanged={async (next) => {
           setDetail(next);
+          await reload();
+        }}
+      />
+
+      <ImportExcelDialog
+        open={openImport}
+        suppliers={suppliers ?? []}
+        onClose={() => setOpenImport(false)}
+        onImported={async (newSuppliers) => {
+          if (newSuppliers.length > 0) {
+            setSuppliers((cur) =>
+              [...(cur ?? []), ...newSuppliers].sort((a, b) => a.name.localeCompare(b.name))
+            );
+          }
+          setOpenImport(false);
           await reload();
         }}
       />
@@ -1773,6 +1791,391 @@ function SupplierDialog({
         </Button>
       </DialogFooter>
     </DialogForm>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Excel import
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ImportRow = {
+  rowNum: number;
+  supplier: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate: string;
+  category: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  vatPct: number | null;
+  notes: string;
+  error?: string;
+};
+
+function normaliseKey(h: string): string {
+  return h.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+const COL_MAP: Record<string, keyof ImportRow> = {
+  supplier: "supplier", suppliername: "supplier",
+  invoice: "invoiceNumber", invoicenumber: "invoiceNumber", invoiceno: "invoiceNumber", invoicenr: "invoiceNumber",
+  invoicedate: "invoiceDate", date: "invoiceDate",
+  duedate: "dueDate", due: "dueDate",
+  category: "category",
+  description: "description", item: "description", product: "description", detail: "description",
+  qty: "quantity", quantity: "quantity",
+  unit: "unit",
+  unitcost: "unitCost", unitprice: "unitCost", price: "unitCost", amount: "unitCost",
+  total: "unitCost", netto: "unitCost", net: "unitCost", wartoscnetto: "unitCost",
+  vat: "vatPct", vatpct: "vatPct", taxpct: "vatPct", tax: "vatPct",
+  notes: "notes", note: "notes", comment: "notes", uwagi: "notes",
+};
+
+function parseExcelDate(val: unknown): string {
+  if (val == null) return "";
+  if (typeof val === "number") {
+    const d = XLSX.SSF.parse_date_code(val);
+    if (!d) return "";
+    const mm = String(d.m).padStart(2, "0");
+    const dd = String(d.d).padStart(2, "0");
+    return `${d.y}-${mm}-${dd}`;
+  }
+  if (typeof val === "string") {
+    // Try DD.MM.YYYY or DD/MM/YYYY or YYYY-MM-DD
+    const iso = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const eu = val.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);
+    if (eu) return `${eu[3]}-${eu[2].padStart(2, "0")}-${eu[1].padStart(2, "0")}`;
+  }
+  return "";
+}
+
+function parseRows(wb: XLSX.WorkBook): ImportRow[] {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
+  if (raw.length < 2) return [];
+
+  // Build column index map from header row
+  const headers = (raw[0] as unknown[]).map((h) => normaliseKey(String(h ?? "")));
+  const colIdx: Partial<Record<keyof ImportRow, number>> = {};
+  headers.forEach((h, i) => {
+    const field = COL_MAP[h];
+    if (field && !(field in colIdx)) colIdx[field] = i;
+  });
+
+  const get = (row: unknown[], field: keyof ImportRow): string => {
+    const i = colIdx[field];
+    if (i == null) return "";
+    const v = row[i];
+    if (field === "invoiceDate" || field === "dueDate") return parseExcelDate(v);
+    return v == null ? "" : String(v).trim();
+  };
+
+  const rows: ImportRow[] = [];
+  for (let r = 1; r < raw.length; r++) {
+    const row = raw[r] as unknown[];
+    if (row.every((c) => c === "" || c == null)) continue;
+
+    const supplier = get(row, "supplier");
+    const invoiceDate = get(row, "invoiceDate");
+    const description = get(row, "description") || get(row, "invoiceNumber") || "Invoice";
+    const unitCostRaw = parseFloat(get(row, "unitCost").replace(",", ".")) || 0;
+    const quantityRaw = parseFloat(get(row, "quantity").replace(",", ".")) || 1;
+    const vatRaw = get(row, "vatPct");
+    const vatPct = vatRaw !== "" ? parseFloat(vatRaw.replace(",", ".").replace("%", "")) : null;
+
+    let error: string | undefined;
+    if (!supplier) error = "Supplier is required";
+    else if (!invoiceDate) error = "Invoice date is required or unrecognised format";
+    else if (unitCostRaw <= 0) error = "Unit cost must be > 0";
+
+    rows.push({
+      rowNum: r + 1,
+      supplier,
+      invoiceNumber: get(row, "invoiceNumber"),
+      invoiceDate,
+      dueDate: get(row, "dueDate"),
+      category: get(row, "category"),
+      description,
+      quantity: quantityRaw,
+      unit: get(row, "unit") || "pcs",
+      unitCost: unitCostRaw,
+      vatPct: isNaN(vatPct as number) ? null : vatPct,
+      notes: get(row, "notes"),
+      error,
+    });
+  }
+  return rows;
+}
+
+function downloadTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["Supplier", "Invoice #", "Invoice Date", "Due Date", "Category", "Description", "Qty", "Unit", "Unit Cost", "VAT %", "Notes"],
+    ["Fresh Foods Ltd", "INV-001", "2026-06-01", "2026-06-15", "SUPPLIER", "Weekly vegetable delivery", 1, "pcs", 450.00, 8, ""],
+    ["Clean Masters", "INV-002", "2026-06-03", "2026-06-17", "CLEANING", "Monthly cleaning supplies", 1, "pcs", 120.00, 23, ""],
+  ]);
+  ws["!cols"] = [14, 12, 14, 14, 12, 28, 6, 6, 10, 8, 20].map((w) => ({ wch: w }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Invoices");
+  XLSX.writeFile(wb, "payables-import-template.xlsx");
+}
+
+function ImportExcelDialog({
+  open,
+  suppliers,
+  onClose,
+  onImported,
+}: {
+  open: boolean;
+  suppliers: Supplier[];
+  onClose: () => void;
+  onImported: (newSuppliers: Supplier[]) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [results, setResults] = useState<{ ok: number; failed: string[] } | null>(null);
+  const [parseError, setParseError] = useState("");
+
+  const validRows = rows.filter((r) => !r.error);
+  const invalidRows = rows.filter((r) => r.error);
+
+  useEffect(() => {
+    if (!open) {
+      setRows([]);
+      setFileName("");
+      setProgress(null);
+      setResults(null);
+      setParseError("");
+    }
+  }, [open]);
+
+  const handleFile = (file: File) => {
+    setParseError("");
+    setRows([]);
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target!.result, { type: "array", cellDates: false });
+        const parsed = parseRows(wb);
+        if (parsed.length === 0) {
+          setParseError("No data rows found. Make sure the first row contains column headers.");
+        } else {
+          setRows(parsed);
+        }
+      } catch {
+        setParseError("Could not parse the file. Please use .xlsx or .xls format.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const doImport = async () => {
+    if (validRows.length === 0) return;
+    setImporting(true);
+    setProgress({ done: 0, total: validRows.length });
+
+    const supplierCache = new Map(suppliers.map((s) => [s.name.toLowerCase(), s]));
+    const newSuppliers: Supplier[] = [];
+    const failed: string[] = [];
+    let done = 0;
+
+    for (const row of validRows) {
+      try {
+        // Resolve or create supplier
+        let supplier = supplierCache.get(row.supplier.toLowerCase());
+        if (!supplier) {
+          supplier = await createSupplier({ name: row.supplier, paymentTermsDays: 14 });
+          supplierCache.set(supplier.name.toLowerCase(), supplier);
+          newSuppliers.push(supplier);
+        }
+
+        // Resolve category
+        const categoryVal = CATEGORY_OPTIONS.find(
+          (c) => c.label.toLowerCase().includes(row.category.toLowerCase()) ||
+                 c.value.toLowerCase() === row.category.toLowerCase()
+        )?.value as PayableCategory | undefined;
+
+        await createPayable({
+          supplierId: supplier.id,
+          invoiceNumber: row.invoiceNumber || null,
+          invoiceDate: row.invoiceDate,
+          dueDate: row.dueDate || null,
+          category: categoryVal,
+          notes: row.notes || null,
+          lines: [{
+            description: row.description,
+            quantity: row.quantity,
+            unit: row.unit,
+            unitCost: row.unitCost,
+            vatPct: row.vatPct,
+          }],
+        });
+
+        done++;
+        setProgress({ done, total: validRows.length });
+      } catch (e) {
+        failed.push(`Row ${row.rowNum} (${row.supplier}): ${e instanceof Error ? e.message : "Failed"}`);
+      }
+    }
+
+    setImporting(false);
+    setResults({ ok: done, failed });
+    if (failed.length === 0) {
+      setTimeout(() => onImported(newSuppliers), 1200);
+    } else {
+      onImported(newSuppliers);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} size="lg" ariaLabel="Import invoices from Excel">
+      <DialogTitle
+        description="Upload an .xlsx file — each row becomes one invoice. Download the template to see the expected columns."
+      >
+        Import invoices from Excel
+      </DialogTitle>
+      <DialogBody className="space-y-4">
+
+        {/* Template download + file pick */}
+        {!results && (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" onClick={downloadTemplate}>
+                ↓ Download template
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={importing}
+              >
+                {fileName ? `📄 ${fileName}` : "Choose file…"}
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+              />
+            </div>
+
+            {parseError && <Alert variant="error">{parseError}</Alert>}
+
+            {rows.length > 0 && (
+              <>
+                <div className="flex gap-3 text-sm">
+                  <span className="text-emerald-700 font-medium">{validRows.length} ready to import</span>
+                  {invalidRows.length > 0 && (
+                    <span className="text-red-600 font-medium">{invalidRows.length} have errors (will be skipped)</span>
+                  )}
+                </div>
+
+                {/* Preview table */}
+                <div className="overflow-x-auto rounded-xl border border-black/10 max-h-72">
+                  <table className="w-full text-xs">
+                    <thead className="bg-black/5 text-[var(--color-muted)] uppercase tracking-wide sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left">#</th>
+                        <th className="px-3 py-2 text-left">Supplier</th>
+                        <th className="px-3 py-2 text-left">Invoice #</th>
+                        <th className="px-3 py-2 text-left">Date</th>
+                        <th className="px-3 py-2 text-left">Description</th>
+                        <th className="px-3 py-2 text-right">Qty</th>
+                        <th className="px-3 py-2 text-right">Unit cost</th>
+                        <th className="px-3 py-2 text-right">VAT</th>
+                        <th className="px-3 py-2 text-left">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/5">
+                      {rows.map((r) => (
+                        <tr
+                          key={r.rowNum}
+                          className={r.error ? "bg-red-50" : "bg-white hover:bg-[var(--color-cream)]/40"}
+                        >
+                          <td className="px-3 py-2 text-[var(--color-muted)]">{r.rowNum}</td>
+                          <td className="px-3 py-2 font-medium truncate max-w-[120px]">{r.supplier || "—"}</td>
+                          <td className="px-3 py-2 text-[var(--color-muted)]">{r.invoiceNumber || "—"}</td>
+                          <td className="px-3 py-2 tabular-nums">{r.invoiceDate || "—"}</td>
+                          <td className="px-3 py-2 truncate max-w-[160px]">{r.description}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{r.quantity}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{r.unitCost.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{r.vatPct != null ? `${r.vatPct}%` : "—"}</td>
+                          <td className="px-3 py-2">
+                            {r.error
+                              ? <span className="text-red-600 text-[10px]">{r.error}</span>
+                              : <span className="text-emerald-600 text-[10px]">✓ OK</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="text-xs text-[var(--color-muted)]">
+                  Suppliers not found by name will be created automatically.
+                </p>
+              </>
+            )}
+
+            {progress && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-[var(--color-muted)]">
+                  <span>Importing…</span>
+                  <span>{progress.done} / {progress.total}</span>
+                </div>
+                <div className="h-2 rounded-full bg-black/8 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[var(--color-saffron)] transition-all"
+                    style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Results */}
+        {results && (
+          <div className="space-y-3">
+            {results.ok > 0 && (
+              <Alert variant="success">
+                {results.ok} invoice{results.ok === 1 ? "" : "s"} imported successfully.
+              </Alert>
+            )}
+            {results.failed.length > 0 && (
+              <Alert variant="error">
+                <p className="font-semibold mb-1">{results.failed.length} row{results.failed.length === 1 ? "" : "s"} failed:</p>
+                <ul className="text-xs space-y-0.5">
+                  {results.failed.map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
+              </Alert>
+            )}
+          </div>
+        )}
+
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={importing}>
+          {results ? "Close" : "Cancel"}
+        </Button>
+        {!results && (
+          <Button
+            onClick={() => void doImport()}
+            disabled={validRows.length === 0 || importing}
+            loading={importing}
+          >
+            Import {validRows.length > 0 ? `${validRows.length} invoices` : ""}
+          </Button>
+        )}
+      </DialogFooter>
+    </Dialog>
   );
 }
 
