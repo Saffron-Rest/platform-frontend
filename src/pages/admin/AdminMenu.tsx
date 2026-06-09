@@ -370,7 +370,7 @@ export function AdminMenu() {
       if (catEditing) {
         await updateCategory(catEditing.id, {
           name: catName.trim(),
-          parentId: catParentId || null,
+          parentId: catParentId, // "" = clear to top-level; backend treats blank as null
         });
         setMessage(`Category "${catName.trim()}" updated`);
       } else {
@@ -384,6 +384,47 @@ export function AdminMenu() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save category");
+    }
+  };
+
+  // Move a category up or down within its sibling group (same parent level)
+  const moveCat = async (c: MenuCategory, dir: -1 | 1) => {
+    const siblings = categories
+      .filter((s) => (s.parentId ?? null) === (c.parentId ?? null))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const idx = siblings.findIndex((s) => s.id === c.id);
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= siblings.length) return;
+    const other = siblings[swapIdx];
+    try {
+      await Promise.all([
+        updateCategory(c.id, { sortOrder: other.sortOrder }),
+        updateCategory(other.id, { sortOrder: c.sortOrder }),
+      ]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not reorder");
+    }
+  };
+
+  // Move an item up or down within its category in the current visible list
+  const moveItem = async (item: import("../../api/menu").MenuItem, dir: -1 | 1) => {
+    // Only reorder within the same category
+    const inCat = filteredItems.filter((i) => i.categoryId === item.categoryId);
+    const idx = inCat.findIndex((i) => i.id === item.id);
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= inCat.length) return;
+    const other = inCat[swapIdx];
+    const myOrder = item.displayOrder ?? idx;
+    const otherOrder = other.displayOrder ?? swapIdx;
+    try {
+      await Promise.all([
+        updateItem(item.id, { displayOrder: otherOrder }),
+        updateItem(other.id, { displayOrder: myOrder }),
+      ]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not reorder");
     }
   };
 
@@ -688,7 +729,23 @@ export function AdminMenu() {
                         <span className="font-medium truncate">{parent.name}</span>
                         <span className="ml-2 text-xs text-[var(--color-muted)]">{totalCount}</span>
                       </button>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          className="text-[10px] text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)] px-0.5"
+                          onClick={() => void moveCat(parent, -1)}
+                          title="Move up"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="text-[10px] text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)] px-0.5"
+                          onClick={() => void moveCat(parent, 1)}
+                          title="Move down"
+                        >
+                          ↓
+                        </button>
                         <button
                           type="button"
                           className="text-xs text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)]"
@@ -731,7 +788,23 @@ export function AdminMenu() {
                                       {child.itemCount ?? 0}
                                     </span>
                                   </button>
-                                  <div className="flex items-center gap-1.5 shrink-0">
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      className="text-[10px] text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)] px-0.5"
+                                      onClick={() => void moveCat(child, -1)}
+                                      title="Move up"
+                                    >
+                                      ↑
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="text-[10px] text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)] px-0.5"
+                                      onClick={() => void moveCat(child, 1)}
+                                      title="Move down"
+                                    >
+                                      ↓
+                                    </button>
                                     <button
                                       type="button"
                                       className="text-xs text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)]"
@@ -1147,6 +1220,22 @@ export function AdminMenu() {
                             {i.sku ?? "—"}
                           </td>
                           <td className="px-4 py-2 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              className="text-xs text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)] mr-1"
+                              onClick={() => void moveItem(i, -1)}
+                              title="Move up"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)] mr-2"
+                              onClick={() => void moveItem(i, 1)}
+                              title="Move down"
+                            >
+                              ↓
+                            </button>
                             <button
                               type="button"
                               className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline mr-2"

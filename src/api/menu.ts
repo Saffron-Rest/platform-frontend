@@ -38,6 +38,7 @@ export type MenuItem = {
   marginAmount?: number;
   marginPct?: number;
   foodCostPct?: number;
+  displayOrder?: number;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
@@ -57,6 +58,7 @@ export type MenuItemPayload = {
   active?: boolean;
   portionSize?: string | null;
   variants?: string | null;
+  displayOrder?: number;
 };
 
 export type CategoryPayload = {
