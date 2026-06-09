@@ -5,6 +5,7 @@ export type MenuCategory = {
   name: string;
   sortOrder: number;
   active: boolean;
+  parentId?: string | null;
   itemCount?: number;
 };
 
@@ -62,6 +63,7 @@ export type CategoryPayload = {
   name?: string;
   sortOrder?: number;
   active?: boolean;
+  parentId?: string | null;
 };
 
 export type CsvImportResult = {

@@ -137,6 +137,11 @@ export function AdminMenu() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("");
+  // Category inline form state
+  const [catFormOpen, setCatFormOpen] = useState(false);
+  const [catEditing, setCatEditing] = useState<MenuCategory | null>(null);
+  const [catName, setCatName] = useState("");
+  const [catParentId, setCatParentId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<ItemDraft>(blankDraft);
   const [saving, setSaving] = useState(false);
@@ -182,10 +187,34 @@ export function AdminMenu() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showArchived]);
 
+  // Top-level categories (no parent) — sorted by sortOrder
+  const rootCategories = useMemo(
+    () => categories.filter((c) => !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [categories],
+  );
+
+  // Sub-categories grouped by parentId
+  const childrenOf = useMemo(() => {
+    const map: Record<string, MenuCategory[]> = {};
+    for (const c of categories) {
+      if (c.parentId) {
+        (map[c.parentId] ??= []).push(c);
+      }
+    }
+    return map;
+  }, [categories]);
+
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
+    // When a parent category is selected, include its children's items too
+    const allowedIds: Set<string> | null = filterCategory
+      ? new Set([
+          filterCategory,
+          ...(childrenOf[filterCategory] ?? []).map((c) => c.id),
+        ])
+      : null;
     return items.filter((i) => {
-      if (filterCategory && i.categoryId !== filterCategory) return false;
+      if (allowedIds && !allowedIds.has(i.categoryId)) return false;
       if (q) {
         return (
           i.name.toLowerCase().includes(q) ||
@@ -195,7 +224,7 @@ export function AdminMenu() {
       }
       return true;
     });
-  }, [items, filterCategory, search]);
+  }, [items, filterCategory, search, childrenOf]);
 
   const startEdit = (i: MenuItem) => {
     setDraft({
@@ -321,26 +350,40 @@ export function AdminMenu() {
     }
   };
 
-  const addCategory = async () => {
-    const name = prompt("New category name?");
-    if (!name || !name.trim()) return;
-    try {
-      await createCategory({ name: name.trim() });
-      setMessage(`Category "${name.trim()}" added`);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create category");
-    }
+  const openNewCatForm = () => {
+    setCatEditing(null);
+    setCatName("");
+    setCatParentId("");
+    setCatFormOpen(true);
   };
 
-  const renameCategory = async (c: MenuCategory) => {
-    const name = prompt("Rename category", c.name);
-    if (!name || !name.trim() || name.trim() === c.name) return;
+  const openEditCatForm = (c: MenuCategory) => {
+    setCatEditing(c);
+    setCatName(c.name);
+    setCatParentId(c.parentId ?? "");
+    setCatFormOpen(true);
+  };
+
+  const saveCatForm = async () => {
+    if (!catName.trim()) return;
     try {
-      await updateCategory(c.id, { name: name.trim() });
+      if (catEditing) {
+        await updateCategory(catEditing.id, {
+          name: catName.trim(),
+          parentId: catParentId || null,
+        });
+        setMessage(`Category "${catName.trim()}" updated`);
+      } else {
+        await createCategory({
+          name: catName.trim(),
+          parentId: catParentId || null,
+        });
+        setMessage(`Category "${catName.trim()}" added`);
+      }
+      setCatFormOpen(false);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not rename");
+      setError(e instanceof Error ? e.message : "Could not save category");
     }
   };
 
@@ -475,11 +518,25 @@ export function AdminMenu() {
               className="field-input"
             >
               <option value="">All categories</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              {rootCategories.map((parent) => {
+                const children = childrenOf[parent.id] ?? [];
+                return children.length > 0 ? (
+                  <optgroup key={parent.id} label={parent.name}>
+                    <option value={parent.id}>{parent.name} (all)</option>
+                    {children
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                      .map((child) => (
+                        <option key={child.id} value={child.id}>
+                          {"  "}{child.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                ) : (
+                  <option key={parent.id} value={parent.id}>
+                    {parent.name}
+                  </option>
+                );
+              })}
             </select>
             <label className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
               <input
@@ -532,57 +589,172 @@ export function AdminMenu() {
         <Card>
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold">Categories</h3>
-            <button
-              type="button"
-              className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
-              onClick={() => void addCategory()}
-            >
-              + Add
-            </button>
+            {!catFormOpen && (
+              <button
+                type="button"
+                className="text-xs font-medium text-[var(--color-saffron-dark)] hover:underline"
+                onClick={openNewCatForm}
+              >
+                + Add
+              </button>
+            )}
           </div>
+
+          {/* Inline category form */}
+          {catFormOpen && (
+            <div className="mb-3 p-3 rounded-lg bg-black/5 space-y-2">
+              <p className="text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wide">
+                {catEditing ? "Edit category" : "New category"}
+              </p>
+              <input
+                className="field-input w-full"
+                placeholder="Category name"
+                value={catName}
+                maxLength={80}
+                onChange={(e) => setCatName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void saveCatForm()}
+                autoFocus
+              />
+              <select
+                className="field-input w-full"
+                value={catParentId}
+                onChange={(e) => setCatParentId(e.target.value)}
+              >
+                <option value="">— Top-level category —</option>
+                {rootCategories
+                  .filter((c) => !catEditing || c.id !== catEditing.id)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveCatForm()}
+                  disabled={!catName.trim()}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[var(--color-saffron)] text-white disabled:opacity-40"
+                >
+                  {catEditing ? "Save" : "Add"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCatFormOpen(false)}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-black/10 text-[var(--color-muted)] hover:bg-black/5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {categories.length === 0 ? (
             <p className="text-sm text-[var(--color-muted)]">
               No categories yet. Add one to start.
             </p>
           ) : (
-            <ul className="space-y-1">
-              {categories.map((c) => {
-                const isActive = c.id === filterCategory;
+            <ul className="space-y-0.5">
+              {/* All categories button */}
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setFilterCategory("")}
+                  className={`w-full text-left px-2 py-1.5 rounded-lg text-sm ${
+                    !filterCategory ? "bg-[var(--color-saffron)]/10 font-medium" : "hover:bg-black/5 text-[var(--color-muted)]"
+                  }`}
+                >
+                  All items
+                </button>
+              </li>
+              {rootCategories.map((parent) => {
+                const children = childrenOf[parent.id] ?? [];
+                const isParentActive = parent.id === filterCategory;
+                // Total count = parent's own items + children's items
+                const childCount = children.reduce((s, c) => s + (c.itemCount ?? 0), 0);
+                const totalCount = (parent.itemCount ?? 0) + childCount;
                 return (
-                  <li
-                    key={c.id}
-                    className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg ${
-                      isActive ? "bg-[var(--color-saffron)]/10" : "hover:bg-black/5"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFilterCategory(filterCategory === c.id ? "" : c.id)
-                      }
-                      className="text-left flex-1 min-w-0"
+                  <li key={parent.id}>
+                    <div
+                      className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg ${
+                        isParentActive ? "bg-[var(--color-saffron)]/10" : "hover:bg-black/5"
+                      }`}
                     >
-                      <span className="font-medium truncate">{c.name}</span>
-                      <span className="ml-2 text-xs text-[var(--color-muted)]">
-                        {c.itemCount ?? 0}
-                      </span>
-                    </button>
-                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        className="text-xs text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)]"
-                        onClick={() => void renameCategory(c)}
+                        onClick={() => setFilterCategory(isParentActive ? "" : parent.id)}
+                        className="text-left flex-1 min-w-0"
                       >
-                        ✎
+                        <span className="font-medium truncate">{parent.name}</span>
+                        <span className="ml-2 text-xs text-[var(--color-muted)]">{totalCount}</span>
                       </button>
-                      <button
-                        type="button"
-                        className="text-xs text-red-600 hover:underline"
-                        onClick={() => void removeCategory(c)}
-                      >
-                        ×
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          className="text-xs text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)]"
+                          onClick={() => openEditCatForm(parent)}
+                          title="Edit"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-red-600 hover:underline"
+                          onClick={() => void removeCategory(parent)}
+                          title="Delete"
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
+                    {/* Sub-categories */}
+                    {children.length > 0 && (
+                      <ul className="ml-3 mt-0.5 space-y-0.5 border-l-2 border-[var(--color-saffron)]/20 pl-2">
+                        {children
+                          .sort((a, b) => a.sortOrder - b.sortOrder)
+                          .map((child) => {
+                            const isChildActive = child.id === filterCategory;
+                            return (
+                              <li key={child.id}>
+                                <div
+                                  className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg ${
+                                    isChildActive ? "bg-[var(--color-saffron)]/10" : "hover:bg-black/5"
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => setFilterCategory(isChildActive ? "" : child.id)}
+                                    className="text-left flex-1 min-w-0"
+                                  >
+                                    <span className="text-sm truncate">{child.name}</span>
+                                    <span className="ml-1.5 text-xs text-[var(--color-muted)]">
+                                      {child.itemCount ?? 0}
+                                    </span>
+                                  </button>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      className="text-xs text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)]"
+                                      onClick={() => openEditCatForm(child)}
+                                      title="Edit"
+                                    >
+                                      ✎
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="text-xs text-red-600 hover:underline"
+                                      onClick={() => void removeCategory(child)}
+                                      title="Delete"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                </div>
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    )}
                   </li>
                 );
               })}
@@ -613,11 +785,25 @@ export function AdminMenu() {
                   onChange={(e) => setDraft((d) => ({ ...d, categoryId: e.target.value }))}
                 >
                   <option value="">— pick —</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
+                  {rootCategories.map((parent) => {
+                    const children = childrenOf[parent.id] ?? [];
+                    return children.length > 0 ? (
+                      <optgroup key={parent.id} label={parent.name}>
+                        <option value={parent.id}>{parent.name} (general)</option>
+                        {children
+                          .sort((a, b) => a.sortOrder - b.sortOrder)
+                          .map((child) => (
+                            <option key={child.id} value={child.id}>
+                              {"  "}{child.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ) : (
+                      <option key={parent.id} value={parent.id}>
+                        {parent.name}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
               <label className="field-label">
