@@ -1225,18 +1225,52 @@ function DetailDrawer({
           <DialogBody className="space-y-5">
             {err && <Alert variant="error">{err}</Alert>}
 
-            <StatGroup cols={{ md: 5, lg: 5 }}>
-              <Stat label="Netto" value={<Money value={invoice.subtotal} />} />
-              <Stat
-                label="VAT"
-                value={<Money value={invoice.vat} />}
-                tone={invoice.vat > 0 ? "neutral" : "neutral"}
-              />
-              <Stat
-                label="Brutto"
-                value={<Money value={invoice.total} />}
-                emphasis="hero"
-              />
+            {/* ── Netto / Brutto hero cards ──────────────────────────── */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Netto */}
+              <div className="rounded-xl border border-black/[0.06] border-l-4 border-l-transparent bg-white p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-black/[0.06] text-[var(--color-muted)]">
+                    Netto
+                  </span>
+                  <span className="text-[10px] text-[var(--color-muted)]">excl. VAT</span>
+                </div>
+                <p className="text-2xl md:text-3xl font-semibold tabular-nums text-[var(--color-ink)]">
+                  <Money value={invoice.subtotal} />
+                </p>
+              </div>
+
+              {/* Brutto — "you pay this" */}
+              <div className="rounded-xl border border-[var(--color-saffron)]/30 border-l-4 border-l-[var(--color-saffron)] bg-[var(--color-saffron)]/5 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[var(--color-saffron)]/20 text-[var(--color-saffron-dark)]">
+                      Brutto
+                    </span>
+                    <span className="text-[10px] text-[var(--color-muted)]">you pay this</span>
+                  </div>
+                  {canManage && invoice.status !== "VOID" && invoice.amountPaid <= 0 && (
+                    <button
+                      type="button"
+                      title="Edit total brutto"
+                      onClick={() => setEditOpen(true)}
+                      className="p-1 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-saffron-dark)] hover:bg-[var(--color-saffron)]/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-saffron)]"
+                    >
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81 3.23 11.33c-.044.044-.072.099-.084.158l-.665 2.33 2.33-.665a.25.25 0 00.158-.084L11.19 6.25z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <p className="text-2xl md:text-3xl font-semibold tabular-nums text-[var(--color-saffron-dark)]">
+                  <Money value={invoice.total} />
+                </p>
+              </div>
+            </div>
+
+            {/* ── VAT / Paid / Outstanding ───────────────────────────── */}
+            <StatGroup cols={{ base: 2, md: 3, lg: 3 }}>
+              <Stat label="VAT" value={<Money value={invoice.vat} />} />
               <Stat
                 label="Paid"
                 value={<Money value={invoice.amountPaid} />}
@@ -1577,8 +1611,12 @@ function EditInvoiceDialog({
   const [dueDate, setDueDate] = useState("");
   const [category, setCategory] = useState<PayableCategory | "">("");
   const [notes, setNotes] = useState("");
+  const [totalBrutto, setTotalBrutto] = useState("");
+  const [vatOverride, setVatOverride] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const canEditTotal = invoice.amountPaid <= 0;
 
   useEffect(() => {
     if (!open) return;
@@ -1586,6 +1624,8 @@ function EditInvoiceDialog({
     setDueDate(invoice.dueDate ?? "");
     setCategory((invoice.category ?? "") as PayableCategory | "");
     setNotes(invoice.notes ?? "");
+    setTotalBrutto(invoice.total.toFixed(2));
+    setVatOverride(invoice.vat.toFixed(2));
     setErr(null);
   }, [open, invoice]);
 
@@ -1593,11 +1633,19 @@ function EditInvoiceDialog({
     setErr(null);
     setSubmitting(true);
     try {
+      const bruttoVal = num(totalBrutto);
+      if (canEditTotal && bruttoVal <= 0) {
+        setErr("Total brutto must be greater than zero.");
+        setSubmitting(false);
+        return;
+      }
       const next = await updatePayable(invoice.id, {
         invoiceNumber: invoiceNumber.trim() || null,
         dueDate: dueDate || undefined,
         category: (category as PayableCategory) || undefined,
         notes: notes.trim() || null,
+        ...(canEditTotal ? { total: bruttoVal } : {}),
+        ...(canEditTotal && vatOverride !== "" ? { vat: num(vatOverride) } : {}),
       });
       onSaved(next);
     } catch (e) {
@@ -1622,6 +1670,51 @@ function EditInvoiceDialog({
       </DialogTitle>
       <DialogBody className="space-y-3">
         {err && <Alert variant="error">{err}</Alert>}
+
+        {/* ── Total brutto (what you pay) ──────────────────────────── */}
+        <div className={`rounded-xl border p-3 space-y-3 ${
+          canEditTotal
+            ? "border-[var(--color-saffron)]/30 bg-[var(--color-saffron)]/5"
+            : "border-black/8 bg-black/[0.02] opacity-60"
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[var(--color-saffron)]/20 text-[var(--color-saffron-dark)]">
+              Brutto — you pay this
+            </span>
+            {!canEditTotal && (
+              <span className="text-[10px] text-[var(--color-muted)]">
+                Reverse payments to edit
+              </span>
+            )}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label="Total brutto (incl. VAT)"
+              hint="The exact amount you owe the supplier — override when supplier rounding differs from Σ lines"
+            >
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0.01"
+                value={totalBrutto}
+                onChange={(e) => setTotalBrutto(e.target.value)}
+                disabled={!canEditTotal}
+              />
+            </Field>
+            <Field label="VAT amount" optional hint="Override if supplier's VAT total differs from line totals">
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                value={vatOverride}
+                onChange={(e) => setVatOverride(e.target.value)}
+                disabled={!canEditTotal}
+              />
+            </Field>
+          </div>
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Invoice number" optional>
