@@ -108,7 +108,10 @@ type LineDraft = {
   description: string;
   quantity: string;
   unit: string;
+  /** The price the user typed — netto or brutto depending on vatBase. */
   unitCost: string;
+  /** Whether unitCost is the netto (ex-VAT) or brutto (incl-VAT) price. */
+  vatBase: "netto" | "brutto";
   discountType: "PERCENTAGE" | "AMOUNT" | "";
   discountValue: string;
   vatPct: string;
@@ -120,10 +123,20 @@ const blankLine = (): LineDraft => ({
   quantity: "1",
   unit: "pcs",
   unitCost: "",
+  vatBase: "netto",
   discountType: "",
   discountValue: "",
   vatPct: "",
 });
+
+/** Convert the entered unitCost to a netto value for calculations and submission. */
+const toNettoUnitCost = (l: LineDraft): number => {
+  if (l.vatBase === "brutto" && l.vatPct !== "") {
+    const rate = num(l.vatPct);
+    return rate > 0 ? num(l.unitCost) / (1 + rate / 100) : num(l.unitCost);
+  }
+  return num(l.unitCost);
+};
 
 const num = (s: string): number => {
   const parsed = parseMoneyInput(s);
@@ -585,7 +598,8 @@ function CreateInvoiceDialog({
   }, [supplierId, invoiceDate, suppliers]);
 
   const lineCalc = useMemo(() => lines.map((l) => {
-    const gross = num(l.quantity) * num(l.unitCost);
+    const netUnitCost = toNettoUnitCost(l);
+    const gross = num(l.quantity) * netUnitCost;
     const discAmt = l.discountType === "PERCENTAGE"
       ? gross * Math.min(num(l.discountValue), 100) / 100
       : l.discountType === "AMOUNT"
@@ -593,7 +607,7 @@ function CreateInvoiceDialog({
         : 0;
     const net = gross - discAmt;
     const vatAmt = l.vatPct !== "" ? net * num(l.vatPct) / 100 : 0;
-    return { gross, discAmt, net, vatAmt };
+    return { gross, discAmt, net, vatAmt, netUnitCost };
   }), [lines]);
 
   const subtotal = useMemo(
@@ -645,7 +659,7 @@ function CreateInvoiceDialog({
         description: l.description.trim() || null,
         quantity: num(l.quantity),
         unit: l.unit || "pcs",
-        unitCost: num(l.unitCost),
+        unitCost: toNettoUnitCost(l),
         discountType: l.discountType || null,
         discountValue: l.discountType && l.discountValue !== "" ? num(l.discountValue) : null,
         vatPct: l.vatPct !== "" ? num(l.vatPct) : null,
@@ -859,15 +873,24 @@ function LineRow({
   onStockCreated,
 }: {
   line: LineDraft;
-  calc: { gross: number; discAmt: number; net: number; vatAmt: number };
+  calc: { gross: number; discAmt: number; net: number; vatAmt: number; netUnitCost: number };
   stockItems: StockItem[];
   onChange: (patch: Partial<LineDraft>) => void;
   onRemove?: () => void;
   onStockCreated: (item: StockItem) => void;
 }) {
   const [creating, setCreating] = useState(false);
-  const { gross, discAmt, net, vatAmt } = calc;
+  const { gross, discAmt, net, vatAmt, netUnitCost } = calc;
   const lineTotal = net + vatAmt;
+
+  // Hint shown below the unit cost input — the "other" mode's value.
+  const vatRate = num(line.vatPct);
+  const bruttoUnitCost = vatRate > 0 ? netUnitCost * (1 + vatRate / 100) : netUnitCost;
+  const costHint = line.vatBase === "netto" && line.vatPct !== "" && num(line.unitCost) > 0
+    ? `Brutto: ${bruttoUnitCost.toFixed(4)}`
+    : line.vatBase === "brutto" && line.vatPct !== "" && num(line.unitCost) > 0
+    ? `Netto: ${netUnitCost.toFixed(4)}`
+    : undefined;
 
   const quickCreate = async () => {
     const desc = line.description.trim();
@@ -968,15 +991,33 @@ function LineRow({
           </Field>
         </div>
         <div className="col-span-6 md:col-span-2">
-          <Field label="Unit cost (ex-VAT)">
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              value={line.unitCost}
-              onChange={(e) => onChange({ unitCost: e.target.value })}
-            />
+          <Field
+            label={line.vatBase === "brutto" ? "Unit cost (incl. VAT)" : "Unit cost (ex-VAT)"}
+            hint={costHint}
+          >
+            <div className="flex gap-0">
+              <button
+                type="button"
+                title={line.vatBase === "netto" ? "Switch to brutto (incl. VAT) entry" : "Switch to netto (ex-VAT) entry"}
+                onClick={() => onChange({ vatBase: line.vatBase === "netto" ? "brutto" : "netto" })}
+                className={`shrink-0 px-2 py-1.5 rounded-l border-y border-l text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                  line.vatBase === "brutto"
+                    ? "bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white"
+                    : "border-black/15 text-[var(--color-muted)] hover:bg-[var(--color-cream)]"
+                }`}
+              >
+                {line.vatBase === "brutto" ? "Brutto" : "Netto"}
+              </button>
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.0001"
+                min="0"
+                value={line.unitCost}
+                onChange={(e) => onChange({ unitCost: e.target.value })}
+                className="rounded-l-none"
+              />
+            </div>
           </Field>
         </div>
         <div className="col-span-6 md:col-span-2">
@@ -2176,6 +2217,7 @@ function EditLinesDialog({
             quantity: String(l.quantity),
             unit: l.unit,
             unitCost: String(l.unitCost),
+            vatBase: "netto" as const,
             discountType: (l.discountType as LineDraft["discountType"]) ?? "",
             discountValue: l.discountValue != null ? String(l.discountValue) : "",
             vatPct: l.vatPct != null ? String(l.vatPct) : "",
@@ -2188,9 +2230,8 @@ function EditLinesDialog({
   }, [open, invoice]);
 
   const lineCalc = useMemo(() => lines.map((l) => {
-    const qty = num(l.quantity);
-    const uc = num(l.unitCost);
-    const gross = qty * uc;
+    const netUnitCost = toNettoUnitCost(l);
+    const gross = num(l.quantity) * netUnitCost;
     let discAmt = 0;
     if (l.discountType === "PERCENTAGE" && num(l.discountValue) > 0) {
       discAmt = gross * num(l.discountValue) / 100;
@@ -2199,7 +2240,7 @@ function EditLinesDialog({
     }
     const net = Math.max(0, gross - discAmt);
     const vatAmt = l.vatPct !== "" ? net * num(l.vatPct) / 100 : 0;
-    return { gross, discAmt, net, vatAmt };
+    return { gross, discAmt, net, vatAmt, netUnitCost };
   }), [lines]);
 
   const subtotal = useMemo(() => lineCalc.reduce((s, l) => s + l.net, 0), [lineCalc]);
@@ -2229,7 +2270,7 @@ function EditLinesDialog({
           description: l.description || null,
           quantity: num(l.quantity) || 1,
           unit: l.unit || "pcs",
-          unitCost: num(l.unitCost),
+          unitCost: toNettoUnitCost(l),
           discountType: (l.discountType || null) as "PERCENTAGE" | "AMOUNT" | null,
           discountValue: l.discountValue ? num(l.discountValue) : null,
           vatPct: l.vatPct !== "" ? num(l.vatPct) : null,
