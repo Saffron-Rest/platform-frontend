@@ -29,6 +29,7 @@ import {
 } from "../../components/ui/Field";
 import {
   createPayable,
+  updatePayable,
   deletePayableAttachment,
   deletePayablePayment,
   getPayable,
@@ -1093,6 +1094,7 @@ function DetailDrawer({
 }) {
   const confirm = useConfirm();
   const [recordOpen, setRecordOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [voidPending, setVoidPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -1100,6 +1102,7 @@ function DetailDrawer({
   useEffect(() => {
     if (!invoice) {
       setRecordOpen(false);
+      setEditOpen(false);
       setVoidPending(false);
       setErr(null);
     }
@@ -1178,9 +1181,15 @@ function DetailDrawer({
           <DialogBody className="space-y-5">
             {err && <Alert variant="error">{err}</Alert>}
 
-            <StatGroup cols={{ md: 3, lg: 3 }}>
+            <StatGroup cols={{ md: 5, lg: 5 }}>
+              <Stat label="Netto" value={<Money value={invoice.subtotal} />} />
               <Stat
-                label="Total"
+                label="VAT"
+                value={<Money value={invoice.vat} />}
+                tone={invoice.vat > 0 ? "neutral" : "neutral"}
+              />
+              <Stat
+                label="Brutto"
                 value={<Money value={invoice.total} />}
                 emphasis="hero"
               />
@@ -1212,33 +1221,47 @@ function DetailDrawer({
                       <th className="px-2 py-1 text-left">Unit</th>
                       <th className="px-2 py-1 text-right">Unit cost</th>
                       <th className="px-2 py-1 text-right">Discount</th>
-                      <th className="px-2 py-1 text-right">VAT</th>
-                      <th className="px-2 py-1 text-right">Net total</th>
+                      <th className="px-2 py-1 text-right">VAT %</th>
+                      <th className="px-2 py-1 text-right">Netto</th>
+                      <th className="px-2 py-1 text-right">VAT amt</th>
+                      <th className="px-2 py-1 text-right">Brutto</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-black/[0.05]">
-                    {invoice.lines.map((l) => (
-                      <tr key={l.id ?? `${l.description}-${l.lineTotal}`}>
-                        <td className="px-2 py-1.5">
-                          {l.description}
-                          {l.stockItemId && (
-                            <span className="ml-2 text-xs text-[var(--color-muted)]">(stock)</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{l.quantity}</td>
-                        <td className="px-2 py-1.5">{l.unit}</td>
-                        <td className="px-2 py-1.5 text-right"><Money value={l.unitCost} /></td>
-                        <td className="px-2 py-1.5 text-right text-emerald-700">
-                          {l.discountAmount
-                            ? <>−<Money value={l.discountAmount} />{l.discountType === "PERCENTAGE" && l.discountValue != null ? ` (${l.discountValue}%)` : ""}</>
-                            : "—"}
-                        </td>
-                        <td className="px-2 py-1.5 text-right text-[var(--color-muted)]">
-                          {l.vatPct != null ? `${l.vatPct}%` : "—"}
-                        </td>
-                        <td className="px-2 py-1.5 text-right"><Money value={l.lineTotal} /></td>
-                      </tr>
-                    ))}
+                    {invoice.lines.map((l) => {
+                      const vatAmt = l.vatAmount ?? (l.vatPct != null ? l.lineTotal * l.vatPct / 100 : 0);
+                      const brutto = l.lineTotal + vatAmt;
+                      return (
+                        <tr key={l.id ?? `${l.description}-${l.lineTotal}`}>
+                          <td className="px-2 py-1.5">
+                            {l.description}
+                            {l.stockItemId && (
+                              <span className="ml-2 text-xs text-[var(--color-muted)]">(stock)</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{l.quantity}</td>
+                          <td className="px-2 py-1.5">{l.unit}</td>
+                          <td className="px-2 py-1.5 text-right"><Money value={l.unitCost} /></td>
+                          <td className="px-2 py-1.5 text-right text-emerald-700">
+                            {l.discountAmount
+                              ? <>−<Money value={l.discountAmount} />{l.discountType === "PERCENTAGE" && l.discountValue != null ? ` (${l.discountValue}%)` : ""}</>
+                              : "—"}
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-[var(--color-muted)]">
+                            {l.vatPct != null ? `${l.vatPct}%` : "—"}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            <Money value={l.lineTotal} />
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-[var(--color-muted)]">
+                            {vatAmt > 0 ? <Money value={vatAmt} /> : "—"}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-medium">
+                            <Money value={brutto} />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1432,13 +1455,14 @@ function DetailDrawer({
             )}
           </DialogBody>
           <DialogFooter justify="between">
-            <div>
+            <div className="flex gap-2">
+              {canManage && invoice.status !== "VOID" && (
+                <Button variant="secondary" onClick={() => setEditOpen(true)}>
+                  Edit
+                </Button>
+              )}
               {canManage && invoice.status !== "VOID" && invoice.amountPaid <= 0 && (
-                <Button
-                  variant="danger"
-                  onClick={() => void onVoid()}
-                  loading={voidPending}
-                >
+                <Button variant="danger" onClick={() => void onVoid()} loading={voidPending}>
                   Void invoice
                 </Button>
               )}
@@ -1461,7 +1485,128 @@ function DetailDrawer({
           }}
         />
       )}
+
+      {invoice && (
+        <EditInvoiceDialog
+          open={editOpen}
+          invoice={invoice}
+          onClose={() => setEditOpen(false)}
+          onSaved={(next) => {
+            setEditOpen(false);
+            onChanged(next);
+          }}
+        />
+      )}
     </Dialog>
+  );
+}
+
+function EditInvoiceDialog({
+  open,
+  invoice,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  invoice: PayableDetail;
+  onClose: () => void;
+  onSaved: (next: PayableDetail) => void;
+}) {
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [category, setCategory] = useState<PayableCategory | "">("");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setInvoiceNumber(invoice.invoiceNumber ?? "");
+    setDueDate(invoice.dueDate ?? "");
+    setCategory((invoice.category ?? "") as PayableCategory | "");
+    setNotes(invoice.notes ?? "");
+    setErr(null);
+  }, [open, invoice]);
+
+  const submit = async () => {
+    setErr(null);
+    setSubmitting(true);
+    try {
+      const next = await updatePayable(invoice.id, {
+        invoiceNumber: invoiceNumber.trim() || null,
+        dueDate: dueDate || undefined,
+        category: (category as PayableCategory) || undefined,
+        notes: notes.trim() || null,
+      });
+      onSaved(next);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save changes");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <DialogForm
+      open={open}
+      onClose={onClose}
+      onSubmit={submit}
+      size="md"
+      ariaLabel="Edit invoice"
+    >
+      <DialogTitle
+        description={`${invoice.supplier.name} · ${invoice.invoiceDate}`}
+      >
+        Edit invoice
+      </DialogTitle>
+      <DialogBody className="space-y-3">
+        {err && <Alert variant="error">{err}</Alert>}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Invoice number" optional>
+            <Input
+              value={invoiceNumber}
+              onChange={(e) => setInvoiceNumber(e.target.value)}
+              placeholder="e.g. FV/2026/001"
+            />
+          </Field>
+          <Field label="Due date" optional>
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              min={invoice.invoiceDate}
+            />
+          </Field>
+        </div>
+
+        <Field label="Category" optional>
+          <Select value={category} onChange={(e) => setCategory(e.target.value as PayableCategory | "")}>
+            <option value="">— no category —</option>
+            {CATEGORY_OPTIONS.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label="Notes" optional>
+          <Textarea
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Internal notes about this invoice…"
+          />
+        </Field>
+
+        <p className="text-xs text-[var(--color-muted)]">
+          To change line items or the invoice date, void this invoice and create a new one.
+        </p>
+      </DialogBody>
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Button>
+        <Button type="submit" loading={submitting}>Save changes</Button>
+      </DialogFooter>
+    </DialogForm>
   );
 }
 
