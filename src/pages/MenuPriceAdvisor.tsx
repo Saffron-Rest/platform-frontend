@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getMenuEngineering, type MenuAnalyticsItemRow } from "../api/menu";
+import { listItems, getMenuEngineering, type MenuItem } from "../api/menu";
 import { api } from "../api/client";
 import { fmt } from "../lib/calc";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -26,14 +26,13 @@ async function fetchPlSummary(from: string, to: string): Promise<PlSummary | nul
   }
 }
 
-// ─── Price advice types & computation ────────────────────────────────────────
+// ─── Price advice types ───────────────────────────────────────────────────────
 
 type PriceReason =
   | "RAISE_PRICE"
   | "FIX_FOOD_COST"
   | "REVIEW_FOOD_COST"
   | "KEEP_PRICE"
-  | "PROMOTE"
   | "TEST_PRICE"
   | "REMOVE_OR_REWORK";
 
@@ -41,20 +40,21 @@ type PriceAdviceItem = {
   itemId: string | null;
   name: string;
   categoryName: string | null;
-  class: string;
+  posClass: string | null; // null = no POS history
   currentPrice: number;
   suggestedPrice: number;
   changeAmt: number;
   changePct: number;
   currentMarginPct: number;
   projectedMarginPct: number;
-  currentRevenue: number;
-  revenueImpact: number;
-  quantity: number;
+  revenueImpact: number | null; // null when no sales data
+  quantity: number | null;
   reason: PriceReason;
   rationale: string;
   confidence: "HIGH" | "MEDIUM" | "LOW";
 };
+
+// ─── Urgency from P&L ─────────────────────────────────────────────────────────
 
 function businessUrgency(pl: PlSummary | null): {
   factor: number;
@@ -69,94 +69,107 @@ function businessUrgency(pl: PlSummary | null): {
   return { factor: 1, status: "ok" };
 }
 
-function computePriceAdvice(items: MenuAnalyticsItemRow[], pl: PlSummary | null): PriceAdviceItem[] {
+// ─── Computation ──────────────────────────────────────────────────────────────
+
+// POS class enrichment: itemId -> { class, quantity }
+type PosEnrichment = Record<string, { posClass: string; quantity: number }>;
+
+const MARGIN_TARGET = 62; // target gross margin %
+
+function computePriceAdvice(
+  menuItems: MenuItem[],
+  pl: PlSummary | null,
+  pos: PosEnrichment
+): PriceAdviceItem[] {
   const { factor, status } = businessUrgency(pl);
 
-  return items
-    .filter((i) => i.class && ["STAR", "PLOWHORSE", "PUZZLE", "DOG"].includes(i.class) && i.sellPrice > 0)
+  return menuItems
+    .filter((i) => i.active && i.sellPrice > 0 && i.foodCost != null && i.foodCost > 0)
     .map((item): PriceAdviceItem => {
-      const cls = item.class!;
-      const { sellPrice, unitFoodCost, quantity, marginPct, foodCostPct, revenue } = item;
+      const foodCost = item.foodCost!;
+      const sell = item.sellPrice;
+      const foodCostPct = (foodCost / sell) * 100;
+      const marginPct = 100 - foodCostPct;
+
+      const enrichment = item.id ? pos[item.id] : undefined;
+      const posClass = enrichment?.posClass ?? null;
+      const quantity = enrichment?.quantity ?? null;
 
       let bumpPct = 0;
       let reason: PriceReason = "KEEP_PRICE";
       let rationale = "";
       let confidence: PriceAdviceItem["confidence"] = "MEDIUM";
 
-      if (cls === "PLOWHORSE") {
-        if (foodCostPct <= 42) {
-          const raw = Math.min(10, Math.max(3, Math.round(5 * factor)));
+      if (foodCostPct > 42) {
+        // Too expensive to make regardless of sales
+        reason = "FIX_FOOD_COST";
+        rationale = `Food cost is ${foodCostPct.toFixed(0)}% of price — well above the 35–38% target. Review portion size or supplier pricing before raising the sell price.`;
+        confidence = "HIGH";
+      } else if (foodCostPct > 38) {
+        reason = "REVIEW_FOOD_COST";
+        rationale = `Food cost is ${foodCostPct.toFixed(0)}% — slightly above the 35–38% safe band. A small recipe or supplier review would protect margin.`;
+        confidence = "MEDIUM";
+      } else if (marginPct < MARGIN_TARGET) {
+        // Margin below target — suggest raise to hit MARGIN_TARGET
+        // Price needed to hit target: foodCost / (1 - target/100)
+        const targetPrice = foodCost / (1 - MARGIN_TARGET / 100);
+        const rawBump = ((targetPrice - sell) / sell) * 100;
+        // Cap at 20%, floor at 3% — be realistic
+        bumpPct = Math.min(20, Math.max(3, Math.round(rawBump * factor)));
+        reason = "RAISE_PRICE";
+
+        const posNote = posClass === "PLOWHORSE"
+          ? ` It's your bestseller — small increases are well-tolerated.`
+          : posClass === "STAR"
+          ? ` Strong seller with loyal demand — the increase should hold.`
+          : "";
+
+        const urgencyNote =
+          status === "critical" ? ` Business is loss-making — pricing improvement is urgent.`
+          : status === "poor"   ? ` Net margin is below 5% — this increase helps close the gap.`
+          : status === "healthy"? ` Business is healthy; a gentle bump protects margin without risk.`
+          : "";
+
+        rationale = `Margin is ${marginPct.toFixed(0)}% vs the ${MARGIN_TARGET}% target. Raising by ${bumpPct}% brings it closer to target.${posNote}${urgencyNote}`;
+        confidence = posClass ? "HIGH" : "MEDIUM";
+      } else if (marginPct >= MARGIN_TARGET && marginPct < 75) {
+        // Margin is OK — only raise if business is struggling
+        if (status === "critical" || status === "poor") {
+          const raw = Math.min(5, Math.max(2, Math.round(3 * factor)));
           bumpPct = raw;
           reason = "RAISE_PRICE";
-          const note =
-            status === "critical" ? ` Business is running at a loss — a ${raw}% increase is needed urgently.`
-            : status === "poor"   ? ` Net margin is below 5% — this ${raw}% bump helps close the gap.`
-            : status === "healthy"? " Business is healthy so a gentle increase protects demand."
-            : "";
-          rationale = `Bestseller with only ${marginPct.toFixed(0)}% margin — a ${raw}% bump across ${quantity} sales adds revenue with minimal demand risk.${note}`;
-          confidence = "HIGH";
-        } else {
-          reason = "FIX_FOOD_COST";
-          rationale = `Food cost is ${foodCostPct.toFixed(0)}% — fix ingredients or portion size before raising price.`;
-          confidence = "LOW";
-        }
-      } else if (cls === "STAR") {
-        if (foodCostPct > 38) {
-          reason = "REVIEW_FOOD_COST";
-          rationale = `Star item with food cost ${foodCostPct.toFixed(0)}% above target — price is fine; cut food cost to unlock margin.`;
-          confidence = "HIGH";
-        } else if (marginPct >= 70) {
-          const raw = Math.min(5, Math.max(1, Math.round(3 * factor)));
-          bumpPct = raw;
-          reason = "RAISE_PRICE";
-          rationale = `${marginPct.toFixed(0)}% margin star — loyal demand supports a ${raw}% increase${status === "critical" || status === "poor" ? " to help recover profitability" : " to widen margin"}.`;
+          rationale = `Margin is acceptable at ${marginPct.toFixed(0)}% but the business needs more revenue — a cautious ${raw}% increase helps without risking demand.`;
           confidence = "MEDIUM";
         } else {
           reason = "KEEP_PRICE";
-          rationale =
-            status === "critical" || status === "poor"
-              ? `Healthy star (${marginPct.toFixed(0)}% margin) — hold price to protect volume; address profitability through food cost or lower-performing items.`
-              : "Healthy star — margin and volume are both strong. Protect demand by holding price.";
+          rationale = `Good margin at ${marginPct.toFixed(0)}% — price is well-positioned. Hold to protect demand.`;
           confidence = "HIGH";
         }
-      } else if (cls === "PUZZLE") {
-        reason = "PROMOTE";
-        rationale = `Margin is strong at ${marginPct.toFixed(0)}% but volume is low — push visibility, not price.`;
-        confidence = "MEDIUM";
-      } else if (cls === "DOG") {
-        if (foodCostPct < 35 && sellPrice > 10) {
-          const raw = Math.min(15, Math.max(5, Math.round(10 * factor)));
-          bumpPct = raw;
-          reason = "TEST_PRICE";
-          rationale = `Food cost is manageable at ${foodCostPct.toFixed(0)}% — the item may be underpriced. Try a ${raw}% price test.`;
-          confidence = "LOW";
-        } else {
-          reason = "REMOVE_OR_REWORK";
-          rationale = `Both margin (${marginPct.toFixed(0)}%) and volume are low. Consider removing or redesigning this dish.`;
-          confidence = "LOW";
-        }
+      } else {
+        // margin >= 75%
+        reason = "KEEP_PRICE";
+        rationale = `Excellent margin at ${marginPct.toFixed(0)}% — no price change needed. Focus on volume.`;
+        confidence = "HIGH";
       }
 
-      const suggestedPrice = parseFloat((sellPrice * (1 + bumpPct / 100)).toFixed(2));
-      const changeAmt = parseFloat((suggestedPrice - sellPrice).toFixed(2));
+      const suggestedPrice = parseFloat((sell * (1 + bumpPct / 100)).toFixed(2));
+      const changeAmt = parseFloat((suggestedPrice - sell).toFixed(2));
       const projectedMarginPct =
-        unitFoodCost > 0 && suggestedPrice > 0
-          ? parseFloat(((suggestedPrice - unitFoodCost) / suggestedPrice * 100).toFixed(1))
-          : marginPct;
-      const revenueImpact = parseFloat((changeAmt * quantity).toFixed(2));
+        suggestedPrice > 0 ? parseFloat(((suggestedPrice - foodCost) / suggestedPrice * 100).toFixed(1)) : marginPct;
+      const revenueImpact =
+        quantity != null ? parseFloat((changeAmt * quantity).toFixed(2)) : null;
 
       return {
-        itemId: item.itemId,
+        itemId: item.id,
         name: item.name,
-        categoryName: item.categoryName,
-        class: cls,
-        currentPrice: sellPrice,
+        categoryName: item.categoryName ?? null,
+        posClass,
+        currentPrice: sell,
         suggestedPrice,
         changeAmt,
         changePct: bumpPct,
-        currentMarginPct: marginPct,
+        currentMarginPct: parseFloat(marginPct.toFixed(1)),
         projectedMarginPct,
-        currentRevenue: revenue,
         revenueImpact,
         quantity,
         reason,
@@ -164,7 +177,17 @@ function computePriceAdvice(items: MenuAnalyticsItemRow[], pl: PlSummary | null)
         confidence,
       };
     })
-    .sort((a, b) => Math.abs(b.revenueImpact) - Math.abs(a.revenueImpact));
+    .sort((a, b) => {
+      // Actionable first, then by absolute revenue impact (or margin gap)
+      const aAction = REASON_META[a.reason].action ? 0 : 1;
+      const bAction = REASON_META[b.reason].action ? 0 : 1;
+      if (aAction !== bAction) return aAction - bAction;
+      const aImpact = a.revenueImpact != null ? Math.abs(a.revenueImpact)
+        : a.changePct > 0 ? (a.changeAmt * 50) : 0; // estimate if no sales data
+      const bImpact = b.revenueImpact != null ? Math.abs(b.revenueImpact)
+        : b.changePct > 0 ? (b.changeAmt * 50) : 0;
+      return bImpact - aImpact;
+    });
 }
 
 function monthStart() {
@@ -180,24 +203,41 @@ function today() {
 export function MenuPriceAdvisor() {
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(today);
-  const [items, setItems] = useState<MenuAnalyticsItemRow[] | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItem[] | null>(null);
+  const [pos, setPos] = useState<PosEnrichment>({});
   const [pl, setPl] = useState<PlSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [hasPosData, setHasPosData] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [eng, plData] = await Promise.all([
-        getMenuEngineering(from, to),
+      const [items, plData, eng] = await Promise.all([
+        listItems(),
         fetchPlSummary(from, to),
+        getMenuEngineering(from, to).catch(() => null),
       ]);
-      setItems(eng.items);
+      setMenuItems(items);
       setPl(plData);
+
+      // Build POS enrichment map from engineering data (best-effort)
+      if (eng && eng.items.length > 0) {
+        const enrichMap: PosEnrichment = {};
+        for (const row of eng.items) {
+          if (row.itemId && row.class && row.class !== "UNCLASSIFIED") {
+            enrichMap[row.itemId] = { posClass: row.class, quantity: row.quantity };
+          }
+        }
+        setPos(enrichMap);
+        setHasPosData(Object.keys(enrichMap).length > 0);
+      } else {
+        setPos({});
+        setHasPosData(false);
+      }
     } catch (e) {
-      setItems(null);
-      setPl(null);
+      setMenuItems(null);
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
@@ -206,9 +246,12 @@ export function MenuPriceAdvisor() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const advice = useMemo(() => (items ? computePriceAdvice(items, pl) : []), [items, pl]);
+  const advice = useMemo(
+    () => (menuItems ? computePriceAdvice(menuItems, pl, pos) : []),
+    [menuItems, pl, pos]
+  );
   const actionable = advice.filter((a) => REASON_META[a.reason].action);
-  const totalImpact = actionable.reduce((s, a) => s + a.revenueImpact, 0);
+  const totalKnownImpact = actionable.reduce((s, a) => s + (a.revenueImpact ?? 0), 0);
 
   const [filter, setFilter] = useState<"actionable" | "all">("actionable");
   const visible = filter === "all" ? advice : actionable;
@@ -218,7 +261,7 @@ export function MenuPriceAdvisor() {
       <PageHeader
         kicker="Menu"
         title="Price advisor"
-        subtitle="Suggested prices per dish based on sales class, food cost, and overall business margins."
+        subtitle="Suggested prices per dish based on food cost, target margin, and overall business health."
         action={
           <Link to="/menu/engineering">
             <Button variant="secondary">← Menu engineering</Button>
@@ -228,7 +271,7 @@ export function MenuPriceAdvisor() {
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {/* Date filter */}
+      {/* Date filter (for P&L context + POS enrichment) */}
       <Card>
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] items-end">
           <label className="field-label">
@@ -243,43 +286,52 @@ export function MenuPriceAdvisor() {
             {loading ? "Loading…" : "Refresh"}
           </Button>
         </div>
+        <p className="text-xs text-[var(--color-muted)] mt-2">
+          Date range is used for P&L context and POS sales enrichment. Price advice works even without sales history.
+        </p>
       </Card>
 
       {loading ? (
         <div className="flex justify-center py-16">
           <Spinner label="Analysing menu…" />
         </div>
-      ) : !items || advice.length === 0 ? (
+      ) : !menuItems || advice.length === 0 ? (
         <EmptyState
-          title="No data to advise on"
-          description="Make sure your menu items have food costs set and POS sales exist for the selected period."
+          title="No items to advise on"
+          description="Add food costs to your menu items in Admin → Menu. Price advice is calculated from sell price and food cost — no POS sales required."
         />
       ) : (
         <>
-          {/* Summary row */}
+          {/* No POS data notice */}
+          {!hasPosData && (
+            <Alert variant="info">
+              No POS sales found for this period — showing advice based on food cost and margin only.
+              Connect your POS or select a period with sales to unlock volume-weighted suggestions.
+            </Alert>
+          )}
+
+          {/* Summary tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <SummaryTile
-              label="Potential uplift"
-              value={`+${fmt(Math.round(totalImpact / 50) * 50)}`}
-              sub={`${actionable.length} price change${actionable.length !== 1 ? "s" : ""}`}
+              label="Items with advice"
+              value={String(actionable.length)}
+              sub={`of ${advice.length} with food cost`}
               highlight
             />
-            <SummaryTile
-              label="Items analysed"
-              value={String(advice.length)}
-              sub="classified dishes"
-            />
+            {totalKnownImpact > 0 && (
+              <SummaryTile
+                label="Known revenue uplift"
+                value={`+${fmt(Math.round(totalKnownImpact / 50) * 50)}`}
+                sub="items with POS sales data"
+              />
+            )}
             {pl && (
               <>
                 <SummaryTile
                   label="Net margin"
                   value={`${pl.margins.netMarginPct.toFixed(1)}%`}
                   sub={`target 8% · revenue ${fmt(pl.totals.netRevenue)}`}
-                  status={
-                    pl.margins.netMarginPct < 0 ? "bad"
-                    : pl.margins.netMarginPct < 5 ? "warn"
-                    : "good"
-                  }
+                  status={pl.margins.netMarginPct < 0 ? "bad" : pl.margins.netMarginPct < 5 ? "warn" : "good"}
                 />
                 <SummaryTile
                   label="Food cost"
@@ -297,11 +349,11 @@ export function MenuPriceAdvisor() {
 
           {/* Business health strip */}
           {pl && pl.totals.netRevenue > 0 && (
-            <BusinessHealthStrip pl={pl} totalRevenueImpact={totalImpact} />
+            <BusinessHealthStrip pl={pl} totalRevenueImpact={totalKnownImpact} />
           )}
 
           {/* Filter tabs */}
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex gap-1 rounded-lg border border-black/10 p-0.5 bg-white w-fit">
               {(["actionable", "all"] as const).map((f) => (
                 <button
@@ -313,34 +365,31 @@ export function MenuPriceAdvisor() {
                       : "text-[var(--color-ink)] hover:bg-black/5"
                   }`}
                 >
-                  {f === "actionable" ? `Price changes (${actionable.length})` : `All items (${advice.length})`}
+                  {f === "actionable" ? `Raise / fix (${actionable.length})` : `All items (${advice.length})`}
                 </button>
               ))}
             </div>
             <p className="text-xs text-[var(--color-muted)] hidden sm:block">
-              Sorted by revenue impact · bump sizes scale with business health
+              Target margin {MARGIN_TARGET}% · bump sizes scale with business health
             </p>
           </div>
 
           {/* Item list */}
           <Card className="!p-0 overflow-hidden">
-            {/* Column headers */}
             <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto] gap-4 px-5 py-2.5 text-xs font-semibold uppercase text-[var(--color-muted)] border-b border-black/[0.06]">
               <span>Item</span>
               <span className="w-36 text-right">Price change</span>
-              <span className="w-28 text-right">Margin impact</span>
-              <span className="w-24 text-right">Revenue +/-</span>
+              <span className="w-28 text-right">Margin</span>
+              <span className="w-28 text-right">Revenue impact</span>
             </div>
-
             <div className="divide-y divide-black/[0.06]">
-              {visible.map((a) => (
-                <AdviceRow key={a.itemId ?? a.name} a={a} />
-              ))}
+              {visible.map((a) => <AdviceRow key={a.itemId ?? a.name} a={a} />)}
             </div>
           </Card>
 
           <p className="text-xs text-[var(--color-muted)] text-center">
-            * Revenue impact assumes the same sales volume at the new price. Monitor demand for 2 weeks after any change.
+            * Revenue impact only shown for items with POS sales in the selected period.
+            Price advice is based on sell price vs food cost regardless of sales history.
           </p>
         </>
       )}
@@ -351,30 +400,18 @@ export function MenuPriceAdvisor() {
 // ─── Summary tile ─────────────────────────────────────────────────────────────
 
 function SummaryTile({
-  label,
-  value,
-  sub,
-  highlight,
-  status,
+  label, value, sub, highlight, status,
 }: {
-  label: string;
-  value: string;
-  sub: string;
-  highlight?: boolean;
+  label: string; value: string; sub: string; highlight?: boolean;
   status?: "good" | "warn" | "bad";
 }) {
   const statusColor =
-    status === "bad"  ? "text-red-600"
-    : status === "warn" ? "text-amber-600"
-    : status === "good" ? "text-emerald-600"
-    : "text-[var(--color-ink)]";
-
+    status === "bad" ? "text-red-600" : status === "warn" ? "text-amber-600"
+    : status === "good" ? "text-emerald-600" : "text-[var(--color-ink)]";
   return (
     <Card className={`!py-3 !px-4 ${highlight ? "border-[var(--color-saffron)]/30 bg-[var(--color-saffron)]/5" : ""}`}>
       <p className="text-xs text-[var(--color-muted)] font-medium mb-1">{label}</p>
-      <p className={`text-xl font-bold tabular-nums ${highlight ? "text-[var(--color-saffron)]" : statusColor}`}>
-        {value}
-      </p>
+      <p className={`text-xl font-bold tabular-nums ${highlight ? "text-[var(--color-saffron)]" : statusColor}`}>{value}</p>
       <p className="text-xs text-[var(--color-muted)] mt-0.5">{sub}</p>
     </Card>
   );
@@ -389,21 +426,20 @@ function BusinessHealthStrip({ pl, totalRevenueImpact }: { pl: PlSummary; totalR
   const { netRevenue, netProfit, cogs, operatingExpenses, labor } = pl.totals;
   const { status } = businessUrgency(pl);
 
-  const targetProfit = (netRevenue * TARGET_NET_MARGIN) / 100;
-  const gap = Math.max(0, targetProfit - netProfit);
+  const gap = Math.max(0, (netRevenue * TARGET_NET_MARGIN) / 100 - netProfit);
   const gapAfter = Math.max(0, gap - totalRevenueImpact);
 
   const statusMeta = {
-    critical: { label: "Loss-making",  bg: "bg-red-50 border-red-200",       text: "text-red-700",     dot: "bg-red-500"     },
-    poor:     { label: "Below target", bg: "bg-amber-50 border-amber-200",    text: "text-amber-700",   dot: "bg-amber-500"   },
-    ok:       { label: "On track",     bg: "bg-blue-50 border-blue-200",      text: "text-blue-700",    dot: "bg-blue-500"    },
+    critical: { label: "Loss-making",  bg: "bg-red-50 border-red-200",        text: "text-red-700",     dot: "bg-red-500"     },
+    poor:     { label: "Below target", bg: "bg-amber-50 border-amber-200",     text: "text-amber-700",   dot: "bg-amber-500"   },
+    ok:       { label: "On track",     bg: "bg-blue-50 border-blue-200",       text: "text-blue-700",    dot: "bg-blue-500"    },
     healthy:  { label: "Healthy",      bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", dot: "bg-emerald-500" },
   }[status];
 
   const expenses = [
-    { label: "Food cost", value: cogs,               pct: netRevenue > 0 ? (cogs / netRevenue) * 100 : 0,               target: 35 },
-    { label: "Labor",     value: labor,               pct: netRevenue > 0 ? (labor / netRevenue) * 100 : 0,               target: 30 },
-    { label: "OpEx",      value: operatingExpenses,  pct: netRevenue > 0 ? (operatingExpenses / netRevenue) * 100 : 0,   target: 20 },
+    { label: "Food cost", value: cogs,              pct: netRevenue > 0 ? (cogs / netRevenue) * 100 : 0,              target: 35 },
+    { label: "Labor",     value: labor,              pct: netRevenue > 0 ? (labor / netRevenue) * 100 : 0,              target: 30 },
+    { label: "OpEx",      value: operatingExpenses, pct: netRevenue > 0 ? (operatingExpenses / netRevenue) * 100 : 0, target: 20 },
   ].filter((e) => e.value > 0);
 
   return (
@@ -448,19 +484,18 @@ function BusinessHealthStrip({ pl, totalRevenueImpact }: { pl: PlSummary; totalR
   );
 }
 
-// ─── Reason & class metadata ─────────────────────────────────────────────────
+// ─── Reason metadata ──────────────────────────────────────────────────────────
 
 const REASON_META: Record<PriceReason, { label: string; action: boolean; color: string; bg: string }> = {
   RAISE_PRICE:      { label: "Raise price",     action: true,  color: "text-emerald-700", bg: "bg-emerald-50" },
   TEST_PRICE:       { label: "Test price",       action: true,  color: "text-amber-700",   bg: "bg-amber-50"   },
   FIX_FOOD_COST:    { label: "Fix food cost",    action: false, color: "text-red-700",     bg: "bg-red-50"     },
   REVIEW_FOOD_COST: { label: "Review food cost", action: false, color: "text-red-700",     bg: "bg-red-50"     },
-  KEEP_PRICE:       { label: "Hold price",       action: false, color: "text-[var(--color-muted)]", bg: "bg-black/5" },
-  PROMOTE:          { label: "Promote",          action: false, color: "text-blue-700",    bg: "bg-blue-50"    },
+  KEEP_PRICE:       { label: "Price is good",    action: false, color: "text-emerald-700", bg: "bg-emerald-50" },
   REMOVE_OR_REWORK: { label: "Remove / rework",  action: false, color: "text-[var(--color-muted)]", bg: "bg-black/5" },
 };
 
-const CLASS_BADGE: Record<string, string> = {
+const POS_CLASS_BADGE: Record<string, string> = {
   STAR:      "text-emerald-700 bg-emerald-50",
   PLOWHORSE: "text-amber-700   bg-amber-50",
   PUZZLE:    "text-blue-700    bg-blue-50",
@@ -471,26 +506,22 @@ const CLASS_BADGE: Record<string, string> = {
 
 function AdviceRow({ a }: { a: PriceAdviceItem }) {
   const meta = REASON_META[a.reason];
-  const classBadge = CLASS_BADGE[a.class] ?? "text-[var(--color-muted)] bg-black/5";
-
   return (
     <div className="grid sm:grid-cols-[1fr_auto_auto_auto] gap-3 sm:gap-4 items-start px-5 py-4">
       {/* Name + badges + rationale */}
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-1.5 mb-1">
           <span className="font-semibold text-sm">{a.name}</span>
-          <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${classBadge}`}>
-            {a.class.charAt(0) + a.class.slice(1).toLowerCase()}
-          </span>
+          {a.posClass && (
+            <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${POS_CLASS_BADGE[a.posClass] ?? "bg-black/5 text-[var(--color-muted)]"}`}>
+              {a.posClass.charAt(0) + a.posClass.slice(1).toLowerCase()}
+            </span>
+          )}
           <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${meta.bg} ${meta.color}`}>
             {meta.label}
           </span>
-          {a.confidence === "HIGH" && (
-            <span className="text-xs text-green-700 bg-green-50 rounded-full px-2 py-0.5">● Reliable</span>
-          )}
-          {a.confidence === "LOW" && (
-            <span className="text-xs text-[var(--color-muted)] bg-black/5 rounded-full px-2 py-0.5">● Low signal</span>
-          )}
+          {a.confidence === "HIGH" && <span className="text-xs text-green-700 bg-green-50 rounded-full px-2 py-0.5">● Reliable</span>}
+          {a.confidence === "LOW"  && <span className="text-xs text-[var(--color-muted)] bg-black/5 rounded-full px-2 py-0.5">● Low signal</span>}
         </div>
         <p className="text-xs text-[var(--color-muted)] leading-snug">{a.rationale}</p>
         {a.categoryName && (
@@ -502,15 +533,15 @@ function AdviceRow({ a }: { a: PriceAdviceItem }) {
       <div className="w-36 text-right shrink-0">
         {a.changePct > 0 ? (
           <>
-            <p className="font-bold text-sm tabular-nums">
-              {fmt(a.currentPrice)} → {fmt(a.suggestedPrice)}
-            </p>
+            <p className="font-bold text-sm tabular-nums">{fmt(a.currentPrice)} → {fmt(a.suggestedPrice)}</p>
             <p className="text-xs text-emerald-600 font-medium">+{fmt(a.changeAmt)} (+{a.changePct}%)</p>
           </>
         ) : (
           <p className="text-sm font-semibold tabular-nums text-[var(--color-muted)]">{fmt(a.currentPrice)}</p>
         )}
-        <p className="text-xs text-[var(--color-muted)] mt-0.5">{a.quantity}× sold</p>
+        {a.quantity != null && (
+          <p className="text-xs text-[var(--color-muted)] mt-0.5">{a.quantity}× sold</p>
+        )}
       </div>
 
       {/* Margin */}
@@ -520,26 +551,22 @@ function AdviceRow({ a }: { a: PriceAdviceItem }) {
             <p className="font-semibold text-sm tabular-nums">
               {a.currentMarginPct.toFixed(0)}% → {a.projectedMarginPct.toFixed(0)}%
             </p>
-            <p className="text-xs text-emerald-600">
-              +{(a.projectedMarginPct - a.currentMarginPct).toFixed(1)} pp
-            </p>
+            <p className="text-xs text-emerald-600">+{(a.projectedMarginPct - a.currentMarginPct).toFixed(1)} pp</p>
           </>
         ) : (
-          <p className="text-sm font-semibold tabular-nums text-[var(--color-muted)]">
-            {a.currentMarginPct.toFixed(0)}%
-          </p>
+          <p className="text-sm font-semibold tabular-nums text-[var(--color-muted)]">{a.currentMarginPct.toFixed(0)}%</p>
         )}
       </div>
 
       {/* Revenue impact */}
-      <div className="w-24 text-right shrink-0">
-        {a.revenueImpact !== 0 ? (
+      <div className="w-28 text-right shrink-0">
+        {a.revenueImpact != null && a.revenueImpact !== 0 ? (
           <p className={`font-bold text-sm tabular-nums ${a.revenueImpact > 0 ? "text-emerald-600" : "text-red-600"}`}>
             {a.revenueImpact > 0 ? "+" : ""}
             {fmt(Math.round(a.revenueImpact / 10) * 10)}
           </p>
         ) : (
-          <p className="text-sm text-[var(--color-muted)]">—</p>
+          <p className="text-sm text-[var(--color-muted)]">{a.changePct > 0 ? "no sales data" : "—"}</p>
         )}
       </div>
     </div>
