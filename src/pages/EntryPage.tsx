@@ -98,6 +98,10 @@ export function EntryPage() {
   const dirtyRef = useRef(false);
   /** Synchronous guard against double-submit on slow connections. */
   const savingRef = useRef(false);
+  /** Guard against concurrent background auto-saves. */
+  const autoSaveRef = useRef(false);
+  /** Timestamp of the last successful background save. */
+  const [lastAutoSaved, setLastAutoSaved] = useState<Date | null>(null);
   /** Tracks whether the user has attempted to submit at least once.
    *  Validation errors are hidden until the first attempt to reduce noise. */
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
@@ -599,6 +603,91 @@ export function EntryPage() {
     }
   };
 
+  /**
+   * Silent background save — same logic as save() but never touches UI state.
+   * Only runs when the form is dirty and nothing else is already saving.
+   */
+  const backgroundSave = useCallback(async () => {
+    if (!dirtyRef.current) return;
+    if (savingRef.current || autoSaveRef.current) return;
+    if (canManageReports && !selectedCashierId) return;
+
+    autoSaveRef.current = true;
+    try {
+      const body = canManageReports
+        ? { ...form, date: entryDate, cashierId: selectedCashierId }
+        : { ...form, date: entryDate };
+
+      // Resolve entry ID without trusting stale state
+      let entryId = entry?.id;
+      if (!entryId) {
+        const todayParams = new URLSearchParams({ date: entryDate });
+        const found = await api<DailyEntry | null>(`/entries/today?${todayParams}`).catch(() => null);
+        entryId = found?.id;
+        if (!entryId) {
+          const list = await api<DailyEntry[]>(
+            `/entries?from=${encodeURIComponent(entryDate)}&to=${encodeURIComponent(entryDate)}`
+          ).catch(() => [] as DailyEntry[]);
+          entryId = list[0]?.id;
+        }
+      }
+
+      let saved: DailyEntry;
+      if (entryId) {
+        saved = await api<DailyEntry>(`/entries/${entryId}`, {
+          method: "PUT",
+          body: JSON.stringify(body),
+        });
+      } else {
+        saved = await api<DailyEntry>("/entries", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+      }
+
+      // Sync expenses silently (non-fatal)
+      if (!closingOnly) {
+        try {
+          const synced = await syncExpenses(saved.id, expenses);
+          setExpenses(synced);
+        } catch { /* ignore — manual save will retry */ }
+      }
+
+      // Flush any staged POS report files silently
+      if (pendingPosReports.length > 0) {
+        const uploaded: EntryFile[] = [];
+        for (const file of pendingPosReports) {
+          try { uploaded.push(await uploadEntryFile(saved.id, file, POS_REPORT_CATEGORY)); }
+          catch { /* non-fatal */ }
+        }
+        if (uploaded.length) {
+          setPosReportFiles((prev) => [...prev, ...uploaded]);
+          setPendingPosReports([]);
+        }
+      }
+
+      // Update entry ref so subsequent saves use the correct ID.
+      // Never call applyEntry — that would reset form fields the user is editing.
+      if (!entry?.id) setEntry(saved);
+
+      markPristine();
+      setLastAutoSaved(new Date());
+    } catch {
+      // Silent — unsaved work is still in state; user can always save manually.
+    } finally {
+      autoSaveRef.current = false;
+    }
+  }, [form, expenses, entry, entryDate, closingOnly, canManageReports, selectedCashierId, pendingPosReports, markPristine]);
+
+  // Run backgroundSave every 30 s while the tab is visible.
+  useEffect(() => {
+    const AUTOSAVE_MS = 30_000;
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") void backgroundSave();
+    }, AUTOSAVE_MS);
+    return () => clearInterval(id);
+  }, [backgroundSave]);
+
   const saveReceipts = async () => {
     if (!entry?.id || closingOnly) return;
     setSaving(true);
@@ -1024,6 +1113,12 @@ export function EntryPage() {
               />
             )}
           </div>
+
+          {!readOnly && lastAutoSaved && (
+            <p className="text-xs text-gray-400 text-right pr-1 mb-1">
+              Autosaved {lastAutoSaved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
 
           {!readOnly ? (
             <ReportActionBar
