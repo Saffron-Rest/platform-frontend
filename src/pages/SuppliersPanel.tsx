@@ -10,12 +10,19 @@ import {
   type Supplier,
   type SupplierInput,
 } from "../api/suppliers";
+import {
+  listPayables,
+  type PayableSummary,
+} from "../api/payables";
+import { payableStatus } from "../lib/statusBadges";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
 import { Badge } from "../components/ui/Badge";
 import { Spinner } from "../components/ui/Spinner";
 import { EmptyState } from "../components/ui/EmptyState";
+import { Money } from "../components/ui/Money";
+import { Drawer } from "../components/ui/Drawer";
 import { DialogBody, DialogFooter, DialogForm, DialogTitle } from "../components/ui/Dialog";
 import { Field, Input, Textarea } from "../components/ui/Field";
 
@@ -83,6 +90,7 @@ export function SuppliersPanel({ asTab }: { asTab?: boolean } = {}) {
   const [editTarget,      setEditTarget]       = useState<Supplier | null>(null);
   const [openEdit,        setOpenEdit]         = useState(false);
   const [openCreate,      setOpenCreate]       = useState(false);
+  const [drawerSupplier,  setDrawerSupplier]   = useState<Supplier | null>(null);
 
   const load = async (withInactive = showInactive) => {
     setLoading(true);
@@ -134,50 +142,27 @@ export function SuppliersPanel({ asTab }: { asTab?: boolean } = {}) {
           kicker="Finance"
           title="Suppliers"
           subtitle="Manage your supplier directory — contact info, payment terms, bank details."
-          action={
-            canManage && (
-              <Button onClick={() => setOpenCreate(true)}>+ Add supplier</Button>
-            )
-          }
         />
       )}
 
-      {asTab && canManage && (
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-sm text-[var(--color-muted)]">
-            {activeCount} active supplier{activeCount !== 1 ? "s" : ""}
-          </p>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-sm text-[var(--color-muted)] cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showInactive}
-                onChange={(e) => setShowInactive(e.target.checked)}
-                className="rounded"
-              />
-              Show inactive
-            </label>
-            <Button onClick={() => setOpenCreate(true)}>+ Add supplier</Button>
-          </div>
-        </div>
-      )}
-
-      {!asTab && (
-        <div className="flex items-center gap-2 mb-4">
-          <p className="flex-1 text-sm text-[var(--color-muted)]">
-            {activeCount} active supplier{activeCount !== 1 ? "s" : ""}
-          </p>
-          <label className="flex items-center gap-1.5 text-sm text-[var(--color-muted)] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-              className="rounded"
-            />
-            Show inactive
-          </label>
-        </div>
-      )}
+      {/* ── Controls bar — always visible ────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-4">
+        <p className="flex-1 text-sm text-[var(--color-muted)]">
+          {loading ? "Loading…" : `${activeCount} active supplier${activeCount !== 1 ? "s" : ""}`}
+        </p>
+        <label className="flex items-center gap-1.5 text-sm text-[var(--color-muted)] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+            className="rounded"
+          />
+          Show inactive
+        </label>
+        {canManage && (
+          <Button onClick={() => setOpenCreate(true)}>+ New supplier</Button>
+        )}
+      </div>
 
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
@@ -198,6 +183,8 @@ export function SuppliersPanel({ asTab }: { asTab?: boolean } = {}) {
                 <th className="px-4 py-2.5 text-left font-medium hidden md:table-cell">Contact</th>
                 <th className="px-4 py-2.5 text-left font-medium hidden lg:table-cell">VAT ID</th>
                 <th className="px-4 py-2.5 text-center font-medium hidden sm:table-cell">Terms</th>
+                <th className="px-4 py-2.5 text-right font-medium hidden sm:table-cell">Invoices</th>
+                <th className="px-4 py-2.5 text-right font-medium">Outstanding</th>
                 <th className="px-4 py-2.5 text-left font-medium hidden xl:table-cell">Bank</th>
                 <th className="px-4 py-2.5 text-center font-medium">Status</th>
                 {canManage && <th className="px-4 py-2.5" />}
@@ -205,7 +192,11 @@ export function SuppliersPanel({ asTab }: { asTab?: boolean } = {}) {
             </thead>
             <tbody className="divide-y divide-black/[0.05]">
               {visible.map((s) => (
-                <tr key={s.id} className={`hover:bg-black/[0.02] transition-colors ${!s.active ? "opacity-50" : ""}`}>
+                <tr
+                  key={s.id}
+                  onClick={() => setDrawerSupplier(s)}
+                  className={`cursor-pointer hover:bg-[var(--color-saffron)]/5 transition-colors ${!s.active ? "opacity-50" : ""}`}
+                >
                   <td className="px-4 py-3">
                     <p className="font-medium text-[var(--color-ink)]">{s.name}</p>
                     {s.notes && (
@@ -229,6 +220,22 @@ export function SuppliersPanel({ asTab }: { asTab?: boolean } = {}) {
                       {s.paymentTermsDays}d
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-right tabular-nums hidden sm:table-cell">
+                    {s.invoiceCount != null && s.invoiceCount > 0 ? (
+                      <span className="font-medium text-[var(--color-ink)]">{s.invoiceCount}</span>
+                    ) : (
+                      <span className="text-[var(--color-muted)]">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {s.totalOutstanding != null && s.totalOutstanding > 0 ? (
+                      <span className="font-semibold text-amber-700">
+                        <Money value={s.totalOutstanding} />
+                      </span>
+                    ) : (
+                      <span className="text-[var(--color-muted)]">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 hidden xl:table-cell">
                     {s.bankAccountNumber ? (
                       <div>
@@ -245,7 +252,7 @@ export function SuppliersPanel({ asTab }: { asTab?: boolean } = {}) {
                     </Badge>
                   </td>
                   {canManage && (
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
@@ -281,6 +288,15 @@ export function SuppliersPanel({ asTab }: { asTab?: boolean } = {}) {
         </div>
       )}
 
+      {/* ── Supplier invoice drawer ───────────────────────────────────── */}
+      {drawerSupplier && (
+        <SupplierInvoiceDrawer
+          supplier={drawerSupplier}
+          onClose={() => setDrawerSupplier(null)}
+          onEdit={canManage ? (s) => { setDrawerSupplier(null); openEditFor(s); } : undefined}
+        />
+      )}
+
       {/* ── Create dialog ─────────────────────────────────────────────── */}
       {openCreate && (
         <SupplierFormDialog
@@ -310,6 +326,158 @@ export function SuppliersPanel({ asTab }: { asTab?: boolean } = {}) {
         />
       )}
     </>
+  );
+}
+
+// ─── supplier invoice drawer ─────────────────────────────────────────────────
+
+const fmtDate = (iso: string) => {
+  if (!iso) return "—";
+  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+    day: "2-digit", month: "short", year: "numeric",
+  });
+};
+
+function SupplierInvoiceDrawer({
+  supplier,
+  onClose,
+  onEdit,
+}: {
+  supplier: Supplier;
+  onClose: () => void;
+  onEdit?: (s: Supplier) => void;
+}) {
+  const [invoices, setInvoices] = useState<PayableSummary[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    listPayables("ALL", supplier.id)
+      .then((res) => setInvoices(res.items))
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load invoices"))
+      .finally(() => setLoading(false));
+  }, [supplier.id]);
+
+  const totalInvoiced   = invoices.filter((i) => i.status !== "VOID").reduce((s, i) => s + i.total, 0);
+  const totalPaid       = invoices.filter((i) => i.status !== "VOID").reduce((s, i) => s + i.amountPaid, 0);
+  const totalOutstanding = invoices.filter((i) => i.status !== "VOID").reduce((s, i) => s + i.outstanding, 0);
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      width="lg"
+      title={supplier.name}
+      subtitle={[supplier.email, supplier.phone].filter(Boolean).join(" · ") || undefined}
+      footer={
+        onEdit && (
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => onEdit(supplier)}>Edit supplier</Button>
+          </div>
+        )
+      }
+    >
+      <div className="px-5 py-5 space-y-5">
+
+        {/* ── Supplier info strip ─────────────────────────────────────── */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {supplier.contactName && (
+            <div>
+              <p className="text-xs text-[var(--color-muted)] mb-0.5">Contact</p>
+              <p className="font-medium text-[var(--color-ink)]">{supplier.contactName}</p>
+            </div>
+          )}
+          {supplier.vatId && (
+            <div>
+              <p className="text-xs text-[var(--color-muted)] mb-0.5">VAT ID (NIP)</p>
+              <p className="font-medium text-[var(--color-ink)] font-mono">{supplier.vatId}</p>
+            </div>
+          )}
+          <div>
+            <p className="text-xs text-[var(--color-muted)] mb-0.5">Payment terms</p>
+            <p className="font-medium text-[var(--color-ink)]">{supplier.paymentTermsDays} days</p>
+          </div>
+          {supplier.bankAccountNumber && (
+            <div>
+              <p className="text-xs text-[var(--color-muted)] mb-0.5">Bank account</p>
+              <p className="font-medium text-[var(--color-ink)] font-mono text-xs">{supplier.bankAccountNumber}</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Summary stats ──────────────────────────────────────────── */}
+        {!loading && invoices.length > 0 && (
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Total invoiced", value: totalInvoiced, muted: false },
+              { label: "Total paid",     value: totalPaid,     muted: false },
+              { label: "Outstanding",    value: totalOutstanding, warn: totalOutstanding > 0 },
+            ].map(({ label, value, warn }) => (
+              <div key={label} className="rounded-xl border border-black/8 bg-[var(--color-cream)]/40 px-3 py-3">
+                <p className="text-[10px] uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+                <p className={`text-lg font-bold mt-1 tabular-nums ${warn ? "text-amber-700" : "text-[var(--color-ink)]"}`}>
+                  <Money value={value} />
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Invoice list ───────────────────────────────────────────── */}
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)] mb-2">
+            Invoices
+          </p>
+
+          {error && <Alert variant="error">{error}</Alert>}
+
+          {loading ? (
+            <div className="flex justify-center py-10"><Spinner /></div>
+          ) : invoices.length === 0 ? (
+            <p className="text-sm text-[var(--color-muted)] py-6 text-center">No invoices yet for this supplier.</p>
+          ) : (
+            <div className="rounded-xl border border-black/8 divide-y divide-black/[0.05] overflow-hidden">
+              {invoices.map((inv) => {
+                const badge = payableStatus({ status: inv.status, daysOverdue: inv.daysPastDue });
+                return (
+                  <div key={inv.id} className="px-4 py-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm text-[var(--color-ink)]">
+                          {inv.invoiceNumber ?? "No invoice #"}
+                        </span>
+                        <Badge variant={badge.tone}>
+                          {badge.label}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-[var(--color-muted)] mt-0.5">
+                        {fmtDate(inv.invoiceDate)}
+                        {inv.dueDate ? ` · due ${fmtDate(inv.dueDate)}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold tabular-nums text-[var(--color-ink)]">
+                        <Money value={inv.total} />
+                      </p>
+                      {inv.outstanding > 0 && inv.status !== "VOID" && (
+                        <p className="text-xs tabular-nums text-amber-700 mt-0.5">
+                          <Money value={inv.outstanding} /> left
+                        </p>
+                      )}
+                      {inv.status === "PAID" && (
+                        <p className="text-xs text-emerald-700 mt-0.5">Fully paid</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </Drawer>
   );
 }
 

@@ -16,6 +16,10 @@ export type Supplier = {
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
+  /** Total non-void invoices for this supplier. */
+  invoiceCount?: number;
+  /** Sum of (total − amountPaid) across non-void invoices. */
+  totalOutstanding?: number;
 };
 
 export type SupplierInput = {
