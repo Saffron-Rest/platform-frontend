@@ -149,7 +149,7 @@ export async function deleteMenuItemPhoto(id: string) {
 }
 
 export type PrintMenuOptions = {
-  layout?: "grid" | "list" | "compact";
+  layout?: "grid" | "list" | "compact" | "fine" | "tasting";
   title?: string;
   subtitle?: string;
   showPrices?: boolean;

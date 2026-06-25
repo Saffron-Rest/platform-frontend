@@ -1305,9 +1305,11 @@ export function AdminMenu() {
                       setPrintOpts((o) => ({ ...o, layout: e.target.value as PrintMenuOptions["layout"] }))
                     }
                   >
-                    <option value="grid">Grid — 2-column photo cards (default)</option>
-                    <option value="list">List — single column with thumbnails</option>
-                    <option value="compact">Compact — 2-column text only, no photos</option>
+                    <option value="grid">Grid — photo cards, 3 per row</option>
+                    <option value="list">List — single column with descriptions</option>
+                    <option value="compact">Compact — 2-column text, no photos</option>
+                    <option value="fine">Fine dining — name + price only, ultra-minimal</option>
+                    <option value="tasting">Tasting menu — numbered, centered, description-forward</option>
                   </select>
                 </label>
 
