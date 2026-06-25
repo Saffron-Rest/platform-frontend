@@ -1310,6 +1310,9 @@ export function AdminMenu() {
                     <option value="compact">Compact — 2-column text, no photos</option>
                     <option value="fine">Fine dining — name + price only, ultra-minimal</option>
                     <option value="tasting">Tasting menu — numbered, centered, description-forward</option>
+                    <option value="dark">Dark — ink background, cream text, golden prices</option>
+                    <option value="bold">Bold — saffron category banners, large typography</option>
+                    <option value="columns">Columns — 3-column newspaper flow</option>
                   </select>
                 </label>
 
