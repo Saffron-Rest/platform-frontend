@@ -1313,6 +1313,8 @@ export function AdminMenu() {
                     <option value="dark">Dark — ink background, cream text, golden prices</option>
                     <option value="bold">Bold — saffron category banners, large typography</option>
                     <option value="columns">Columns — 3-column newspaper flow</option>
+                    <option value="a3">A3 — portrait A3, 3 columns, items only (print both sides)</option>
+                    <option value="deco">Deco — A3 landscape, dark navy, gold ornaments, 4 columns</option>
                   </select>
                 </label>
 
