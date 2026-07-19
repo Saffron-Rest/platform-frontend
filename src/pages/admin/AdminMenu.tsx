@@ -387,41 +387,51 @@ export function AdminMenu() {
     }
   };
 
-  // Move a category up or down within its sibling group (same parent level)
+  // Move a category up or down within its sibling group (same parent level).
+  // Rather than swap two sortOrder values (a no-op when siblings share the same
+  // order), renumber the whole group 0..n-1 in the new order so the move always
+  // takes effect.
   const moveCat = async (c: MenuCategory, dir: -1 | 1) => {
     const siblings = categories
       .filter((s) => (s.parentId ?? null) === (c.parentId ?? null))
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
     const idx = siblings.findIndex((s) => s.id === c.id);
     const swapIdx = idx + dir;
-    if (swapIdx < 0 || swapIdx >= siblings.length) return;
-    const other = siblings[swapIdx];
+    if (idx < 0 || swapIdx < 0 || swapIdx >= siblings.length) return;
+    const reordered = [...siblings];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(swapIdx, 0, moved);
     try {
-      await Promise.all([
-        updateCategory(c.id, { sortOrder: other.sortOrder }),
-        updateCategory(other.id, { sortOrder: c.sortOrder }),
-      ]);
+      await Promise.all(
+        reordered
+          .map((s, sortOrder) => ({ s, sortOrder }))
+          .filter(({ s, sortOrder }) => s.sortOrder !== sortOrder)
+          .map(({ s, sortOrder }) => updateCategory(s.id, { sortOrder })),
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not reorder");
     }
   };
 
-  // Move an item up or down within its category in the current visible list
+  // Move an item up or down within its category. Items default to displayOrder 0,
+  // so swapping two values does nothing — instead renumber the whole category
+  // 0..n-1 in the new order.
   const moveItem = async (item: import("../../api/menu").MenuItem, dir: -1 | 1) => {
-    // Only reorder within the same category
     const inCat = filteredItems.filter((i) => i.categoryId === item.categoryId);
     const idx = inCat.findIndex((i) => i.id === item.id);
     const swapIdx = idx + dir;
-    if (swapIdx < 0 || swapIdx >= inCat.length) return;
-    const other = inCat[swapIdx];
-    const myOrder = item.displayOrder ?? idx;
-    const otherOrder = other.displayOrder ?? swapIdx;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= inCat.length) return;
+    const reordered = [...inCat];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(swapIdx, 0, moved);
     try {
-      await Promise.all([
-        updateItem(item.id, { displayOrder: otherOrder }),
-        updateItem(other.id, { displayOrder: myOrder }),
-      ]);
+      await Promise.all(
+        reordered
+          .map((it, displayOrder) => ({ it, displayOrder }))
+          .filter(({ it, displayOrder }) => (it.displayOrder ?? -1) !== displayOrder)
+          .map(({ it, displayOrder }) => updateItem(it.id, { displayOrder })),
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not reorder");
