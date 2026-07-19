@@ -74,9 +74,12 @@ function parseVariants(raw: string | null | undefined): VariantRow[] {
   }
 }
 
-function serializeVariants(rows: VariantRow[]): string | null {
+function serializeVariants(rows: VariantRow[]): string {
   const filtered = rows.filter(r => r.name.trim());
-  if (filtered.length === 0) return null;
+  // Return "" (not null) when empty: the backend treats a null variants field
+  // as "leave unchanged", but an empty string as "clear all variants". Sending
+  // null here meant removing every option never persisted.
+  if (filtered.length === 0) return "";
   return JSON.stringify(
     filtered.map(r => {
       const p = parseFloat(r.price.replace(",", "."));
