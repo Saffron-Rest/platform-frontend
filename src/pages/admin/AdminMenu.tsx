@@ -1371,6 +1371,21 @@ export function AdminMenu() {
                   Show prices on the menu
                 </label>
 
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={printOpts.forPrint ?? false}
+                    onChange={(e) => setPrintOpts((o) => ({ ...o, forPrint: e.target.checked }))}
+                  />
+                  Print-ready (3&nbsp;mm bleed + crop marks + CMYK)
+                </label>
+                {printOpts.forPrint && (
+                  <p className="text-xs text-[var(--color-muted)] -mt-1 pl-6">
+                    A4 with 3&nbsp;mm bleed, trim marks and CMYK colours — ready to send to the
+                    printer (e.g. druk24h). Larger file; takes a little longer to build.
+                  </p>
+                )}
+
                 <div className="pt-4 border-t border-black/5 space-y-3">
                   <p className="text-xs uppercase tracking-wider text-[var(--color-muted)] font-semibold">
                     Editorial pages

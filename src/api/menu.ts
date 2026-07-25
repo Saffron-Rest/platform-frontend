@@ -161,6 +161,8 @@ export type PrintMenuOptions = {
   storyBody?: string;
   /** Optional address / phone block rendered on the closing page. */
   contactBlock?: string;
+  /** Print-ready output: 3mm bleed, crop marks and PDF trim/bleed boxes. */
+  forPrint?: boolean;
 };
 
 
@@ -179,6 +181,7 @@ export async function fetchMenuPdfBlob(
   if (opts.storyTitle) q.set("storyTitle", opts.storyTitle);
   if (opts.storyBody) q.set("storyBody", opts.storyBody);
   if (opts.contactBlock) q.set("contactBlock", opts.contactBlock);
+  if (opts.forPrint) q.set("forPrint", "true");
   const token = localStorage.getItem("token") ?? "";
   const res = await fetch(`${apiBase}/menu/print?${q.toString()}`, {
     headers: {
