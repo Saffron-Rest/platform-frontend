@@ -156,11 +156,13 @@ export function AdminMenu() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const [printOpts, setPrintOpts] = useState<PrintMenuOptions>({
-    layout: "grid",
+    layout: "photolist",
     title: "Saffron",
-    subtitle: "Authentic Azerbaijani Restaurant",
+    // Blank → the backend fills a language-appropriate default (Polish subtitle
+    // when the menu language is Polish).
+    subtitle: "",
     showPrices: true,
-    language: "en",
+    language: "pl",
   });
   const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -1351,14 +1353,17 @@ export function AdminMenu() {
                 </label>
 
                 <label className="field-label">
-                  Price format
+                  Menu language / Język menu
+                  <span className="ml-1 text-xs font-normal text-[var(--color-muted)]">
+                    (controls all text on the menu, not just prices)
+                  </span>
                   <select
                     className="field-input"
-                    value={printOpts.language ?? "en"}
+                    value={printOpts.language ?? "pl"}
                     onChange={(e) => setPrintOpts((o) => ({ ...o, language: e.target.value as "en" | "pl" }))}
                   >
+                    <option value="pl">Polski — Polish (32,00 zł)</option>
                     <option value="en">English (32.00 zł)</option>
-                    <option value="pl">Polish (32,00 zł)</option>
                   </select>
                 </label>
 
